@@ -36,7 +36,7 @@ Available metrics:
 - revenue_growth_quarters (consecutive quarters of revenue growth)
 - earnings_growth (annual earnings growth rate as decimal)
 - profit_margin (as decimal, e.g. 0.15 for 15%)
-- market_cap (in billions, e.g. 10 for $10B)
+- market_cap (CRITICAL: value must be in BILLIONS. Examples: "$10B" or "10 billion" = 10, "$200B" = 200, "$300M" = 0.3, "$2 trillion" = 2000, "under $10B" = use operator "<" with value 10)
 - price_to_book
 - debt_to_equity
 - roe (return on equity as decimal)
@@ -49,12 +49,29 @@ Available operators: ">", "<", ">=", "<=", "==", "between"
 
 For "between" operator, use "value" for the lower bound and "valueEnd" for the upper bound.
 
+MARKET CAP CONVERSION RULES (values MUST be in billions):
+- "$10B" or "10 billion" → value: 10
+- "$200B" or "200 billion" → value: 200
+- "$300M" or "300 million" → value: 0.3
+- "$50M" → value: 0.05
+- "$2T" or "2 trillion" → value: 2000
+- "under X" or "below X" → operator: "<", value: X (in billions)
+- "over X" or "above X" → operator: ">", value: X (in billions)
+- "between X and Y" → operator: "between", value: X, valueEnd: Y (both in billions)
+
+Market cap category definitions:
+- Mega cap: market_cap > 200 (i.e. >$200B)
+- Large cap: market_cap between 10 and 200
+- Mid cap: market_cap between 2 and 10
+- Small cap: market_cap between 0.3 and 2
+- Micro cap: market_cap between 0.05 and 0.3
+
 If something is ambiguous, make reasonable assumptions. For example:
 - "low P/E" → pe_ratio < 15
 - "high dividend" → dividend_yield > 0.03
-- "large cap" → market_cap > 100
-- "small cap" → market_cap < 10
-- "mid cap" → market_cap between 10 and 100
+- "large cap" → market_cap > 200
+- "small cap" → market_cap < 2
+- "mid cap" → market_cap between 2 and 10
 - "growth stocks" → revenue_growth > 0.15
 - "value stocks" → pe_ratio < 20 AND price_to_book < 3
 
@@ -169,11 +186,35 @@ export async function parseStrategy(
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("Empty response from OpenAI");
 
-    const parsed = JSON.parse(content);
-    return parsed as StrategyParameters;
+    const parsed = JSON.parse(content) as StrategyParameters;
+    normalizeMarketCapValues(parsed);
+    console.log("[Parser] Parsed filters:", JSON.stringify(parsed.filters, null, 2));
+    return parsed;
   } catch (error) {
     console.error("OpenAI parsing failed, using fallback:", error);
     return fallbackParse(userInput);
+  }
+}
+
+// Normalize market cap values to billions.
+// If OpenAI returns raw dollar values (e.g. 10000000000 instead of 10),
+// convert them to billions to match our stock database format.
+function normalizeMarketCapValues(params: StrategyParameters): void {
+  for (const filter of params.filters) {
+    if (filter.metric === "market_cap") {
+      // If value is >= 1000, it's likely in raw dollars or millions instead of billions
+      // Our database max is ~3400 (NVDA at $3.4T), so any value > 5000 is certainly wrong
+      if (filter.value > 5000) {
+        const original = filter.value;
+        filter.value = filter.value / 1_000_000_000;
+        console.log(`[Parser] Normalized market_cap value from ${original} to ${filter.value} (converted to billions)`);
+      }
+      if (filter.valueEnd !== undefined && filter.valueEnd !== null && filter.valueEnd > 5000) {
+        const original = filter.valueEnd;
+        filter.valueEnd = filter.valueEnd / 1_000_000_000;
+        console.log(`[Parser] Normalized market_cap valueEnd from ${original} to ${filter.valueEnd} (converted to billions)`);
+      }
+    }
   }
 }
 
@@ -217,14 +258,31 @@ function fallbackParse(input: string): StrategyParameters {
     filters.push({ metric: "revenue_growth_quarters", operator: ">=", value: parseFloat(revQuarterMatch[1]) });
   }
 
-  // Market cap patterns
-  const mcapMatch = lower.match(/market\s*cap\s*(?:under|below|less than|<)\s*\$?(\d+(?:\.\d+)?)\s*b/i);
-  if (mcapMatch) {
-    filters.push({ metric: "market_cap", operator: "<", value: parseFloat(mcapMatch[1]) });
+  // Market cap patterns - values in billions
+  const mcapBMatch = lower.match(/(?:market\s*cap|under|below)\s*(?:under|below|less than|<)?\s*\$?(\d+(?:\.\d+)?)\s*b/i);
+  if (mcapBMatch) {
+    filters.push({ metric: "market_cap", operator: "<", value: parseFloat(mcapBMatch[1]) });
+  }
+  const mcapMMatch = lower.match(/(?:market\s*cap|under|below)\s*(?:under|below|less than|<)?\s*\$?(\d+(?:\.\d+)?)\s*m/i);
+  if (mcapMMatch && !mcapBMatch) {
+    filters.push({ metric: "market_cap", operator: "<", value: parseFloat(mcapMMatch[1]) / 1000 });
   }
   const mcapOverMatch = lower.match(/market\s*cap\s*(?:over|above|greater than|>)\s*\$?(\d+(?:\.\d+)?)\s*b/i);
   if (mcapOverMatch) {
     filters.push({ metric: "market_cap", operator: ">", value: parseFloat(mcapOverMatch[1]) });
+  }
+
+  // Named market cap categories
+  if (lower.includes("small cap") && !mcapBMatch && !mcapMMatch) {
+    filters.push({ metric: "market_cap", operator: "<", value: 2 });
+  } else if (lower.includes("micro cap") && !mcapBMatch && !mcapMMatch) {
+    filters.push({ metric: "market_cap", operator: "<", value: 0.3 });
+  } else if (lower.includes("mid cap") && !mcapBMatch && !mcapOverMatch) {
+    filters.push({ metric: "market_cap", operator: "between", value: 2, valueEnd: 10 });
+  } else if (lower.includes("large cap") && !mcapOverMatch) {
+    filters.push({ metric: "market_cap", operator: ">", value: 200 });
+  } else if (lower.includes("mega cap") && !mcapOverMatch) {
+    filters.push({ metric: "market_cap", operator: ">", value: 200 });
   }
 
   // Profit margin patterns
