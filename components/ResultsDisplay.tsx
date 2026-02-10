@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import { BacktestResult } from "@/lib/types";
 import ResultsChart from "./ResultsChart";
 
@@ -17,6 +18,7 @@ const PERIOD_YEARS: Record<string, number> = {
 };
 
 export default function ResultsDisplay({ result, onAddToLeaderboard }: ResultsDisplayProps) {
+  const { isSignedIn } = useUser();
   const [showLeaderboardPrompt, setShowLeaderboardPrompt] = useState(false);
   const [leaderboardName, setLeaderboardName] = useState("");
   const [saved, setSaved] = useState(false);
@@ -161,7 +163,11 @@ export default function ResultsDisplay({ result, onAddToLeaderboard }: ResultsDi
       {/* Add to leaderboard */}
       {!saved && (
         <div className="mt-6 text-center">
-          {!showLeaderboardPrompt ? (
+          {!isSignedIn ? (
+            <p className="text-sm text-gray-400">
+              Sign in to save strategies to the leaderboard
+            </p>
+          ) : !showLeaderboardPrompt ? (
             <button
               onClick={() => setShowLeaderboardPrompt(true)}
               className="text-sm font-medium text-blue-600 hover:text-blue-700 underline underline-offset-4 transition-colors"
