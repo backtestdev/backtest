@@ -4,43 +4,68 @@ import { useState, useCallback } from "react";
 import BacktestInput from "@/components/BacktestInput";
 import ResultsDisplay from "@/components/ResultsDisplay";
 import Leaderboard from "@/components/Leaderboard";
-import { BacktestResult } from "@/lib/types";
+import Toast from "@/components/Toast";
+import { BacktestResult, StructuredParameters } from "@/lib/types";
+
+interface ToastState {
+  message: string;
+  type: "success" | "error";
+}
 
 export default function HomePage() {
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [leaderboardKey, setLeaderboardKey] = useState(0);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
-  const runBacktest = useCallback(async (strategy: string) => {
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
+  const runBacktest = useCallback(async (strategy: string, structuredParams?: StructuredParameters) => {
+    if (structuredParams) {
+      setIsUpdating(true);
+    } else {
+      setIsLoading(true);
+      setError(null);
+      setResult(null);
+    }
 
     try {
       const res = await fetch("/api/backtest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ strategy }),
+        body: JSON.stringify({ strategy, structuredParams }),
       });
 
       const data = await res.json();
 
       if (data.error) {
-        setError(data.error);
+        if (structuredParams) {
+          setToast({ message: data.error, type: "error" });
+        } else {
+          setError(data.error);
+        }
       } else {
         setResult(data);
+        if (structuredParams) {
+          setToast({ message: "Results updated with your adjustments", type: "success" });
+        }
       }
     } catch {
-      setError("Unable to fetch data. Please try again.");
+      const msg = "Unable to fetch data. Please try again.";
+      if (structuredParams) {
+        setToast({ message: msg, type: "error" });
+      } else {
+        setError(msg);
+      }
     } finally {
       setIsLoading(false);
+      setIsUpdating(false);
     }
   }, []);
 
   const handleAddToLeaderboard = useCallback(
-    async (name: string) => {
-      if (!result) return;
+    async (name: string): Promise<{ ok: boolean; error?: string }> => {
+      if (!result) return { ok: false, error: "No result to save" };
 
       const return1yr = result.timeHorizons.find((h) => h.period === "1yr")?.strategyReturn ?? 0;
       const return5yr = result.timeHorizons.find((h) => h.period === "5yr")?.strategyReturn ?? 0;
@@ -48,7 +73,7 @@ export default function HomePage() {
       const return20yr = result.timeHorizons.find((h) => h.period === "20yr")?.strategyReturn ?? 0;
 
       try {
-        await fetch("/api/leaderboard", {
+        const res = await fetch("/api/leaderboard", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -59,14 +84,36 @@ export default function HomePage() {
             return10yr,
             return20yr,
             matchedStocks: result.matchedStockCount,
+            parameters_json: result.parsedParams,
           }),
         });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setToast({ message: data.error || "Failed to save", type: "error" });
+          return { ok: false, error: data.error };
+        }
+
         setLeaderboardKey((k) => k + 1);
+        setToast({ message: "Strategy added to leaderboard!", type: "success" });
+        return { ok: true };
       } catch {
-        console.error("Failed to save to leaderboard");
+        const errMsg = "Failed to save to leaderboard";
+        setToast({ message: errMsg, type: "error" });
+        return { ok: false, error: errMsg };
       }
     },
     [result]
+  );
+
+  const handleUpdateParams = useCallback(
+    (params: StructuredParameters) => {
+      if (result) {
+        runBacktest(result.description, params);
+      }
+    },
+    [result, runBacktest]
   );
 
   const handleSelectStrategy = useCallback(
@@ -112,6 +159,8 @@ export default function HomePage() {
           <ResultsDisplay
             result={result}
             onAddToLeaderboard={handleAddToLeaderboard}
+            onUpdateParams={handleUpdateParams}
+            isUpdating={isUpdating}
           />
         )}
 
@@ -129,6 +178,15 @@ export default function HomePage() {
           </p>
         </footer>
       </main>
+
+      {/* Toast notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

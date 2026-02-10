@@ -13,6 +13,19 @@ export interface StockFilter {
   valueEnd?: number; // for "between" operator
 }
 
+export interface StructuredParameters {
+  metrics: {
+    name: string;
+    operator: string;
+    value: number;
+    valueEnd?: number;
+    period?: string;
+  }[];
+  market_cap: { min: number | null; max: number | null };
+  sectors: { include: string[]; exclude: string[] };
+  time_horizon: string;
+}
+
 export interface BacktestResult {
   strategyName: string;
   description: string;
@@ -21,6 +34,7 @@ export interface BacktestResult {
   timeHorizons: TimeHorizonResult[];
   chartData: ChartDataPoint[];
   runDate: string;
+  parsedParams?: StructuredParameters;
 }
 
 export interface TimeHorizonResult {
@@ -47,4 +61,6 @@ export interface LeaderboardEntry {
   matchedStocks: number;
   createdAt: string;
   user_id?: string;
+  parameters_json?: StructuredParameters;
+  parameters_hash?: string;
 }
