@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useUser } from "@clerk/nextjs";
-import { BacktestResult } from "@/lib/types";
+import { useUser, SignUpButton } from "@clerk/nextjs";
+import { BacktestResult, StructuredParameters } from "@/lib/types";
 import ResultsChart from "./ResultsChart";
+import StrategyInspector from "./StrategyInspector";
 
 interface ResultsDisplayProps {
   result: BacktestResult;
-  onAddToLeaderboard: (name: string) => void;
+  onAddToLeaderboard: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  onUpdateParams: (params: StructuredParameters) => void;
+  isUpdating: boolean;
 }
 
 const PERIOD_YEARS: Record<string, number> = {
@@ -17,19 +20,28 @@ const PERIOD_YEARS: Record<string, number> = {
   "20yr": 20,
 };
 
-export default function ResultsDisplay({ result, onAddToLeaderboard }: ResultsDisplayProps) {
+export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdateParams, isUpdating }: ResultsDisplayProps) {
   const { isSignedIn } = useUser();
   const [showLeaderboardPrompt, setShowLeaderboardPrompt] = useState(false);
   const [leaderboardName, setLeaderboardName] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
   const [stocksExpanded, setStocksExpanded] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const name = leaderboardName.trim() || result.strategyName;
-    onAddToLeaderboard(name);
-    setSaved(true);
-    setShowLeaderboardPrompt(false);
+    setSaving(true);
+    setSaveError(null);
+    const res = await onAddToLeaderboard(name);
+    setSaving(false);
+    if (res.ok) {
+      setSaved(true);
+      setShowLeaderboardPrompt(false);
+    } else {
+      setSaveError(res.error || "Failed to save");
+    }
   };
 
   const handlePeriodClick = (period: string) => {
@@ -119,6 +131,15 @@ export default function ResultsDisplay({ result, onAddToLeaderboard }: ResultsDi
       {/* Chart */}
       <ResultsChart data={filteredChartData} />
 
+      {/* Strategy Inspector */}
+      {result.parsedParams && (
+        <StrategyInspector
+          params={result.parsedParams}
+          onUpdate={onUpdateParams}
+          isLoading={isUpdating}
+        />
+      )}
+
       {/* Matched stocks list - collapsible */}
       <div className="mt-6 bg-white rounded-2xl border border-gray-100 p-6">
         <button
@@ -164,38 +185,46 @@ export default function ResultsDisplay({ result, onAddToLeaderboard }: ResultsDi
       {!saved && (
         <div className="mt-6 text-center">
           {!isSignedIn ? (
-            <p className="text-sm text-gray-400">
-              Sign in to save strategies to the leaderboard
-            </p>
+            <SignUpButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
+              <button className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors">
+                Sign up to save to leaderboard
+              </button>
+            </SignUpButton>
           ) : !showLeaderboardPrompt ? (
             <button
               onClick={() => setShowLeaderboardPrompt(true)}
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 underline underline-offset-4 transition-colors"
+              className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors"
             >
-              Add this strategy to the leaderboard
+              Add to Leaderboard
             </button>
           ) : (
-            <div className="flex items-center gap-3 max-w-md mx-auto">
-              <input
-                type="text"
-                value={leaderboardName}
-                onChange={(e) => setLeaderboardName(e.target.value)}
-                placeholder="Give it a name (optional)"
-                className="flex-1 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-50"
-              />
-              <button
-                onClick={handleSave}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors"
-              >
-                Save
-              </button>
+            <div className="space-y-3 max-w-md mx-auto">
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={leaderboardName}
+                  onChange={(e) => setLeaderboardName(e.target.value)}
+                  placeholder="Give it a name (optional)"
+                  className="flex-1 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-50"
+                />
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+              {saveError && (
+                <p className="text-sm text-red-600">{saveError}</p>
+              )}
             </div>
           )}
         </div>
       )}
       {saved && (
         <p className="mt-4 text-sm text-emerald-600 text-center font-medium">
-          Added to leaderboard!
+          Strategy added to leaderboard!
         </p>
       )}
     </div>

@@ -1,5 +1,13 @@
 import OpenAI from "openai";
-import { StrategyParameters, StockFilter } from "./types";
+import { StrategyParameters, StockFilter, StructuredParameters } from "./types";
+
+const SECTOR_REVERSE: Record<number, string> = {
+  1: "Technology",
+  2: "Healthcare",
+  3: "Financial",
+  4: "Energy",
+  5: "Consumer",
+};
 
 const SYSTEM_PROMPT = `You are a financial strategy parser. Given a natural language description of a stock investment strategy, extract structured parameters.
 
@@ -52,13 +60,96 @@ If something is ambiguous, make reasonable assumptions. For example:
 
 IMPORTANT: Return ONLY the JSON object, no markdown formatting or explanation.`;
 
+export function filtersToStructuredParams(params: StrategyParameters): StructuredParameters {
+  const structured: StructuredParameters = {
+    metrics: [],
+    market_cap: { min: null, max: null },
+    sectors: { include: [], exclude: [] },
+    time_horizon: "20_years",
+  };
+
+  for (const filter of params.filters) {
+    if (filter.metric === "market_cap") {
+      if (filter.operator === ">" || filter.operator === ">=") {
+        structured.market_cap.min = filter.value;
+      } else if (filter.operator === "<" || filter.operator === "<=") {
+        structured.market_cap.max = filter.value;
+      } else if (filter.operator === "between") {
+        structured.market_cap.min = filter.value;
+        structured.market_cap.max = filter.valueEnd ?? null;
+      }
+      continue;
+    }
+
+    if (filter.metric === "sector") {
+      const sectorName = SECTOR_REVERSE[filter.value];
+      if (sectorName) {
+        structured.sectors.include.push(sectorName);
+      }
+      continue;
+    }
+
+    structured.metrics.push({
+      name: filter.metric,
+      operator: filter.operator,
+      value: filter.value,
+      valueEnd: filter.valueEnd,
+      period: "annual",
+    });
+  }
+
+  return structured;
+}
+
+export function structuredParamsToFilters(structured: StructuredParameters): StockFilter[] {
+  const filters: StockFilter[] = [];
+
+  for (const metric of structured.metrics) {
+    filters.push({
+      metric: metric.name,
+      operator: metric.operator as StockFilter["operator"],
+      value: metric.value,
+      valueEnd: metric.valueEnd,
+    });
+  }
+
+  if (structured.market_cap.min !== null && structured.market_cap.max !== null) {
+    filters.push({
+      metric: "market_cap",
+      operator: "between",
+      value: structured.market_cap.min,
+      valueEnd: structured.market_cap.max,
+    });
+  } else if (structured.market_cap.min !== null) {
+    filters.push({ metric: "market_cap", operator: ">", value: structured.market_cap.min });
+  } else if (structured.market_cap.max !== null) {
+    filters.push({ metric: "market_cap", operator: "<", value: structured.market_cap.max });
+  }
+
+  const SECTOR_MAP: Record<string, number> = {
+    Technology: 1,
+    Healthcare: 2,
+    Financial: 3,
+    Energy: 4,
+    Consumer: 5,
+  };
+
+  for (const sector of structured.sectors.include) {
+    const val = SECTOR_MAP[sector];
+    if (val) {
+      filters.push({ metric: "sector", operator: "==", value: val });
+    }
+  }
+
+  return filters;
+}
+
 export async function parseStrategy(
   userInput: string
 ): Promise<StrategyParameters> {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    // Fall back to rule-based parsing if no API key
     return fallbackParse(userInput);
   }
 

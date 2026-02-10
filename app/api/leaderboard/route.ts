@@ -4,11 +4,15 @@ import path from "path";
 import { LeaderboardEntry } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 import { auth } from "@clerk/nextjs/server";
+import { getDb, generateParametersHash } from "@/lib/db";
+import { moderateText } from "@/lib/moderation";
 
 const LEADERBOARD_PATH = path.join(process.cwd(), "data", "leaderboard.json");
 const MAX_ENTRIES = 20;
 
-async function readLeaderboard(): Promise<LeaderboardEntry[]> {
+// --- File-based storage (fallback when no DATABASE_URL) ---
+
+async function readLeaderboardFile(): Promise<LeaderboardEntry[]> {
   try {
     const data = await fs.readFile(LEADERBOARD_PATH, "utf-8");
     return JSON.parse(data);
@@ -17,14 +21,96 @@ async function readLeaderboard(): Promise<LeaderboardEntry[]> {
   }
 }
 
-async function writeLeaderboard(entries: LeaderboardEntry[]): Promise<void> {
+async function writeLeaderboardFile(entries: LeaderboardEntry[]): Promise<void> {
   await fs.writeFile(LEADERBOARD_PATH, JSON.stringify(entries, null, 2));
 }
 
+// --- Neon DB storage ---
+
+async function readLeaderboardDb(): Promise<LeaderboardEntry[]> {
+  const sql = getDb();
+  if (!sql) return readLeaderboardFile();
+
+  try {
+    const rows = await sql`
+      SELECT id, name, description, return1yr, return5yr, return10yr, return20yr,
+             matched_stocks as "matchedStocks", created_at as "createdAt", user_id,
+             parameters_json, parameters_hash
+      FROM leaderboard
+      ORDER BY return10yr DESC
+      LIMIT ${MAX_ENTRIES}
+    `;
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      return1yr: Number(row.return1yr),
+      return5yr: Number(row.return5yr),
+      return10yr: Number(row.return10yr),
+      return20yr: Number(row.return20yr),
+      matchedStocks: Number(row.matchedStocks),
+      createdAt: row.createdAt,
+      user_id: row.user_id,
+      parameters_json: row.parameters_json,
+      parameters_hash: row.parameters_hash,
+    }));
+  } catch (error) {
+    console.error("DB read failed, falling back to file:", error);
+    return readLeaderboardFile();
+  }
+}
+
+async function checkDuplicateDb(parametersHash: string): Promise<LeaderboardEntry | null> {
+  const sql = getDb();
+  if (!sql) return null;
+
+  try {
+    const rows = await sql`
+      SELECT id, name, description FROM leaderboard
+      WHERE parameters_hash = ${parametersHash}
+      LIMIT 1
+    `;
+    if (rows.length > 0) {
+      return rows[0] as unknown as LeaderboardEntry;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeLeaderboardDb(entry: LeaderboardEntry): Promise<void> {
+  const sql = getDb();
+  if (!sql) {
+    // Fall back to file
+    const entries = await readLeaderboardFile();
+    entries.push(entry);
+    entries.sort((a, b) => b.return10yr - a.return10yr);
+    await writeLeaderboardFile(entries.slice(0, MAX_ENTRIES));
+    return;
+  }
+
+  await sql`
+    INSERT INTO leaderboard (id, name, description, return1yr, return5yr, return10yr, return20yr,
+                             matched_stocks, created_at, user_id, parameters_json, parameters_hash)
+    VALUES (${entry.id}, ${entry.name}, ${entry.description}, ${entry.return1yr}, ${entry.return5yr},
+            ${entry.return10yr}, ${entry.return20yr}, ${entry.matchedStocks}, ${entry.createdAt},
+            ${entry.user_id ?? null}, ${JSON.stringify(entry.parameters_json) ?? null},
+            ${entry.parameters_hash ?? null})
+  `;
+}
+
+// --- Duplicate check for file-based storage ---
+
+function checkDuplicateFile(entries: LeaderboardEntry[], parametersHash: string): LeaderboardEntry | null {
+  return entries.find((e) => e.parameters_hash === parametersHash) ?? null;
+}
+
+// --- Route handlers ---
+
 export async function GET() {
   try {
-    const entries = await readLeaderboard();
-    // Default sort by 10yr return descending
+    const entries = await readLeaderboardDb();
     entries.sort((a, b) => b.return10yr - a.return10yr);
     return NextResponse.json(entries.slice(0, MAX_ENTRIES));
   } catch (error) {
@@ -45,7 +131,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks } = body;
+    const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks, parameters_json } = body;
+
+    console.log("[Leaderboard POST] Received:", { name, description, userId, parameters_json: !!parameters_json });
 
     if (!name || !description) {
       return NextResponse.json(
@@ -54,7 +142,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const entries = await readLeaderboard();
+    // Content moderation
+    const nameCheck = moderateText(name);
+    if (!nameCheck.ok) {
+      console.log("[Leaderboard POST] Name moderation failed:", nameCheck.error);
+      return NextResponse.json({ error: nameCheck.error }, { status: 400 });
+    }
+
+    const descCheck = moderateText(description);
+    if (!descCheck.ok) {
+      console.log("[Leaderboard POST] Description moderation failed:", descCheck.error);
+      return NextResponse.json({ error: descCheck.error }, { status: 400 });
+    }
+
+    // Generate parameters hash for duplicate detection
+    const parametersHash = parameters_json ? generateParametersHash(parameters_json) : null;
+
+    // Check for duplicates
+    if (parametersHash) {
+      const sql = getDb();
+      let existingDup: LeaderboardEntry | null = null;
+
+      if (sql) {
+        existingDup = await checkDuplicateDb(parametersHash);
+      } else {
+        const entries = await readLeaderboardFile();
+        existingDup = checkDuplicateFile(entries, parametersHash);
+      }
+
+      if (existingDup) {
+        console.log("[Leaderboard POST] Duplicate found:", existingDup.name);
+        return NextResponse.json(
+          { error: `This strategy already exists on the leaderboard as '${existingDup.name}'` },
+          { status: 409 }
+        );
+      }
+    }
 
     const newEntry: LeaderboardEntry = {
       id: uuidv4(),
@@ -67,19 +190,17 @@ export async function POST(request: NextRequest) {
       matchedStocks: matchedStocks ?? 0,
       createdAt: new Date().toISOString(),
       user_id: userId,
+      parameters_json: parameters_json ?? undefined,
+      parameters_hash: parametersHash ?? undefined,
     };
 
-    entries.push(newEntry);
+    await writeLeaderboardDb(newEntry);
 
-    // Keep only top entries sorted by 10yr return
-    entries.sort((a, b) => b.return10yr - a.return10yr);
-    const trimmed = entries.slice(0, MAX_ENTRIES);
-
-    await writeLeaderboard(trimmed);
+    console.log("[Leaderboard POST] Successfully saved:", newEntry.id);
 
     return NextResponse.json(newEntry, { status: 201 });
   } catch (error) {
-    console.error("Leaderboard write error:", error);
+    console.error("[Leaderboard POST] Error:", error);
     return NextResponse.json(
       { error: "Failed to save to leaderboard." },
       { status: 500 }
