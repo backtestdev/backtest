@@ -6,6 +6,7 @@
     "return1yr": 12.45,
     "return5yr": 58.32,
     "return10yr": 145.67,
+    "return20yr": 310.50,
     "matchedStocks": 12,
     "createdAt": "2025-01-01T00:00:00.000Z"
   },
@@ -16,6 +17,7 @@
     "return1yr": 85.21,
     "return5yr": 320.44,
     "return10yr": 890.15,
+    "return20yr": 2450.30,
     "matchedStocks": 6,
     "createdAt": "2025-01-01T00:00:00.000Z"
   },
@@ -26,6 +28,7 @@
     "return1yr": 22.18,
     "return5yr": 88.55,
     "return10yr": 195.33,
+    "return20yr": 420.75,
     "matchedStocks": 9,
     "createdAt": "2025-01-01T00:00:00.000Z"
   },
@@ -36,6 +39,7 @@
     "return1yr": -5.20,
     "return5yr": 45.80,
     "return10yr": 120.44,
+    "return20yr": 285.60,
     "matchedStocks": 0,
     "createdAt": "2025-01-01T00:00:00.000Z"
   },
@@ -46,6 +50,7 @@
     "return1yr": 18.33,
     "return5yr": 42.10,
     "return10yr": 110.25,
+    "return20yr": 245.80,
     "matchedStocks": 5,
     "createdAt": "2025-01-01T00:00:00.000Z"
   }

@@ -45,6 +45,7 @@ export default function Home() {
       const return1yr = result.timeHorizons.find((h) => h.period === "1yr")?.strategyReturn ?? 0;
       const return5yr = result.timeHorizons.find((h) => h.period === "5yr")?.strategyReturn ?? 0;
       const return10yr = result.timeHorizons.find((h) => h.period === "10yr")?.strategyReturn ?? 0;
+      const return20yr = result.timeHorizons.find((h) => h.period === "20yr")?.strategyReturn ?? 0;
 
       try {
         await fetch("/api/leaderboard", {
@@ -56,6 +57,7 @@ export default function Home() {
             return1yr,
             return5yr,
             return10yr,
+            return20yr,
             matchedStocks: result.matchedStockCount,
           }),
         });

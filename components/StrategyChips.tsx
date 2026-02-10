@@ -2,28 +2,24 @@
 
 const EXAMPLE_STRATEGIES = [
   {
-    label: "Dividend Aristocrats",
-    query: "Stocks with 10+ years of consecutive dividend growth",
+    label: "Beaten-Down Cash Generators",
+    query: "Stocks down 40%+ from 52-week highs with positive free cash flow",
   },
   {
-    label: "High Revenue Growth",
-    query: "Tech companies with revenue growth over 20% annually",
+    label: "Dividend Growers",
+    query: "Companies with 5+ years of consecutive dividend increases",
   },
   {
-    label: "Low P/E Value Stocks",
-    query: "Stocks with P/E under 15 and positive earnings",
+    label: "Small Cap Growth Tech",
+    query: "Tech stocks under $10B market cap with 25%+ revenue growth",
   },
   {
-    label: "Small Cap Quality",
-    query: "Companies with market cap under $10B and profit margins over 15%",
+    label: "Classic Value",
+    query: "Value stocks: P/E under 12, dividend yield over 3%",
   },
   {
-    label: "High Yield Income",
-    query: "Dividend yield over 4% with payout ratio under 60%",
-  },
-  {
-    label: "52-Week High Momentum",
-    query: "Stocks that hit 52-week highs",
+    label: "High Margin Consumer",
+    query: "High profit margin stocks (>20%) in consumer sectors",
   },
 ];
 

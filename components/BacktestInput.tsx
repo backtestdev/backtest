@@ -20,7 +20,6 @@ export default function BacktestInput({ onSubmit, isLoading }: BacktestInputProp
 
   const handleChipSelect = (query: string) => {
     setStrategy(query);
-    onSubmit(query);
   };
 
   return (
