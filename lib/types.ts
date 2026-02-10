@@ -43,6 +43,7 @@ export interface LeaderboardEntry {
   return1yr: number;
   return5yr: number;
   return10yr: number;
+  return20yr: number;
   matchedStocks: number;
   createdAt: string;
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { LeaderboardEntry } from "@/lib/types";
 
-type SortField = "return10yr" | "return5yr" | "return1yr";
+type SortField = "return10yr" | "return20yr" | "return5yr" | "return1yr";
 
 interface LeaderboardProps {
   onSelectStrategy: (description: string) => void;
@@ -31,7 +31,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
     fetchLeaderboard();
   }, [fetchLeaderboard, refreshKey]);
 
-  const sorted = [...entries].sort((a, b) => b[sortField] - a[sortField]);
+  const sorted = [...entries].sort((a, b) => (b[sortField] ?? 0) - (a[sortField] ?? 0));
 
   const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
     <button
@@ -43,7 +43,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
       }`}
     >
       {label}
-      {sortField === field && " ↓"}
+      {sortField === field && " \u2193"}
     </button>
   );
 
@@ -74,9 +74,12 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         {/* Header */}
-        <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-100 items-center">
-          <div className="col-span-6 text-xs font-medium text-gray-400 uppercase tracking-wider">
+        <div className="grid grid-cols-12 gap-2 px-6 py-3 border-b border-gray-100 items-center">
+          <div className="col-span-4 text-xs font-medium text-gray-400 uppercase tracking-wider">
             Strategy
+          </div>
+          <div className="col-span-2 text-right">
+            <SortHeader field="return20yr" label="20yr" />
           </div>
           <div className="col-span-2 text-right">
             <SortHeader field="return10yr" label="10yr" />
@@ -94,22 +97,32 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
           <button
             key={entry.id}
             onClick={() => onSelectStrategy(entry.description)}
-            className="w-full grid grid-cols-12 gap-4 px-6 py-4 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0 items-center"
+            className="w-full grid grid-cols-12 gap-2 px-6 py-4 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0 items-center"
           >
-            <div className="col-span-6">
+            <div className="col-span-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-gray-300 w-5">
                   {index + 1}
                 </span>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">
                     {entry.name}
                   </p>
-                  <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">
                     {entry.description}
                   </p>
                 </div>
               </div>
+            </div>
+            <div className="col-span-2 text-right">
+              <span
+                className={`text-sm font-semibold ${
+                  (entry.return20yr ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"
+                }`}
+              >
+                {(entry.return20yr ?? 0) >= 0 ? "+" : ""}
+                {(entry.return20yr ?? 0).toFixed(1)}%
+              </span>
             </div>
             <div className="col-span-2 text-right">
               <span

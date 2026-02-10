@@ -35,7 +35,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, return1yr, return5yr, return10yr, matchedStocks } = body;
+    const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks } = body;
 
     if (!name || !description) {
       return NextResponse.json(
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
       return1yr: return1yr ?? 0,
       return5yr: return5yr ?? 0,
       return10yr: return10yr ?? 0,
+      return20yr: return20yr ?? 0,
       matchedStocks: matchedStocks ?? 0,
       createdAt: new Date().toISOString(),
     };
