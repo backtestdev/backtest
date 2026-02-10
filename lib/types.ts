@@ -46,4 +46,5 @@ export interface LeaderboardEntry {
   return20yr: number;
   matchedStocks: number;
   createdAt: string;
+  user_id?: string;
 }

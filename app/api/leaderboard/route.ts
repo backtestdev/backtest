@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { LeaderboardEntry } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
+import { auth } from "@clerk/nextjs/server";
 
 const LEADERBOARD_PATH = path.join(process.cwd(), "data", "leaderboard.json");
 const MAX_ENTRIES = 20;
@@ -34,6 +35,15 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth();
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "You must be signed in to add to the leaderboard." },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks } = body;
 
@@ -56,6 +66,7 @@ export async function POST(request: NextRequest) {
       return20yr: return20yr ?? 0,
       matchedStocks: matchedStocks ?? 0,
       createdAt: new Date().toISOString(),
+      user_id: userId,
     };
 
     entries.push(newEntry);
