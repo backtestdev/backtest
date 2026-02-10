@@ -26,6 +26,12 @@ export interface StructuredParameters {
   time_horizon: string;
 }
 
+export interface DebugInfo {
+  appliedFilters: string[];
+  matchedCount: number;
+  sampleTickers: string[];
+}
+
 export interface BacktestResult {
   strategyName: string;
   description: string;
@@ -35,6 +41,7 @@ export interface BacktestResult {
   chartData: ChartDataPoint[];
   runDate: string;
   parsedParams?: StructuredParameters;
+  debugInfo?: DebugInfo;
 }
 
 export interface TimeHorizonResult {

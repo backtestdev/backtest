@@ -29,6 +29,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
   const [stocksExpanded, setStocksExpanded] = useState(false);
+  const [debugExpanded, setDebugExpanded] = useState(false);
 
   const handleSave = async () => {
     const name = leaderboardName.trim() || result.strategyName;
@@ -174,6 +175,47 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
           </div>
         )}
       </div>
+
+      {/* Debug info - collapsible */}
+      {result.debugInfo && (
+        <div className="mt-4 bg-gray-50 rounded-2xl border border-gray-200 p-4">
+          <button
+            onClick={() => setDebugExpanded(!debugExpanded)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <h3 className="text-sm font-medium text-gray-500">Debug Info</h3>
+            <svg
+              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                debugExpanded ? "rotate-180" : ""
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {debugExpanded && (
+            <div className="mt-3 space-y-2 text-xs text-gray-600 font-mono">
+              <div>
+                <span className="text-gray-400">Applied Filters:</span>{" "}
+                {result.debugInfo.appliedFilters.join(", ")}
+              </div>
+              <div>
+                <span className="text-gray-400">Stocks matched:</span>{" "}
+                {result.debugInfo.matchedCount} companies
+              </div>
+              {result.debugInfo.sampleTickers.length > 0 && (
+                <div>
+                  <span className="text-gray-400">Sample tickers:</span>{" "}
+                  [{result.debugInfo.sampleTickers.join(", ")}]
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Survivorship bias note */}
       <p className="text-xs text-gray-400 mt-4 text-center">

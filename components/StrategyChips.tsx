@@ -1,25 +1,57 @@
 "use client";
 
 const EXAMPLE_STRATEGIES = [
+  // Basic Value & Dividend
   {
-    label: "Beaten-Down Cash Generators",
-    query: "Stocks down 40%+ from 52-week highs with positive free cash flow",
+    label: "Dividend Aristocrats",
+    query: "Dividend aristocrats: 25+ years of consecutive dividend increases",
   },
   {
-    label: "Dividend Growers",
-    query: "Companies with 5+ years of consecutive dividend increases",
+    label: "Deep Value",
+    query: "Deep value: P/E under 10, P/B under 1.5, positive free cash flow",
   },
+  {
+    label: "High Yield Low Payout",
+    query: "High dividend yield over 4% with payout ratio under 60%",
+  },
+  // Growth & Momentum
   {
     label: "Small Cap Growth Tech",
-    query: "Tech stocks under $10B market cap with 25%+ revenue growth",
+    query: "Small cap tech under $10B with revenue growth over 25% annually",
   },
   {
-    label: "Classic Value",
-    query: "Value stocks: P/E under 12, dividend yield over 3%",
+    label: "Revenue Growth Leaders",
+    query: "Companies with 20%+ revenue growth and improving profit margins",
   },
   {
-    label: "High Margin Consumer",
-    query: "High profit margin stocks (>20%) in consumer sectors",
+    label: "52-Week High Momentum",
+    query: "Stocks hitting new 52-week highs with strong earnings growth",
+  },
+  // Quality & GARP
+  {
+    label: "Quality Compounders",
+    query: "Quality compounders: ROE over 15%, debt-to-equity under 0.5, consistent earnings",
+  },
+  {
+    label: "GARP Strategy",
+    query: "GARP: P/E under 20, earnings growth over 15%, ROE above 12%",
+  },
+  // Contrarian & Special Situations
+  {
+    label: "Fallen Angels",
+    query: "Fallen angels: Stocks down 40%+ from highs with positive cash flow and insider buying",
+  },
+  {
+    label: "Turnaround Candidates",
+    query: "Turnaround candidates: Improving profit margins after 2+ quarters of losses",
+  },
+  {
+    label: "Buyback Champions",
+    query: "Share buyback programs: Companies reducing shares outstanding by 5%+ annually",
+  },
+  {
+    label: "Spin-offs & New IPOs",
+    query: "Spin-offs and recent IPOs under $5B market cap with institutional ownership under 50%",
   },
 ];
 
