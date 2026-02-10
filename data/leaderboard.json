@@ -1,0 +1,52 @@
+[
+  {
+    "id": "preset-1",
+    "name": "Dividend Aristocrats",
+    "description": "Stocks with 25+ years of consecutive dividend growth",
+    "return1yr": 12.45,
+    "return5yr": 58.32,
+    "return10yr": 145.67,
+    "matchedStocks": 12,
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "preset-2",
+    "name": "High Growth Tech",
+    "description": "Tech companies with revenue growth over 20% annually",
+    "return1yr": 85.21,
+    "return5yr": 320.44,
+    "return10yr": 890.15,
+    "matchedStocks": 6,
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "preset-3",
+    "name": "Deep Value",
+    "description": "Stocks with P/E under 15 and positive earnings",
+    "return1yr": 22.18,
+    "return5yr": 88.55,
+    "return10yr": 195.33,
+    "matchedStocks": 9,
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "preset-4",
+    "name": "Small Cap Quality",
+    "description": "Companies with market cap under $10B and profit margins over 15%",
+    "return1yr": -5.20,
+    "return5yr": 45.80,
+    "return10yr": 120.44,
+    "matchedStocks": 0,
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "preset-5",
+    "name": "High Yield Income",
+    "description": "Dividend yield over 4% with payout ratio under 60%",
+    "return1yr": 18.33,
+    "return5yr": 42.10,
+    "return10yr": 110.25,
+    "matchedStocks": 5,
+    "createdAt": "2025-01-01T00:00:00.000Z"
+  }
+]
