@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const key = process.env.FINANCIAL_MODELING_PREP_API_KEY || process.env.FMP_API_KEY;

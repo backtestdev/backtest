@@ -255,28 +255,6 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
 }
 
 /**
- * Maps FMP sector to numeric sector code
- */
-function mapSector(sector: string): number {
-  const sectorMap: { [key: string]: number } = {
-    'Technology': 1,
-    'Healthcare': 2,
-    'Financial Services': 3,
-    'Finance': 3,
-    'Energy': 4,
-    'Consumer Cyclical': 5,
-    'Consumer Defensive': 5,
-    'Industrials': 6,
-    'Basic Materials': 7,
-    'Real Estate': 8,
-    'Utilities': 9,
-    'Communication Services': 10,
-  };
-
-  return sectorMap[sector] || 0;
-}
-
-/**
  * Calculates consecutive quarters of positive growth
  */
 function calculateConsecutiveQuarters(growthData: FMPFinancialGrowth[], field: 'revenueGrowth' | 'netIncomeGrowth'): number {
