@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, ensureStockTables } from "@/lib/db";
 
 export async function POST() {
   const sql = getDb();
@@ -48,7 +48,13 @@ export async function POST() {
       CREATE INDEX IF NOT EXISTS idx_leaderboard_params_hash ON leaderboard (parameters_hash)
     `;
 
-    return NextResponse.json({ success: true, message: "Database initialized successfully." });
+    // Stock data tables (stocks, quotes, ratios, profiles, stock_meta + indexes)
+    await ensureStockTables(sql);
+
+    return NextResponse.json({
+      success: true,
+      message: "Database initialized successfully (leaderboard + stock tables).",
+    });
   } catch (error) {
     console.error("DB init error:", error);
     return NextResponse.json(
