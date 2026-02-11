@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { refreshStockUniverse } from "@/lib/fmpService";
+import { ensureStockTables } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes — enrichment is slow
@@ -118,18 +119,22 @@ interface IncomeData {
 // ── Route handler ──────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  // Auth check
+  // Auth: accept either Vercel Cron secret (Authorization header) or admin secret
+  const cronSecret = process.env.CRON_SECRET;
   const adminSecret = process.env.ADMIN_SECRET;
-  if (adminSecret) {
-    const provided = request.headers.get("x-admin-secret");
-    if (provided !== adminSecret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const authHeader = request.headers.get("authorization");
+  const adminHeader = request.headers.get("x-admin-secret");
+
+  const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+  const isAdmin = adminSecret ? adminHeader === adminSecret : true; // no secret = open
+
+  if (!isCron && !isAdmin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Rate limit
+  // Rate limit (skip for cron — it's already schedule-limited)
   const now = Date.now();
-  if (now - lastRefreshAt < RATE_LIMIT_MS) {
+  if (!isCron && now - lastRefreshAt < RATE_LIMIT_MS) {
     const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastRefreshAt)) / 60000);
     return NextResponse.json(
       { error: `Rate limited. Try again in ${remaining} minutes.` },
@@ -156,6 +161,9 @@ export async function POST(request: NextRequest) {
   const sql = neon(databaseUrl);
 
   try {
+    // Auto-create tables if they don't exist yet
+    await ensureStockTables(sql);
+
     // Step 1: Screener
     const results = await fetchFMP<ScreenerResult[]>(
       "/stock-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"

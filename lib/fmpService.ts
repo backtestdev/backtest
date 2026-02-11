@@ -97,6 +97,13 @@ async function queryStocksFromDb(): Promise<StockData[]> {
     return rows.map(toStockData);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Missing tables means DB hasn't been populated yet — not a real error,
+    // just return empty so the hardcoded fallback in stockData.ts kicks in.
+    if (msg.includes('relation') && msg.includes('does not exist')) {
+      lastError = 'Stock tables not yet created. Run POST /api/db/init then populate data.';
+      console.warn('[FMP-DB] Stock tables not found — using fallback data');
+      return [];
+    }
     lastError = `Database query failed: ${msg}`;
     console.error('[FMP-DB]', lastError);
     return [];
