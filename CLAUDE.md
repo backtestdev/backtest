@@ -47,30 +47,6 @@ backtest/
 - Prefer simple, direct implementations over abstractions until patterns emerge
 - Document non-obvious design decisions in code comments or commit messages
 
-### Core BASH Tools (NO EXCEPTIONS)
-
-# Pattern Search - USE 'rg' ONLY
-rg -n "pattern" --glob '!node_modules/*'
-rg -l "pattern"              # List matching files
-rg -t py "pattern"           # Search Python files only
-
-# File Finding - USE 'fd' ONLY
-fd filename                  # Find by name
-fd -e py                     # Find Python files
-fd -H .env                   # Include hidden
-
-# Bulk Operations - ONE command > many edits
-rg -l "old" | xargs sed -i '' 's/old/new/g'
-
-# Preview - USE 'bat'
-bat -n filepath              # With line numbers
-bat -r 10:50 file            # Lines 10-50
-
-# JSON - USE 'jq'
-jq '.dependencies | keys[]' package.json
-
-# Performance Rule 
-If you can solve it in 1 CLI command, NEVER use multiple tool calls.
 
 # CRITICAL EFFICIENCY RULES:
   1. Before reading any file: Check if already read in last 10
