@@ -24,7 +24,7 @@ const FMP_API_KEY =
   process.env.FINANCIAL_MODELING_PREP_API_KEY ||
   process.env.FMP_API_KEY ||
   "";
-const FMP_BASE = "https://financialmodelingprep.com/api/v3";
+const FMP_BASE = "https://financialmodelingprep.com/stable";
 const DATABASE_URL = process.env.DATABASE_URL || "";
 
 if (!FMP_API_KEY) {
@@ -147,7 +147,7 @@ interface FMPIncomeStatement {
 async function populateStocks(): Promise<string[]> {
   console.log("Step 1/4: Fetching stock screener...");
   const results = await fetchFMP<FMPScreenerResult[]>(
-    "/stock-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
+    "/company-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
   );
 
   if (!results || results.length === 0) {
@@ -196,7 +196,7 @@ async function populateQuotes(symbols: string[]) {
   for (let i = 0; i < Math.min(symbols.length, 2000); i += BATCH) {
     const batch = symbols.slice(i, i + BATCH);
     const joined = batch.join(",");
-    const quotes = await fetchFMP<FMPQuote[]>(`/quote/${joined}`);
+    const quotes = await fetchFMP<FMPQuote[]>(`/batch-quote?symbols=${joined}`);
 
     if (!quotes) {
       console.warn(`  Skipping quote batch at ${i}`);
@@ -253,9 +253,9 @@ async function enrichTopStocks() {
       batch.map(async (sym) => {
         try {
           const [metrics, growth, income] = await Promise.all([
-            fetchFMP<FMPKeyMetrics[]>(`/key-metrics/${sym}?period=annual&limit=1`).then((r) => r?.[0] || null),
-            fetchFMP<FMPFinancialGrowth[]>(`/financial-growth/${sym}?period=quarter&limit=8`).then((r) => r || []),
-            fetchFMP<FMPIncomeStatement[]>(`/income-statement/${sym}?period=annual&limit=1`).then((r) => r || []),
+            fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null),
+            fetchFMP<FMPFinancialGrowth[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []),
+            fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []),
           ]);
 
           // Upsert ratios

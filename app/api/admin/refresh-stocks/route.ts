@@ -27,19 +27,27 @@ const FMP_API_KEY =
   process.env.FINANCIAL_MODELING_PREP_API_KEY ||
   process.env.FMP_API_KEY ||
   "";
-const FMP_BASE = "https://financialmodelingprep.com/api/v3";
+const FMP_BASE = "https://financialmodelingprep.com/stable";
 
 // ── FMP fetch helper ───────────────────────────────────────────────
 
 async function fetchFMP<T>(endpoint: string): Promise<T | null> {
-  const url = `${FMP_BASE}${endpoint}${endpoint.includes("?") ? "&" : "?"}apikey=${FMP_API_KEY}`;
+  const sep = endpoint.includes("?") ? "&" : "?";
+  const url = `${FMP_BASE}${endpoint}${sep}apikey=${FMP_API_KEY}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[refresh-stocks] FMP ${res.status} for ${endpoint}`);
+      return null;
+    }
     const data = await res.json();
-    if (data && typeof data === "object" && "Error Message" in data) return null;
+    if (data && typeof data === "object" && "Error Message" in data) {
+      console.error(`[refresh-stocks] FMP error for ${endpoint}:`, (data as Record<string, string>)["Error Message"]);
+      return null;
+    }
     return data as T;
-  } catch {
+  } catch (err) {
+    console.error(`[refresh-stocks] FMP fetch failed for ${endpoint}:`, err);
     return null;
   }
 }
@@ -164,12 +172,12 @@ export async function POST(request: NextRequest) {
     // Auto-create tables if they don't exist yet
     await ensureStockTables(sql);
 
-    // Step 1: Screener
+    // Step 1: Screener (FMP /stable/ uses "company-screener")
     const results = await fetchFMP<ScreenerResult[]>(
-      "/stock-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
+      "/company-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
     );
     if (!results || results.length === 0) {
-      return NextResponse.json({ error: "FMP screener returned no results" }, { status: 502 });
+      return NextResponse.json({ error: "FMP screener returned no results — check API key and plan" }, { status: 502 });
     }
 
     const filtered = results.filter(
@@ -194,7 +202,7 @@ export async function POST(request: NextRequest) {
     let quotesCount = 0;
     for (let i = 0; i < Math.min(symbols.length, 2000); i += 100) {
       const batch = symbols.slice(i, i + 100);
-      const quotes = await fetchFMP<Quote[]>(`/quote/${batch.join(",")}`);
+      const quotes = await fetchFMP<Quote[]>(`/batch-quote?symbols=${batch.join(",")}`);
       if (!quotes) continue;
 
       for (const q of quotes) {
@@ -226,9 +234,9 @@ export async function POST(request: NextRequest) {
         batch.map(async (sym) => {
           try {
             const [metrics, growth, income] = await Promise.all([
-              fetchFMP<KeyMetrics[]>(`/key-metrics/${sym}?period=annual&limit=1`).then((r) => r?.[0] || null),
-              fetchFMP<GrowthData[]>(`/financial-growth/${sym}?period=quarter&limit=8`).then((r) => r || []),
-              fetchFMP<IncomeData[]>(`/income-statement/${sym}?period=annual&limit=1`).then((r) => r || []),
+              fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null),
+              fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []),
+              fetchFMP<IncomeData[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []),
             ]);
 
             if (metrics) {
