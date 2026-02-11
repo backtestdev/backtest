@@ -4,6 +4,7 @@ export interface StrategyParameters {
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   maxStocks?: number;
+  warnings?: string[]; // Warnings about parsing fallbacks or issues
 }
 
 export interface StockFilter {
@@ -42,6 +43,7 @@ export interface BacktestResult {
   runDate: string;
   parsedParams?: StructuredParameters;
   debugInfo?: DebugInfo;
+  warnings?: string[]; // Warnings about parsing fallbacks or issues
 }
 
 export interface TimeHorizonResult {

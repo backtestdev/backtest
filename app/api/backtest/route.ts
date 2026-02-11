@@ -40,6 +40,11 @@ export async function POST(request: NextRequest) {
     // Parse natural language into structured parameters
     const params = await parseStrategy(strategy.trim());
 
+    // Log warnings if any
+    if (params.warnings && params.warnings.length > 0) {
+      console.warn("[API] Parsing warnings:", params.warnings);
+    }
+
     // Run the backtest
     const result = runBacktest(params);
 
@@ -48,6 +53,7 @@ export async function POST(request: NextRequest) {
         {
           error: "No stocks matched your criteria. Try adjusting your filters.",
           params,
+          warnings: params.warnings,
         },
         { status: 200 }
       );
@@ -59,6 +65,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ...result,
       parsedParams,
+      warnings: params.warnings,
     });
   } catch (error) {
     console.error("Backtest error:", error);
