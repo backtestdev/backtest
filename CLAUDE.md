@@ -68,7 +68,9 @@ bat -r 10:50 file            # Lines 10-50
 
 # JSON - USE 'jq'
 jq '.dependencies | keys[]' package.json
-**Performance Rule**: If you can solve it in 1 CLI command, NEVER use multiple tool calls.
+
+# Performance Rule 
+If you can solve it in 1 CLI command, NEVER use multiple tool calls.
 
 # CRITICAL EFFICIENCY RULES:
   1. Before reading any file: Check if already read in last 10
