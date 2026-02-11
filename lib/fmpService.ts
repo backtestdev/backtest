@@ -330,7 +330,7 @@ function calculateWeek52HighPct(currentPrice: number, yearHigh: number): number 
  * Generates historical returns from price data (simplified for now)
  * In production, this would fetch actual historical prices
  */
-async function generateHistoricalReturns(symbol: string): Promise<{ [year: string]: number }> {
+async function generateHistoricalReturns(): Promise<{ [year: string]: number }> {
   // For now, return empty object - can be enhanced with historical-price-full endpoint
   // This would require additional API calls and is rate-limited on free tier
   return {};
@@ -410,7 +410,7 @@ async function normalizeStock(
     ipo_date: profile?.ipoDate || '',
 
     // Historical returns (would need additional API calls)
-    historical_returns: await generateHistoricalReturns(quote.symbol),
+    historical_returns: await generateHistoricalReturns(),
   };
 
   return stock;
@@ -493,7 +493,7 @@ async function loadCache(): Promise<StockData[] | null> {
 
     console.log('Cache expired, fetching fresh data');
     return null;
-  } catch (error) {
+  } catch {
     console.log('No valid cache found, fetching fresh data');
     return null;
   }
@@ -537,17 +537,6 @@ export async function getStockUniverse(): Promise<StockData[]> {
   await saveCache(stocks);
 
   return stocks;
-}
-
-/**
- * Filters stocks based on criteria
- */
-export function filterStocks(stocks: StockData[], filters: any): StockData[] {
-  return stocks.filter(stock => {
-    // Apply filtering logic here
-    // This will be used by backtestEngine.ts
-    return true;
-  });
 }
 
 /**
