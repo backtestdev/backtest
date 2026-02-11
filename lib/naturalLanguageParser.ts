@@ -174,7 +174,7 @@ export async function parseStrategy(
     const openai = new OpenAI({ apiKey });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5.1-mini",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userInput },
