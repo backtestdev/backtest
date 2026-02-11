@@ -259,7 +259,7 @@ export async function parseStrategy(
         { role: "user", content: userInput },
       ],
       temperature: 0.1,
-      max_tokens: 500,
+      max_completion_tokens: 500,
     });
 
     const content = response.choices[0]?.message?.content;
