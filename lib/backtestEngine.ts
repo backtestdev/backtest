@@ -14,8 +14,25 @@ function formatMarketCapFilter(filter: StockFilter): string {
 }
 
 export async function runBacktest(params: StrategyParameters): Promise<BacktestResult> {
-  // Get stock database (from FMP API with daily cache, or fallback to hardcoded data)
+  // Get stock database from FMP API (cached daily on weekdays)
   const { stocks: stockDatabase, dataSource, stockCount: stockUniverseSize, error: stockSourceError } = await getStockDatabase();
+
+  // If FMP returned no stocks, return early with the error
+  if (stockDatabase.length === 0) {
+    return {
+      strategyName: params.description,
+      description: params.description,
+      matchedStocks: [],
+      matchedStockCount: 0,
+      timeHorizons: [],
+      chartData: [],
+      runDate: new Date().toISOString(),
+      debugInfo: { appliedFilters: [], matchedCount: 0, sampleTickers: [] },
+      dataSource,
+      stockUniverseSize,
+      stockSourceError: stockSourceError || "No stock data available. FMP API key may not be configured.",
+    };
+  }
 
   // Log applied filters for debugging
   const mcapFilters = params.filters.filter(f => f.metric === "market_cap");

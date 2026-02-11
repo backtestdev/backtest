@@ -20,7 +20,7 @@ export default function HomePage() {
   const [leaderboardKey, setLeaderboardKey] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [parsingMethod, setParsingMethod] = useState<ParsingMethod | undefined>();
-  const [dataSource, setDataSource] = useState<"fmp" | "hardcoded" | undefined>();
+  const [dataSource, setDataSource] = useState<"fmp" | undefined>();
   const [stockUniverseSize, setStockUniverseSize] = useState<number | undefined>();
   const [warnings, setWarnings] = useState<string[] | undefined>();
   const [stockSourceError, setStockSourceError] = useState<string | undefined>();

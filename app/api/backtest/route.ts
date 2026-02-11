@@ -14,6 +14,20 @@ export async function POST(request: NextRequest) {
       const params = { description: strategy || "Manual adjustment", filters };
       const result = await runBacktest(params);
 
+      // FMP data unavailable — different message than "no matches"
+      if (result.stockSourceError && result.stockUniverseSize === 0) {
+        return NextResponse.json(
+          {
+            error: `Stock data unavailable: ${result.stockSourceError}`,
+            params,
+            dataSource: result.dataSource,
+            stockUniverseSize: result.stockUniverseSize,
+            stockSourceError: result.stockSourceError,
+          },
+          { status: 200 }
+        );
+      }
+
       if (result.matchedStockCount === 0) {
         return NextResponse.json(
           {
@@ -51,6 +65,22 @@ export async function POST(request: NextRequest) {
 
     // Run the backtest
     const result = await runBacktest(params);
+
+    // FMP data unavailable — different message than "no matches"
+    if (result.stockSourceError && result.stockUniverseSize === 0) {
+      return NextResponse.json(
+        {
+          error: `Stock data unavailable: ${result.stockSourceError}`,
+          params,
+          warnings: params.warnings,
+          parsingMethod: params.parsingMethod,
+          dataSource: result.dataSource,
+          stockUniverseSize: result.stockUniverseSize,
+          stockSourceError: result.stockSourceError,
+        },
+        { status: 200 }
+      );
+    }
 
     if (result.matchedStockCount === 0) {
       return NextResponse.json(

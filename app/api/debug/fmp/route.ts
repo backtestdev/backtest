@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const key = process.env.FMP_API_KEY;
+  const key = process.env.FINANCIAL_MODELING_PREP_API_KEY || process.env.FMP_API_KEY;
   const url = `https://financialmodelingprep.com/api/v3/stock/list?apikey=${key}`;
   const res = await fetch(url);
   const text = await res.text();

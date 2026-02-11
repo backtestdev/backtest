@@ -13,7 +13,6 @@ import * as path from 'path';
 const FMP_API_KEY = process.env.FINANCIAL_MODELING_PREP_API_KEY || process.env.FMP_API_KEY || '';
 const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 const CACHE_FILE = path.join(process.cwd(), 'data', 'stock-universe-cache.json');
-const DISK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours for disk cache
 const MEMORY_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes for in-memory cache
 
 // Validate env on module load
@@ -22,6 +21,34 @@ if (!FMP_API_KEY) {
   console.warn('[FMP] Set FINANCIAL_MODELING_PREP_API_KEY in your environment variables for live data from 500+ stocks.');
 } else {
   console.log('[FMP] API key configured. Will fetch live stock data from Financial Modeling Prep.');
+}
+
+/**
+ * Calculates the disk cache TTL based on when the cache was created.
+ * - Weekday caches expire after 24 hours
+ * - Friday caches are valid through the weekend (up to ~72 hours)
+ * - Weekend caches (rare, shouldn't happen) expire Monday morning
+ *
+ * This avoids unnecessary FMP API calls on weekends when markets are closed.
+ */
+function getDiskCacheTTL(cacheTimestamp: number): number {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const cacheDate = new Date(cacheTimestamp);
+  const dayOfWeek = cacheDate.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
+
+  if (dayOfWeek === 5) {
+    // Friday: valid through Sunday night → ~72 hours
+    return 3 * ONE_DAY;
+  } else if (dayOfWeek === 6) {
+    // Saturday: valid through Sunday night → ~48 hours
+    return 2 * ONE_DAY;
+  } else if (dayOfWeek === 0) {
+    // Sunday: valid through Monday morning → ~24 hours
+    return ONE_DAY;
+  }
+
+  // Mon-Thu: standard 24-hour TTL
+  return ONE_DAY;
 }
 
 // In-memory cache to avoid hitting FMP rate limits
@@ -502,8 +529,11 @@ async function loadDiskCache(): Promise<StockData[] | null> {
     const cache: CachedUniverse = JSON.parse(cacheData);
 
     const age = Date.now() - cache.lastUpdated;
-    if (age < DISK_CACHE_DURATION_MS) {
-      console.log(`[FMP] Using disk-cached stock universe (${Math.round(age / 1000 / 60)} minutes old, ${cache.stocks.length} stocks)`);
+    const ttl = getDiskCacheTTL(cache.lastUpdated);
+    if (age < ttl) {
+      const ageHours = Math.round(age / 1000 / 60 / 60 * 10) / 10;
+      const ttlHours = Math.round(ttl / 1000 / 60 / 60);
+      console.log(`[FMP] Using disk-cached stock universe (${ageHours}h old, TTL ${ttlHours}h, ${cache.stocks.length} stocks)`);
       return cache.stocks;
     }
 
