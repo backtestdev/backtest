@@ -5,7 +5,7 @@ import BacktestInput from "@/components/BacktestInput";
 import ResultsDisplay from "@/components/ResultsDisplay";
 import Leaderboard from "@/components/Leaderboard";
 import Toast from "@/components/Toast";
-import { BacktestResult, StructuredParameters } from "@/lib/types";
+import { BacktestResult, StructuredParameters, ParsingMethod } from "@/lib/types";
 
 interface ToastState {
   message: string;
@@ -19,6 +19,10 @@ export default function HomePage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [leaderboardKey, setLeaderboardKey] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [parsingMethod, setParsingMethod] = useState<ParsingMethod | undefined>();
+  const [dataSource, setDataSource] = useState<"fmp" | "hardcoded" | undefined>();
+  const [stockUniverseSize, setStockUniverseSize] = useState<number | undefined>();
+  const [warnings, setWarnings] = useState<string[] | undefined>();
 
   const runBacktest = useCallback(async (strategy: string, structuredParams?: StructuredParameters) => {
     if (structuredParams) {
@@ -27,6 +31,10 @@ export default function HomePage() {
       setIsLoading(true);
       setError(null);
       setResult(null);
+      setParsingMethod(undefined);
+      setDataSource(undefined);
+      setStockUniverseSize(undefined);
+      setWarnings(undefined);
     }
 
     try {
@@ -37,6 +45,12 @@ export default function HomePage() {
       });
 
       const data = await res.json();
+
+      // Always update status info from response
+      if (data.parsingMethod) setParsingMethod(data.parsingMethod);
+      if (data.dataSource) setDataSource(data.dataSource);
+      if (data.stockUniverseSize) setStockUniverseSize(data.stockUniverseSize);
+      if (data.warnings) setWarnings(data.warnings);
 
       if (data.error) {
         if (structuredParams) {
@@ -140,7 +154,14 @@ export default function HomePage() {
 
       {/* Main input section */}
       <main className="px-6 py-8">
-        <BacktestInput onSubmit={runBacktest} isLoading={isLoading} />
+        <BacktestInput
+          onSubmit={runBacktest}
+          isLoading={isLoading}
+          parsingMethod={parsingMethod}
+          dataSource={dataSource}
+          stockUniverseSize={stockUniverseSize}
+          warnings={warnings}
+        />
 
         {/* Error message */}
         {error && (

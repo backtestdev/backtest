@@ -2,13 +2,63 @@
 
 import { useState } from "react";
 import StrategyChips from "./StrategyChips";
+import { ParsingMethod } from "@/lib/types";
 
 interface BacktestInputProps {
   onSubmit: (strategy: string) => void;
   isLoading: boolean;
+  parsingMethod?: ParsingMethod;
+  dataSource?: "fmp" | "hardcoded";
+  stockUniverseSize?: number;
+  warnings?: string[];
 }
 
-export default function BacktestInput({ onSubmit, isLoading }: BacktestInputProps) {
+function ParsingBadge({ method }: { method: ParsingMethod }) {
+  switch (method) {
+    case "ai":
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          Parsed with AI
+        </span>
+      );
+    case "fallback":
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          Using rule-based parsing
+        </span>
+      );
+    case "failed":
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-red-50 text-red-700 border border-red-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          Parsing failed - showing all stocks
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
+function DataSourceBadge({ source, count }: { source: "fmp" | "hardcoded"; count?: number }) {
+  if (source === "fmp") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+        Live data{count ? ` (${count.toLocaleString()} stocks)` : ""}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-gray-50 text-gray-600 border border-gray-200">
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+      Sample data{count ? ` (${count} stocks)` : ""}
+    </span>
+  );
+}
+
+export default function BacktestInput({ onSubmit, isLoading, parsingMethod, dataSource, stockUniverseSize, warnings }: BacktestInputProps) {
   const [strategy, setStrategy] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -62,6 +112,28 @@ export default function BacktestInput({ onSubmit, isLoading }: BacktestInputProp
           )}
         </button>
       </form>
+
+      {/* Status badges - shown after results */}
+      {parsingMethod && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <ParsingBadge method={parsingMethod} />
+          {dataSource && <DataSourceBadge source={dataSource} count={stockUniverseSize} />}
+        </div>
+      )}
+
+      {/* Warnings */}
+      {warnings && warnings.length > 0 && parsingMethod === "fallback" && (
+        <div className="mt-3 max-w-2xl mx-auto">
+          <details className="text-xs text-amber-600">
+            <summary className="cursor-pointer hover:text-amber-700">View parsing details</summary>
+            <ul className="mt-1 space-y-0.5 pl-4 list-disc">
+              {warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      )}
     </div>
   );
 }

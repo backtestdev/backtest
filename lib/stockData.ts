@@ -52,22 +52,30 @@ export interface StockData {
   };
 }
 
+export interface StockDatabaseResult {
+  stocks: StockData[];
+  dataSource: "fmp" | "hardcoded";
+  stockCount: number;
+}
+
 /**
  * Gets the stock database from FMP API (cached daily) with fallback to hardcoded data
  */
-export async function getStockDatabase(): Promise<StockData[]> {
+export async function getStockDatabase(): Promise<StockDatabaseResult> {
   try {
     // Try to get fresh data from FMP (will use cache if available)
     const fmpStocks = await getFMPStockUniverse();
     if (fmpStocks && fmpStocks.length > 0) {
-      return fmpStocks;
+      console.log(`[StockData] Using FMP data: ${fmpStocks.length} stocks`);
+      return { stocks: fmpStocks, dataSource: "fmp", stockCount: fmpStocks.length };
     }
   } catch (error) {
-    console.warn('Failed to load FMP data, using fallback:', error);
+    console.warn('[StockData] Failed to load FMP data, using fallback:', error);
   }
 
   // Fallback to hardcoded data
-  return STOCK_DATABASE;
+  console.log(`[StockData] Using hardcoded fallback: ${STOCK_DATABASE.length} stocks`);
+  return { stocks: STOCK_DATABASE, dataSource: "hardcoded", stockCount: STOCK_DATABASE.length };
 }
 
 // Expanded dataset of ~100 stocks spanning S&P 500, Russell 1000, and Russell 3000

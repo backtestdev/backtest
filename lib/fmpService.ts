@@ -1,18 +1,31 @@
 /**
  * Financial Modeling Prep (FMP) Stock Universe Service
  *
- * Fetches all NYSE/NASDAQ stocks with financial metrics, caches daily,
- * and provides a filterable universe interface.
+ * Fetches all NYSE/NASDAQ stocks with financial metrics, caches in-memory
+ * and to disk, and provides a filterable universe interface.
  */
 
 import { StockData } from './stockData';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-const FMP_API_KEY = process.env.FMP_API_KEY || '';
+// Support both env var names (FINANCIAL_MODELING_PREP_API_KEY is the canonical one on Vercel)
+const FMP_API_KEY = process.env.FINANCIAL_MODELING_PREP_API_KEY || process.env.FMP_API_KEY || '';
 const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 const CACHE_FILE = path.join(process.cwd(), 'data', 'stock-universe-cache.json');
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DISK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours for disk cache
+const MEMORY_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes for in-memory cache
+
+// Validate env on module load
+if (!FMP_API_KEY) {
+  console.warn('[FMP] WARNING: FINANCIAL_MODELING_PREP_API_KEY is not set. Stock data will use hardcoded fallback (~100 stocks).');
+  console.warn('[FMP] Set FINANCIAL_MODELING_PREP_API_KEY in your environment variables for live data from 500+ stocks.');
+} else {
+  console.log('[FMP] API key configured. Will fetch live stock data from Financial Modeling Prep.');
+}
+
+// In-memory cache to avoid hitting FMP rate limits
+let memoryCache: { stocks: StockData[]; timestamp: number } | null = null;
 
 interface FMPQuote {
   symbol: string;
@@ -142,45 +155,6 @@ interface FMPFinancialGrowth {
   sgaexpensesGrowth: number;
 }
 
-interface FMPCompanyProfile {
-  symbol: string;
-  price: number;
-  beta: number;
-  volAvg: number;
-  mktCap: number;
-  lastDiv: number;
-  range: string;
-  changes: number;
-  companyName: string;
-  currency: string;
-  cik: string;
-  isin: string;
-  cusip: string;
-  exchange: string;
-  exchangeShortName: string;
-  industry: string;
-  website: string;
-  description: string;
-  ceo: string;
-  sector: string;
-  country: string;
-  fullTimeEmployees: string;
-  phone: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-  dcfDiff: number;
-  dcf: number;
-  image: string;
-  ipoDate: string;
-  defaultImage: boolean;
-  isEtf: boolean;
-  isActivelyTrading: boolean;
-  isAdr: boolean;
-  isFund: boolean;
-}
-
 interface FMPIncomeStatement {
   date: string;
   symbol: string;
@@ -220,6 +194,24 @@ interface FMPIncomeStatement {
   weightedAverageShsOutDil: number;
 }
 
+// FMP stock screener result type
+interface FMPScreenerResult {
+  symbol: string;
+  companyName: string;
+  marketCap: number;
+  sector: string;
+  industry: string;
+  beta: number;
+  price: number;
+  lastAnnualDividend: number;
+  volume: number;
+  exchange: string;
+  exchangeShortName: string;
+  country: string;
+  isEtf: boolean;
+  isActivelyTrading: boolean;
+}
+
 interface CachedUniverse {
   lastUpdated: number;
   stocks: StockData[];
@@ -230,22 +222,31 @@ interface CachedUniverse {
  */
 async function fetchFMP<T>(endpoint: string): Promise<T | null> {
   if (!FMP_API_KEY) {
-    console.warn('FMP_API_KEY not set, using fallback data');
     return null;
   }
 
   try {
     const url = `${FMP_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}apikey=${FMP_API_KEY}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000), // 15s timeout per request
+    });
 
     if (!response.ok) {
-      console.error(`FMP API error: ${response.status} ${response.statusText}`);
+      console.error(`[FMP] API error: ${response.status} ${response.statusText} for ${endpoint}`);
       return null;
     }
 
-    return await response.json();
+    const data = await response.json();
+
+    // FMP returns an error message object when rate limited or key is invalid
+    if (data && typeof data === 'object' && 'Error Message' in data) {
+      console.error(`[FMP] API error response: ${data['Error Message']}`);
+      return null;
+    }
+
+    return data as T;
   } catch (error) {
-    console.error(`FMP fetch error for ${endpoint}:`, error);
+    console.error(`[FMP] Fetch error for ${endpoint}:`, error instanceof Error ? error.message : error);
     return null;
   }
 }
@@ -319,190 +320,195 @@ function calculateDividendGrowthYears(growthData: FMPFinancialGrowth[]): number 
 }
 
 /**
- * Calculates percentage from 52-week high
- */
-function calculateWeek52HighPct(currentPrice: number, yearHigh: number): number {
-  if (!yearHigh || yearHigh === 0) return 0;
-  return currentPrice / yearHigh;
-}
-
-/**
- * Generates historical returns from price data (simplified for now)
- * In production, this would fetch actual historical prices
- */
-async function generateHistoricalReturns(): Promise<{ [year: string]: number }> {
-  // For now, return empty object - can be enhanced with historical-price-full endpoint
-  // This would require additional API calls and is rate-limited on free tier
-  return {};
-}
-
-/**
- * Normalizes FMP data into our StockData schema
- */
-async function normalizeStock(
-  quote: FMPQuote,
-  profile: FMPCompanyProfile | null,
-  keyMetrics: FMPKeyMetrics | null,
-  growthData: FMPFinancialGrowth[],
-  incomeStatements: FMPIncomeStatement[]
-): Promise<StockData> {
-  const marketCapBillions = (quote.marketCap || profile?.mktCap || 0) / 1_000_000_000;
-
-  // Calculate derived metrics
-  const revenueGrowthQuarters = calculateConsecutiveQuarters(growthData, 'revenueGrowth');
-  const netIncomeGrowthQuarters = calculateConsecutiveQuarters(growthData, 'netIncomeGrowth');
-  const dividendGrowthYears = calculateDividendGrowthYears(growthData);
-  const week52HighPct = calculateWeek52HighPct(quote.price, quote.yearHigh);
-
-  // Calculate profit margin from most recent income statement
-  const latestIncome = incomeStatements.find(s => s.period === 'FY');
-  const profitMargin = latestIncome?.netIncomeRatio || 0;
-
-  // Get average revenue/earnings growth from growth data
-  const recentGrowth = growthData.find(g => g.period === 'FY');
-  const revenueGrowth = recentGrowth?.revenueGrowth || 0;
-  const earningsGrowth = recentGrowth?.netIncomeGrowth || 0;
-
-  // Calculate shares outstanding change (for buyback detection)
-  const sharesChange = recentGrowth?.weightedAverageSharesDilutedGrowth || 0;
-
-  const stock: StockData = {
-    ticker: quote.symbol,
-    name: profile?.companyName || quote.name,
-    sector: mapSector(profile?.sector || ''),
-
-    // Valuation metrics
-    pe_ratio: quote.pe || keyMetrics?.peRatio || 0,
-    forward_pe: 0, // FMP doesn't provide forward P/E in free tier
-    price_to_book: keyMetrics?.pbRatio || 0,
-
-    // Dividend metrics
-    dividend_yield: keyMetrics?.dividendYield || 0,
-    dividend_growth_years: dividendGrowthYears,
-    payout_ratio: keyMetrics?.payoutRatio || 0,
-
-    // Growth metrics
-    revenue_growth: revenueGrowth,
-    revenue_growth_quarters: revenueGrowthQuarters,
-    net_income_growth_quarters: netIncomeGrowthQuarters,
-    earnings_growth: earningsGrowth,
-
-    // Profitability metrics
-    profit_margin: profitMargin,
-    roe: keyMetrics?.roe || 0,
-    roic: keyMetrics?.roic || 0,
-
-    // Leverage & liquidity
-    debt_to_equity: keyMetrics?.debtToEquity || 0,
-    current_ratio: keyMetrics?.currentRatio || 0,
-    free_cash_flow_per_share: keyMetrics?.freeCashFlowPerShare || 0,
-
-    // Market metrics
-    market_cap: marketCapBillions,
-    beta: profile?.beta || 0,
-    week52_high_pct: week52HighPct,
-
-    // Share metrics
-    shares_outstanding: quote.sharesOutstanding || 0,
-    shares_change_pct: sharesChange,
-
-    // Other
-    ipo_date: profile?.ipoDate || '',
-
-    // Historical returns (would need additional API calls)
-    historical_returns: await generateHistoricalReturns(),
-  };
-
-  return stock;
-}
-
-/**
- * Fetches all NYSE and NASDAQ stocks
+ * Fetches stock universe using the screener endpoint (more efficient)
+ * then enriches top stocks with detailed metrics
  */
 async function fetchAllStocks(): Promise<StockData[]> {
-  console.log('Fetching stock universe from FMP...');
+  console.log('[FMP] Fetching stock universe...');
 
-  // Fetch stock screener for NYSE and NASDAQ
-  const nyseStocks = await fetchFMP<FMPQuote[]>('/stock-screener?exchange=NYSE&limit=5000') || [];
-  const nasdaqStocks = await fetchFMP<FMPQuote[]>('/stock-screener?exchange=NASDAQ&limit=5000') || [];
-
-  const allQuotes = [...nyseStocks, ...nasdaqStocks];
-  console.log(`Found ${allQuotes.length} stocks`);
-
-  // Filter out non-common stocks (ETFs, funds, etc.)
-  const commonStocks = allQuotes.filter(q =>
-    q.marketCap > 0 &&
-    !q.symbol.includes('.') &&
-    q.symbol.length <= 5
+  // Use stock screener - much more efficient than individual stock queries
+  // Fetch stocks with market cap > $300M to get a meaningful universe
+  const screenerResults = await fetchFMP<FMPScreenerResult[]>(
+    '/stock-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000'
   );
 
-  console.log(`Processing ${commonStocks.length} common stocks`);
+  if (!screenerResults || screenerResults.length === 0) {
+    console.error('[FMP] Stock screener returned no results');
+    return [];
+  }
 
-  const stocks: StockData[] = [];
+  // Filter out non-common stocks
+  const commonStocks = screenerResults.filter(s =>
+    s.marketCap > 0 &&
+    !s.symbol.includes('.') &&
+    s.symbol.length <= 5 &&
+    !s.isEtf
+  );
 
-  // Process stocks in batches to avoid rate limiting
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < Math.min(commonStocks.length, 300); i += BATCH_SIZE) {
+  console.log(`[FMP] Found ${commonStocks.length} stocks from screener`);
+
+  // Also fetch batch quotes for price data
+  // FMP allows batch quotes in chunks
+  const BATCH_SIZE = 100;
+  const allStocks: StockData[] = [];
+
+  // Process in batches to get key metrics
+  for (let i = 0; i < Math.min(commonStocks.length, 2000); i += BATCH_SIZE) {
     const batch = commonStocks.slice(i, i + BATCH_SIZE);
+    const symbols = batch.map(s => s.symbol).join(',');
 
-    const batchPromises = batch.map(async (quote) => {
-      try {
-        // Fetch additional data for each stock
-        const [profile, keyMetrics, growthData, incomeStatements] = await Promise.all([
-          fetchFMP<FMPCompanyProfile[]>(`/profile/${quote.symbol}`).then(r => r?.[0] || null),
-          fetchFMP<FMPKeyMetrics[]>(`/key-metrics/${quote.symbol}?period=annual&limit=1`).then(r => r?.[0] || null),
-          fetchFMP<FMPFinancialGrowth[]>(`/financial-growth/${quote.symbol}?period=quarter&limit=8`).then(r => r || []),
-          fetchFMP<FMPIncomeStatement[]>(`/income-statement/${quote.symbol}?period=annual&limit=1`).then(r => r || []),
-        ]);
+    // Fetch batch quotes
+    const batchQuotes = await fetchFMP<FMPQuote[]>(`/quote/${symbols}`);
 
-        return await normalizeStock(quote, profile, keyMetrics, growthData, incomeStatements);
-      } catch (error) {
-        console.error(`Error processing ${quote.symbol}:`, error);
-        return null;
-      }
-    });
+    if (!batchQuotes) {
+      console.warn(`[FMP] Failed to fetch quotes for batch starting at ${i}`);
+      continue;
+    }
 
-    const batchResults = await Promise.all(batchPromises);
-    stocks.push(...batchResults.filter((s): s is StockData => s !== null));
+    // Create a lookup map for quick access
+    const quoteMap = new Map<string, FMPQuote>();
+    for (const q of batchQuotes) {
+      quoteMap.set(q.symbol, q);
+    }
 
-    console.log(`Processed ${stocks.length} stocks so far...`);
+    // For each stock in this batch, build a StockData entry
+    // Use screener data + quote data (skip individual API calls for efficiency)
+    for (const screenerStock of batch) {
+      const quote = quoteMap.get(screenerStock.symbol);
+      if (!quote) continue;
+
+      const marketCapBillions = (quote.marketCap || screenerStock.marketCap || 0) / 1_000_000_000;
+      const week52HighPct = quote.yearHigh > 0 ? quote.price / quote.yearHigh : 0;
+
+      allStocks.push({
+        ticker: screenerStock.symbol,
+        name: screenerStock.companyName || quote.name,
+        sector: mapSector(screenerStock.sector || ''),
+        pe_ratio: quote.pe || 0,
+        forward_pe: 0,
+        price_to_book: 0, // Will be enriched for top stocks
+        dividend_yield: screenerStock.lastAnnualDividend && quote.price > 0
+          ? screenerStock.lastAnnualDividend / quote.price
+          : 0,
+        dividend_growth_years: 0,
+        payout_ratio: 0,
+        revenue_growth: 0,
+        revenue_growth_quarters: 0,
+        earnings_growth: 0,
+        profit_margin: 0,
+        roe: 0,
+        roic: 0,
+        debt_to_equity: 0,
+        current_ratio: 0,
+        free_cash_flow_per_share: 0,
+        market_cap: marketCapBillions,
+        beta: screenerStock.beta || 0,
+        week52_high_pct: week52HighPct,
+        shares_outstanding: quote.sharesOutstanding || 0,
+        shares_change_pct: 0,
+        ipo_date: '',
+        historical_returns: {},
+      });
+    }
+
+    console.log(`[FMP] Processed ${allStocks.length} stocks so far...`);
 
     // Small delay to respect rate limits
     if (i + BATCH_SIZE < commonStocks.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
 
-  console.log(`Completed fetching ${stocks.length} stocks`);
-  return stocks;
+  // Enrich top 300 stocks (by market cap) with detailed metrics
+  const sortedByMarketCap = [...allStocks].sort((a, b) => b.market_cap - a.market_cap);
+  const topStocks = sortedByMarketCap.slice(0, 300);
+  const topSymbols = new Set(topStocks.map(s => s.ticker));
+
+  console.log(`[FMP] Enriching top ${topStocks.length} stocks with detailed metrics...`);
+
+  const ENRICH_BATCH = 5;
+  for (let i = 0; i < topStocks.length; i += ENRICH_BATCH) {
+    const batch = topStocks.slice(i, i + ENRICH_BATCH);
+
+    const enrichPromises = batch.map(async (stock) => {
+      try {
+        const [keyMetrics, growthData, incomeStatements] = await Promise.all([
+          fetchFMP<FMPKeyMetrics[]>(`/key-metrics/${stock.ticker}?period=annual&limit=1`).then(r => r?.[0] || null),
+          fetchFMP<FMPFinancialGrowth[]>(`/financial-growth/${stock.ticker}?period=quarter&limit=8`).then(r => r || []),
+          fetchFMP<FMPIncomeStatement[]>(`/income-statement/${stock.ticker}?period=annual&limit=1`).then(r => r || []),
+        ]);
+
+        // Update the stock in the main array
+        const idx = allStocks.findIndex(s => s.ticker === stock.ticker);
+        if (idx === -1) return;
+
+        if (keyMetrics) {
+          allStocks[idx].price_to_book = keyMetrics.pbRatio || 0;
+          allStocks[idx].dividend_yield = keyMetrics.dividendYield || allStocks[idx].dividend_yield;
+          allStocks[idx].payout_ratio = keyMetrics.payoutRatio || 0;
+          allStocks[idx].roe = keyMetrics.roe || 0;
+          allStocks[idx].roic = keyMetrics.roic || 0;
+          allStocks[idx].debt_to_equity = keyMetrics.debtToEquity || 0;
+          allStocks[idx].current_ratio = keyMetrics.currentRatio || 0;
+          allStocks[idx].free_cash_flow_per_share = keyMetrics.freeCashFlowPerShare || 0;
+        }
+
+        if (growthData.length > 0) {
+          const recentGrowth = growthData.find(g => g.period === 'FY') || growthData[0];
+          allStocks[idx].revenue_growth = recentGrowth?.revenueGrowth || 0;
+          allStocks[idx].earnings_growth = recentGrowth?.netIncomeGrowth || 0;
+          allStocks[idx].revenue_growth_quarters = calculateConsecutiveQuarters(growthData, 'revenueGrowth');
+          allStocks[idx].net_income_growth_quarters = calculateConsecutiveQuarters(growthData, 'netIncomeGrowth');
+          allStocks[idx].dividend_growth_years = calculateDividendGrowthYears(growthData);
+        }
+
+        if (incomeStatements.length > 0) {
+          const latestIncome = incomeStatements[0];
+          allStocks[idx].profit_margin = latestIncome.netIncomeRatio || 0;
+        }
+      } catch (error) {
+        console.error(`[FMP] Error enriching ${stock.ticker}:`, error instanceof Error ? error.message : error);
+      }
+    });
+
+    await Promise.all(enrichPromises);
+
+    // Throttle to respect rate limits
+    if (i + ENRICH_BATCH < topStocks.length) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  console.log(`[FMP] Completed fetching ${allStocks.length} stocks (${topSymbols.size} enriched with detailed metrics)`);
+  return allStocks;
 }
 
 /**
- * Loads cached stock universe if valid
+ * Loads cached stock universe from disk if valid
  */
-async function loadCache(): Promise<StockData[] | null> {
+async function loadDiskCache(): Promise<StockData[] | null> {
   try {
     const cacheData = await fs.readFile(CACHE_FILE, 'utf-8');
     const cache: CachedUniverse = JSON.parse(cacheData);
 
     const age = Date.now() - cache.lastUpdated;
-    if (age < CACHE_DURATION_MS) {
-      console.log(`Using cached stock universe (${Math.round(age / 1000 / 60)} minutes old)`);
+    if (age < DISK_CACHE_DURATION_MS) {
+      console.log(`[FMP] Using disk-cached stock universe (${Math.round(age / 1000 / 60)} minutes old, ${cache.stocks.length} stocks)`);
       return cache.stocks;
     }
 
-    console.log('Cache expired, fetching fresh data');
+    console.log('[FMP] Disk cache expired, fetching fresh data');
     return null;
   } catch {
-    console.log('No valid cache found, fetching fresh data');
+    console.log('[FMP] No valid disk cache found');
     return null;
   }
 }
 
 /**
- * Saves stock universe to cache
+ * Saves stock universe to disk cache
  */
-async function saveCache(stocks: StockData[]): Promise<void> {
+async function saveDiskCache(stocks: StockData[]): Promise<void> {
   try {
     const cache: CachedUniverse = {
       lastUpdated: Date.now(),
@@ -513,28 +519,45 @@ async function saveCache(stocks: StockData[]): Promise<void> {
     const dataDir = path.dirname(CACHE_FILE);
     await fs.mkdir(dataDir, { recursive: true });
 
-    await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2));
-    console.log(`Cached ${stocks.length} stocks to ${CACHE_FILE}`);
+    await fs.writeFile(CACHE_FILE, JSON.stringify(cache));
+    console.log(`[FMP] Cached ${stocks.length} stocks to disk`);
   } catch (error) {
-    console.error('Error saving cache:', error);
+    console.error('[FMP] Error saving disk cache:', error);
   }
 }
 
 /**
- * Gets the stock universe with daily caching
+ * Gets the stock universe with multi-level caching:
+ * 1. In-memory cache (10 min TTL) - fastest
+ * 2. Disk cache (24h TTL) - survives restarts
+ * 3. Fresh FMP API fetch - slowest
  */
 export async function getStockUniverse(): Promise<StockData[]> {
-  // Try to load from cache first
-  const cached = await loadCache();
-  if (cached) {
-    return cached;
+  // Level 1: In-memory cache
+  if (memoryCache && (Date.now() - memoryCache.timestamp) < MEMORY_CACHE_DURATION_MS) {
+    console.log(`[FMP] Using in-memory cache (${memoryCache.stocks.length} stocks)`);
+    return memoryCache.stocks;
   }
 
-  // Fetch fresh data
+  // Level 2: Disk cache
+  const diskCached = await loadDiskCache();
+  if (diskCached && diskCached.length > 0) {
+    memoryCache = { stocks: diskCached, timestamp: Date.now() };
+    return diskCached;
+  }
+
+  // Level 3: Fresh API fetch
+  if (!FMP_API_KEY) {
+    console.warn('[FMP] No API key, returning empty array (caller should use fallback)');
+    return [];
+  }
+
   const stocks = await fetchAllStocks();
 
-  // Save to cache
-  await saveCache(stocks);
+  if (stocks.length > 0) {
+    memoryCache = { stocks, timestamp: Date.now() };
+    await saveDiskCache(stocks);
+  }
 
   return stocks;
 }
@@ -543,8 +566,20 @@ export async function getStockUniverse(): Promise<StockData[]> {
  * Forces a refresh of the stock universe cache
  */
 export async function refreshStockUniverse(): Promise<StockData[]> {
-  console.log('Force refreshing stock universe...');
+  console.log('[FMP] Force refreshing stock universe...');
+  memoryCache = null;
+
   const stocks = await fetchAllStocks();
-  await saveCache(stocks);
+  if (stocks.length > 0) {
+    memoryCache = { stocks, timestamp: Date.now() };
+    await saveDiskCache(stocks);
+  }
   return stocks;
+}
+
+/**
+ * Checks if FMP API is configured and accessible
+ */
+export function isFMPConfigured(): boolean {
+  return !!FMP_API_KEY;
 }

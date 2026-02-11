@@ -7,7 +7,73 @@ const SECTOR_REVERSE: Record<number, string> = {
   3: "Financial",
   4: "Energy",
   5: "Consumer",
+  6: "Industrials",
+  7: "Basic Materials",
+  8: "Real Estate",
+  9: "Utilities",
+  10: "Communication Services",
 };
+
+// All known metric names and their common aliases for fuzzy matching
+const METRIC_ALIASES: Record<string, string[]> = {
+  pe_ratio: ["pe", "p/e", "pe ratio", "price to earnings", "price-to-earnings", "price earnings"],
+  forward_pe: ["forward pe", "forward p/e", "fwd pe", "fwd p/e"],
+  price_to_book: ["pb", "p/b", "pb ratio", "price to book", "price-to-book"],
+  dividend_yield: ["dividend", "div yield", "dividend yield", "yield"],
+  dividend_growth_years: ["dividend growth", "div growth years", "consecutive dividend"],
+  payout_ratio: ["payout", "payout ratio", "dividend payout"],
+  revenue_growth: ["revenue growth", "rev growth", "sales growth", "top line growth"],
+  revenue_growth_quarters: ["revenue growth quarters", "consecutive quarters revenue"],
+  earnings_growth: ["earnings growth", "eps growth", "profit growth", "bottom line growth"],
+  profit_margin: ["profit margin", "net margin", "margin", "net profit margin"],
+  roe: ["roe", "return on equity"],
+  roic: ["roic", "return on invested capital"],
+  debt_to_equity: ["debt to equity", "d/e", "de ratio", "leverage", "debt/equity", "debt equity"],
+  current_ratio: ["current ratio", "liquidity ratio"],
+  free_cash_flow_per_share: ["fcf", "free cash flow", "fcf per share"],
+  market_cap: ["market cap", "mcap", "market capitalization", "market value"],
+  beta: ["beta", "volatility"],
+  week52_high_pct: ["52 week high", "52-week high", "near high", "52w high"],
+  sector: ["sector", "industry"],
+  net_income: ["net income", "net earnings", "bottom line"],
+  revenue: ["revenue", "sales", "top line"],
+};
+
+// Build reverse lookup: alias -> canonical metric name
+const ALIAS_TO_METRIC: Record<string, string> = {};
+for (const [metric, aliases] of Object.entries(METRIC_ALIASES)) {
+  for (const alias of aliases) {
+    ALIAS_TO_METRIC[alias.toLowerCase()] = metric;
+  }
+  ALIAS_TO_METRIC[metric.toLowerCase()] = metric;
+}
+
+/**
+ * Attempts fuzzy matching of a metric name against known aliases.
+ * Returns the canonical metric name or null if no match found.
+ */
+function fuzzyMatchMetric(input: string): string | null {
+  const lower = input.toLowerCase().trim();
+
+  // Exact match first
+  if (ALIAS_TO_METRIC[lower]) return ALIAS_TO_METRIC[lower];
+
+  // Check if input contains any alias
+  for (const [alias, metric] of Object.entries(ALIAS_TO_METRIC)) {
+    if (lower.includes(alias) || alias.includes(lower)) {
+      return metric;
+    }
+  }
+
+  // Levenshtein-style simple similarity: check if removing underscores/spaces matches
+  const normalized = lower.replace(/[_\s\-\/]/g, "");
+  for (const [alias, metric] of Object.entries(ALIAS_TO_METRIC)) {
+    const normalizedAlias = alias.replace(/[_\s\-\/]/g, "");
+    if (normalized === normalizedAlias) return metric;
+  }
+
+  return null;
+}
 
 const SYSTEM_PROMPT = `You are a financial strategy parser. Given a natural language description of a stock investment strategy, extract structured parameters.
 
@@ -39,11 +105,14 @@ Available metrics:
 - market_cap (CRITICAL: value must be in BILLIONS. Examples: "$10B" or "10 billion" = 10, "$200B" = 200, "$300M" = 0.3, "$2 trillion" = 2000, "under $10B" = use operator "<" with value 10)
 - price_to_book
 - debt_to_equity
+- current_ratio
 - roe (return on equity as decimal)
+- roic (return on invested capital as decimal)
 - payout_ratio (dividend payout ratio as decimal)
 - beta
 - week52_high_pct (percentage of 52-week high, 1.0 = at the high)
-- sector (use value 1 for tech, 2 for healthcare, 3 for finance, 4 for energy, 5 for consumer)
+- sector (use value 1 for tech, 2 for healthcare, 3 for finance, 4 for energy, 5 for consumer, 6 for industrials, 7 for basic materials, 8 for real estate, 9 for utilities, 10 for communication services)
+- free_cash_flow_per_share
 
 Available operators: ">", "<", ">=", "<=", "==", "between"
 
@@ -74,6 +143,9 @@ If something is ambiguous, make reasonable assumptions. For example:
 - "mid cap" → market_cap between 2 and 10
 - "growth stocks" → revenue_growth > 0.15
 - "value stocks" → pe_ratio < 20 AND price_to_book < 3
+- "low debt" → debt_to_equity < 0.5
+- "high ROE" → roe > 0.15
+- "profitable" → profit_margin > 0
 
 IMPORTANT: Return ONLY the JSON object, no markdown formatting or explanation.`;
 
@@ -149,6 +221,11 @@ export function structuredParamsToFilters(structured: StructuredParameters): Sto
     Financial: 3,
     Energy: 4,
     Consumer: 5,
+    Industrials: 6,
+    "Basic Materials": 7,
+    "Real Estate": 8,
+    Utilities: 9,
+    "Communication Services": 10,
   };
 
   for (const sector of structured.sectors.include) {
@@ -202,8 +279,41 @@ export async function parseStrategy(
       return fallbackParse(userInput, reason);
     }
 
+    // Validate that we got filters
+    if (!parsed.filters || !Array.isArray(parsed.filters) || parsed.filters.length === 0) {
+      const reason = "OpenAI returned no filters - using rule-based parser";
+      console.warn(`[Parser] WARNING: ${reason}`);
+      return fallbackParse(userInput, reason);
+    }
+
+    // Fuzzy-match any unrecognized metric names from AI response
+    const validMetrics = new Set(Object.keys(METRIC_ALIASES));
+    for (const filter of parsed.filters) {
+      if (!validMetrics.has(filter.metric)) {
+        const matched = fuzzyMatchMetric(filter.metric);
+        if (matched) {
+          console.log(`[Parser] Fuzzy-matched metric "${filter.metric}" -> "${matched}"`);
+          filter.metric = matched;
+        } else {
+          console.warn(`[Parser] Unknown metric from AI: "${filter.metric}" - removing filter`);
+        }
+      }
+    }
+
+    // Remove filters with unrecognized metrics
+    parsed.filters = parsed.filters.filter(f => validMetrics.has(f.metric));
+
+    if (parsed.filters.length === 0) {
+      const reason = "All AI-parsed filters had unrecognized metrics - using rule-based parser";
+      console.warn(`[Parser] WARNING: ${reason}`);
+      return fallbackParse(userInput, reason);
+    }
+
     normalizeMarketCapValues(parsed);
-    console.log("[Parser] ✓ Successfully parsed with OpenAI");
+    parsed.parsingMethod = "ai";
+    parsed.warnings = parsed.warnings || [];
+
+    console.log("[Parser] Successfully parsed with OpenAI GPT");
     console.log("[Parser] Parsed filters:", JSON.stringify(parsed.filters, null, 2));
     return parsed;
   } catch (error) {
@@ -257,13 +367,20 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     filters.push({ metric: "pe_ratio", operator: "<", value: parseFloat(peMatch[1]) });
   }
   if (lower.includes("low p/e") || lower.includes("low pe")) {
-    filters.push({ metric: "pe_ratio", operator: "<", value: 15 });
+    if (!peMatch) filters.push({ metric: "pe_ratio", operator: "<", value: 15 });
+  }
+  const peOverMatch = lower.match(/p\/e\s*(?:ratio\s*)?(?:over|above|greater than|>)\s*(\d+)/);
+  if (peOverMatch) {
+    filters.push({ metric: "pe_ratio", operator: ">", value: parseFloat(peOverMatch[1]) });
   }
 
   // Dividend yield patterns
   const divMatch = lower.match(/dividend\s*yield\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
   if (divMatch) {
     filters.push({ metric: "dividend_yield", operator: ">", value: parseFloat(divMatch[1]) / 100 });
+  }
+  if (lower.includes("high dividend") && !divMatch) {
+    filters.push({ metric: "dividend_yield", operator: ">", value: 0.03 });
   }
 
   // Dividend growth patterns
@@ -283,6 +400,12 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
   const revQuarterMatch = lower.match(/(\d+)\+?\s*consecutive\s*quarters?\s*(?:of\s*)?revenue\s*growth/);
   if (revQuarterMatch) {
     filters.push({ metric: "revenue_growth_quarters", operator: ">=", value: parseFloat(revQuarterMatch[1]) });
+  }
+
+  // Earnings growth patterns
+  const earningsMatch = lower.match(/earnings\s*growth\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (earningsMatch) {
+    filters.push({ metric: "earnings_growth", operator: ">", value: parseFloat(earningsMatch[1]) / 100 });
   }
 
   // Market cap patterns - values in billions
@@ -318,6 +441,45 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     filters.push({ metric: "profit_margin", operator: ">", value: parseFloat(marginMatch[1]) / 100 });
   }
 
+  // ROE patterns
+  const roeMatch = lower.match(/roe\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (roeMatch) {
+    filters.push({ metric: "roe", operator: ">", value: parseFloat(roeMatch[1]) / 100 });
+  }
+  if (lower.includes("high roe") && !roeMatch) {
+    filters.push({ metric: "roe", operator: ">", value: 0.15 });
+  }
+
+  // Debt to equity patterns
+  const deMatch = lower.match(/debt[\s-]*(?:to[\s-]*)?equity\s*(?:under|below|less than|<)\s*(\d+(?:\.\d+)?)/);
+  if (deMatch) {
+    filters.push({ metric: "debt_to_equity", operator: "<", value: parseFloat(deMatch[1]) });
+  }
+  if (lower.includes("low debt") && !deMatch) {
+    filters.push({ metric: "debt_to_equity", operator: "<", value: 0.5 });
+  }
+
+  // Current ratio patterns
+  const crMatch = lower.match(/current\s*ratio\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)/);
+  if (crMatch) {
+    filters.push({ metric: "current_ratio", operator: ">", value: parseFloat(crMatch[1]) });
+  }
+
+  // Price to book patterns
+  const pbMatch = lower.match(/(?:price[\s-]*to[\s-]*book|p\/b)\s*(?:under|below|less than|<)\s*(\d+(?:\.\d+)?)/);
+  if (pbMatch) {
+    filters.push({ metric: "price_to_book", operator: "<", value: parseFloat(pbMatch[1]) });
+  }
+
+  // Beta patterns
+  const betaMatch = lower.match(/beta\s*(?:under|below|less than|<)\s*(\d+(?:\.\d+)?)/);
+  if (betaMatch) {
+    filters.push({ metric: "beta", operator: "<", value: parseFloat(betaMatch[1]) });
+  }
+  if (lower.includes("low beta") || lower.includes("low volatility")) {
+    if (!betaMatch) filters.push({ metric: "beta", operator: "<", value: 0.8 });
+  }
+
   // Payout ratio patterns
   const payoutMatch = lower.match(/payout\s*ratio\s*(?:under|below|less than|<)\s*(\d+(?:\.\d+)?)\s*%/);
   if (payoutMatch) {
@@ -325,8 +487,8 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
   }
 
   // Positive earnings
-  if (lower.includes("positive earnings")) {
-    filters.push({ metric: "earnings_growth", operator: ">", value: 0 });
+  if (lower.includes("positive earnings") || lower.includes("profitable")) {
+    filters.push({ metric: "profit_margin", operator: ">", value: 0 });
   }
 
   // 52-week high
@@ -334,9 +496,32 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     filters.push({ metric: "week52_high_pct", operator: ">=", value: 0.95 });
   }
 
-  // Tech sector
+  // Value stocks composite
+  if (lower.includes("value stock")) {
+    if (!peMatch && !peOverMatch) filters.push({ metric: "pe_ratio", operator: "<", value: 20 });
+    if (!pbMatch) filters.push({ metric: "price_to_book", operator: "<", value: 3 });
+  }
+
+  // Growth stocks composite
+  if (lower.includes("growth stock") && !revMatch) {
+    filters.push({ metric: "revenue_growth", operator: ">", value: 0.15 });
+  }
+
+  // Sector patterns
   if (lower.includes("tech")) {
     filters.push({ metric: "sector", operator: "==", value: 1 });
+  }
+  if (lower.includes("healthcare") || lower.includes("health care") || lower.includes("pharma")) {
+    filters.push({ metric: "sector", operator: "==", value: 2 });
+  }
+  if (lower.includes("financial") || lower.includes("banking") || lower.includes("bank")) {
+    filters.push({ metric: "sector", operator: "==", value: 3 });
+  }
+  if (lower.includes("energy") || lower.includes("oil")) {
+    filters.push({ metric: "sector", operator: "==", value: 4 });
+  }
+  if (lower.includes("consumer")) {
+    filters.push({ metric: "sector", operator: "==", value: 5 });
   }
 
   // If no filters matched, add a generic growth filter
@@ -347,5 +532,5 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     warnings.push("No specific patterns matched - using generic growth stock filter");
   }
 
-  return { description, filters, warnings };
+  return { description, filters, warnings, parsingMethod: "fallback" };
 }

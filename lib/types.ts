@@ -1,3 +1,5 @@
+export type ParsingMethod = "ai" | "fallback" | "failed";
+
 export interface StrategyParameters {
   description: string;
   filters: StockFilter[];
@@ -5,6 +7,7 @@ export interface StrategyParameters {
   sortOrder?: "asc" | "desc";
   maxStocks?: number;
   warnings?: string[]; // Warnings about parsing fallbacks or issues
+  parsingMethod?: ParsingMethod;
 }
 
 export interface StockFilter {
@@ -44,6 +47,9 @@ export interface BacktestResult {
   parsedParams?: StructuredParameters;
   debugInfo?: DebugInfo;
   warnings?: string[]; // Warnings about parsing fallbacks or issues
+  parsingMethod?: ParsingMethod;
+  dataSource?: "fmp" | "hardcoded";
+  stockUniverseSize?: number;
 }
 
 export interface TimeHorizonResult {
