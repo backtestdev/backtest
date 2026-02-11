@@ -101,6 +101,23 @@ Two options to update the pre-built database:
 
 *(To be documented once linting/formatting tools are configured.)*
 
+## OpenAI / NLP Parser Constraints
+
+The NLP parser (`lib/naturalLanguageParser.ts`) uses **gpt-5-mini**, which is a
+**reasoning model**. Reasoning models have different API constraints from classic
+chat models:
+
+| Parameter | Supported? | Notes |
+|-----------|-----------|-------|
+| `temperature` | **No** | Only default (1) accepted. Use `reasoning_effort` instead |
+| `top_p` | **No** | Not supported on reasoning models |
+| `max_tokens` | **No** | Replaced by `max_completion_tokens` |
+| `max_completion_tokens` | Yes | Upper bound including reasoning tokens |
+| `reasoning_effort` | Yes | `"low"`, `"medium"`, `"high"` (we use `"low"` for speed/cost) |
+
+If switching to a different model in the future, verify which parameters it
+supports before changing the API call.
+
 ## Key Conventions
 
 - Keep this CLAUDE.md up to date when adding new tools, frameworks, or workflows

@@ -258,7 +258,9 @@ export async function parseStrategy(
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userInput },
       ],
-      temperature: 0.1,
+      // gpt-5-mini is a reasoning model: no temperature/top_p support.
+      // Use reasoning_effort to control cost/latency vs quality.
+      reasoning_effort: "low",
       max_completion_tokens: 500,
     });
 
