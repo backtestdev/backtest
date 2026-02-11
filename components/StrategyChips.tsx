@@ -1,14 +1,14 @@
 "use client";
 
 const EXAMPLE_STRATEGIES = [
-  // Basic Value & Dividend
+  // Value & Dividend
   {
-    label: "Dividend Aristocrats",
-    query: "Dividend aristocrats: 25+ years of consecutive dividend increases",
+    label: "Dividend Champions",
+    query: "Stocks with 10+ consecutive years of dividend growth and dividend yield over 2%",
   },
   {
     label: "Deep Value",
-    query: "Deep value: P/E under 10, P/B under 1.5, positive free cash flow",
+    query: "Deep value: P/E under 10, price-to-book under 1.5, positive free cash flow",
   },
   {
     label: "High Yield Low Payout",
@@ -16,42 +16,52 @@ const EXAMPLE_STRATEGIES = [
   },
   // Growth & Momentum
   {
-    label: "Small Cap Growth Tech",
-    query: "Small cap tech under $10B with revenue growth over 25% annually",
+    label: "Small Cap Growth",
+    query: "Small cap under $10B market cap with revenue growth over 25%",
   },
   {
     label: "Revenue Growth Leaders",
-    query: "Companies with 20%+ revenue growth and improving profit margins",
+    query: "Companies with 20%+ revenue growth and profit margin above 10%",
   },
   {
     label: "52-Week High Momentum",
-    query: "Stocks hitting new 52-week highs with strong earnings growth",
+    query: "Stocks within 5% of 52-week high with earnings growth over 10%",
   },
   // Quality & GARP
   {
     label: "Quality Compounders",
-    query: "Quality compounders: ROE over 15%, debt-to-equity under 0.5, consistent earnings",
+    query: "Quality compounders: ROE over 15%, debt-to-equity under 0.5, profit margin above 10%",
   },
   {
     label: "GARP Strategy",
     query: "GARP: P/E under 20, earnings growth over 15%, ROE above 12%",
   },
-  // Contrarian & Special Situations
+  // Income & Defensive
   {
-    label: "Fallen Angels",
-    query: "Fallen angels: Stocks down 40%+ from highs with positive cash flow and insider buying",
+    label: "Cash Flow Kings",
+    query: "Strong free cash flow per share over $5 with price-to-free-cash-flow under 20",
   },
   {
-    label: "Turnaround Candidates",
-    query: "Turnaround candidates: Improving profit margins after 2+ quarters of losses",
+    label: "Low Volatility Income",
+    query: "Low beta stocks under 0.8 with dividend yield over 2.5%",
+  },
+  // Margin & Balance Sheet
+  {
+    label: "High Margin Leaders",
+    query: "Gross margin above 60% and operating margin above 20% with market cap over $5B",
+  },
+  {
+    label: "Strong Balance Sheet",
+    query: "Debt-to-equity under 0.3, current ratio over 2, interest coverage over 10",
+  },
+  // Special
+  {
+    label: "Profitable Growth",
+    query: "Large cap over $50B with revenue growth above 15% and gross margin over 50%",
   },
   {
     label: "Buyback Champions",
-    query: "Share buyback programs: Companies reducing shares outstanding by 5%+ annually",
-  },
-  {
-    label: "Spin-offs & New IPOs",
-    query: "Spin-offs and recent IPOs under $5B market cap with institutional ownership under 50%",
+    query: "Companies reducing shares outstanding by 3%+ annually with positive earnings growth",
   },
 ];
 

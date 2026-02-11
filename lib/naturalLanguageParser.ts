@@ -26,11 +26,19 @@ const METRIC_ALIASES: Record<string, string[]> = {
   revenue_growth_quarters: ["revenue growth quarters", "consecutive quarters revenue"],
   earnings_growth: ["earnings growth", "eps growth", "profit growth", "bottom line growth"],
   profit_margin: ["profit margin", "net margin", "margin", "net profit margin"],
+  gross_margin: ["gross margin", "gross profit margin"],
+  operating_margin: ["operating margin", "op margin", "operating profit margin"],
   roe: ["roe", "return on equity"],
   roic: ["roic", "return on invested capital"],
   debt_to_equity: ["debt to equity", "d/e", "de ratio", "leverage", "debt/equity", "debt equity"],
+  debt_to_assets: ["debt to assets", "d/a", "da ratio"],
   current_ratio: ["current ratio", "liquidity ratio"],
+  interest_coverage: ["interest coverage", "interest coverage ratio", "times interest earned"],
   free_cash_flow_per_share: ["fcf", "free cash flow", "fcf per share"],
+  price_to_sales: ["price to sales", "p/s", "ps ratio", "price-to-sales"],
+  price_to_fcf: ["price to free cash flow", "p/fcf", "price to fcf", "price-to-free-cash-flow"],
+  eps: ["eps", "earnings per share"],
+  shares_change_pct: ["shares change", "share buyback", "shares outstanding change", "buyback"],
   market_cap: ["market cap", "mcap", "market capitalization", "market value"],
   beta: ["beta", "volatility"],
   week52_high_pct: ["52 week high", "52-week high", "near high", "52w high"],
@@ -102,15 +110,23 @@ Available metrics:
 - revenue_growth_quarters (consecutive quarters of revenue growth)
 - earnings_growth (annual earnings growth rate as decimal)
 - profit_margin (as decimal, e.g. 0.15 for 15%)
+- gross_margin (gross profit margin as decimal, e.g. 0.60 for 60%)
+- operating_margin (operating profit margin as decimal, e.g. 0.20 for 20%)
 - market_cap (CRITICAL: value must be in BILLIONS. Examples: "$10B" or "10 billion" = 10, "$200B" = 200, "$300M" = 0.3, "$2 trillion" = 2000, "under $10B" = use operator "<" with value 10)
 - price_to_book
+- price_to_sales (Price-to-Sales ratio)
+- price_to_fcf (Price-to-Free-Cash-Flow ratio)
 - debt_to_equity
+- debt_to_assets (total debt to total assets ratio as decimal)
 - current_ratio
+- interest_coverage (times interest earned ratio)
 - roe (return on equity as decimal)
 - roic (return on invested capital as decimal)
 - payout_ratio (dividend payout ratio as decimal)
 - beta
 - week52_high_pct (percentage of 52-week high, 1.0 = at the high)
+- eps (earnings per share in dollars)
+- shares_change_pct (annual change in shares outstanding as decimal, negative means buyback, e.g. -0.03 for 3% reduction)
 - sector (use value 1 for tech, 2 for healthcare, 3 for finance, 4 for energy, 5 for consumer, 6 for industrials, 7 for basic materials, 8 for real estate, 9 for utilities, 10 for communication services)
 - free_cash_flow_per_share
 
@@ -439,6 +455,30 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
   const marginMatch = lower.match(/profit\s*margins?\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
   if (marginMatch) {
     filters.push({ metric: "profit_margin", operator: ">", value: parseFloat(marginMatch[1]) / 100 });
+  }
+
+  // Gross margin patterns
+  const grossMarginMatch = lower.match(/gross\s*margins?\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (grossMarginMatch) {
+    filters.push({ metric: "gross_margin", operator: ">", value: parseFloat(grossMarginMatch[1]) / 100 });
+  }
+
+  // Operating margin patterns
+  const opMarginMatch = lower.match(/operating\s*margins?\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (opMarginMatch) {
+    filters.push({ metric: "operating_margin", operator: ">", value: parseFloat(opMarginMatch[1]) / 100 });
+  }
+
+  // Interest coverage patterns
+  const intCovMatch = lower.match(/interest\s*coverage\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)/);
+  if (intCovMatch) {
+    filters.push({ metric: "interest_coverage", operator: ">", value: parseFloat(intCovMatch[1]) });
+  }
+
+  // Shares buyback patterns
+  const buybackMatch = lower.match(/(?:shares?\s*(?:outstanding\s*)?(?:reduction|decrease|buyback)|reducing\s*shares)\s*(?:by\s*)?(\d+(?:\.\d+)?)\s*%/);
+  if (buybackMatch) {
+    filters.push({ metric: "shares_change_pct", operator: "<", value: -(parseFloat(buybackMatch[1]) / 100) });
   }
 
   // ROE patterns

@@ -8,10 +8,9 @@ interface BacktestInputProps {
   onSubmit: (strategy: string) => void;
   isLoading: boolean;
   parsingMethod?: ParsingMethod;
-  dataSource?: "fmp" | "hardcoded";
+  dataSource?: "fmp";
   stockUniverseSize?: number;
   warnings?: string[];
-  stockSourceError?: string;
 }
 
 function ParsingBadge({ method }: { method: ParsingMethod }) {
@@ -42,24 +41,16 @@ function ParsingBadge({ method }: { method: ParsingMethod }) {
   }
 }
 
-function DataSourceBadge({ source, count }: { source: "fmp" | "hardcoded"; count?: number }) {
-  if (source === "fmp") {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-        Live data{count ? ` (${count.toLocaleString()} stocks)` : ""}
-      </span>
-    );
-  }
+function DataSourceBadge({ count }: { count?: number }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-gray-50 text-gray-600 border border-gray-200">
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-      Sample data{count ? ` (${count} stocks)` : ""}
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+      Live data{count ? ` (${count.toLocaleString()} stocks)` : ""}
     </span>
   );
 }
 
-export default function BacktestInput({ onSubmit, isLoading, parsingMethod, dataSource, stockUniverseSize, warnings, stockSourceError }: BacktestInputProps) {
+export default function BacktestInput({ onSubmit, isLoading, parsingMethod, dataSource, stockUniverseSize, warnings }: BacktestInputProps) {
   const [strategy, setStrategy] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -118,7 +109,7 @@ export default function BacktestInput({ onSubmit, isLoading, parsingMethod, data
       {parsingMethod && (
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           <ParsingBadge method={parsingMethod} />
-          {dataSource && <DataSourceBadge source={dataSource} count={stockUniverseSize} />}
+          {dataSource && <DataSourceBadge count={stockUniverseSize} />}
         </div>
       )}
 
@@ -136,22 +127,6 @@ export default function BacktestInput({ onSubmit, isLoading, parsingMethod, data
         </div>
       )}
 
-      {/* Stock source details */}
-      {dataSource === "hardcoded" && stockSourceError && (
-        <div className="mt-3 max-w-2xl mx-auto">
-          <details className="text-xs text-gray-600">
-            <summary className="cursor-pointer hover:text-gray-700">View stock source details</summary>
-            <div className="mt-1 pl-4">
-              <p className="text-amber-600">
-                <strong>Using fallback data source:</strong> {stockSourceError}
-              </p>
-              <p className="mt-1 text-gray-500">
-                The backtest is using a hardcoded dataset of {stockUniverseSize} stocks instead of live FMP data.
-              </p>
-            </div>
-          </details>
-        </div>
-      )}
     </div>
   );
 }

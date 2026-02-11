@@ -20,11 +20,9 @@ export default function HomePage() {
   const [leaderboardKey, setLeaderboardKey] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [parsingMethod, setParsingMethod] = useState<ParsingMethod | undefined>();
-  const [dataSource, setDataSource] = useState<"fmp" | "hardcoded" | undefined>();
+  const [dataSource, setDataSource] = useState<"fmp" | undefined>();
   const [stockUniverseSize, setStockUniverseSize] = useState<number | undefined>();
   const [warnings, setWarnings] = useState<string[] | undefined>();
-  const [stockSourceError, setStockSourceError] = useState<string | undefined>();
-
   const runBacktest = useCallback(async (strategy: string, structuredParams?: StructuredParameters) => {
     if (structuredParams) {
       setIsUpdating(true);
@@ -36,7 +34,6 @@ export default function HomePage() {
       setDataSource(undefined);
       setStockUniverseSize(undefined);
       setWarnings(undefined);
-      setStockSourceError(undefined);
     }
 
     try {
@@ -53,7 +50,6 @@ export default function HomePage() {
       if (data.dataSource) setDataSource(data.dataSource);
       if (data.stockUniverseSize) setStockUniverseSize(data.stockUniverseSize);
       if (data.warnings) setWarnings(data.warnings);
-      if (data.stockSourceError) setStockSourceError(data.stockSourceError);
 
       if (data.error) {
         if (structuredParams) {
@@ -164,7 +160,6 @@ export default function HomePage() {
           dataSource={dataSource}
           stockUniverseSize={stockUniverseSize}
           warnings={warnings}
-          stockSourceError={stockSourceError}
         />
 
         {/* Error message */}

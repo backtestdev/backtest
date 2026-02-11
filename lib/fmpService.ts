@@ -1,8 +1,12 @@
 /**
  * Financial Modeling Prep (FMP) Stock Universe Service
  *
- * Fetches all NYSE/NASDAQ stocks with financial metrics, caches in-memory
- * and to disk, and provides a filterable universe interface.
+ * Uses /stable API endpoints:
+ * - /stable/actively-trading-list → stock universe
+ * - /stable/quote → price/market data
+ * - /stable/profile → company info (sector, beta)
+ * - /stable/ratios → financial ratios (PE, PB, margins, dividends, etc.)
+ * - /stable/income-statement → quarterly data for growth derivation
  */
 
 import { StockData } from './stockData';
@@ -13,22 +17,28 @@ import * as path from 'path';
 const FMP_API_KEY = process.env.FINANCIAL_MODELING_PREP_API_KEY || process.env.FMP_API_KEY || '';
 const FMP_BASE_URL = 'https://financialmodelingprep.com/stable';
 const CACHE_FILE = path.join(process.cwd(), 'data', 'stock-universe-cache.json');
-const DISK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours for disk cache
-const MEMORY_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes for in-memory cache
+const DISK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MEMORY_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
-// Validate env on module load
 if (!FMP_API_KEY) {
-  console.warn('[FMP] WARNING: FINANCIAL_MODELING_PREP_API_KEY is not set. Stock data will use hardcoded fallback (~100 stocks).');
-  console.warn('[FMP] Set FINANCIAL_MODELING_PREP_API_KEY in your environment variables for live data from 500+ stocks.');
+  console.warn('[FMP] WARNING: FINANCIAL_MODELING_PREP_API_KEY is not set.');
 } else {
-  console.log('[FMP] API key configured. Will fetch live stock data from Financial Modeling Prep.');
+  console.log('[FMP] API key configured.');
 }
 
-// In-memory cache to avoid hitting FMP rate limits
 let memoryCache: { stocks: StockData[]; timestamp: number } | null = null;
-
-// Track last FMP error for detailed error reporting
 let lastFMPError: string | null = null;
+
+// --- Interfaces matching actual /stable API response shapes ---
+
+interface FMPActivelyTradingStock {
+  symbol: string;
+  name: string;
+  exchange: string;
+  exchangeShortName?: string;
+  price?: number;
+  type?: string;
+}
 
 interface FMPQuote {
   symbol: string;
@@ -50,179 +60,79 @@ interface FMPQuote {
   previousClose: number;
   eps: number;
   pe: number;
-  earningsAnnouncement: string;
   sharesOutstanding: number;
   timestamp: number;
 }
 
-interface FMPKeyMetrics {
+interface FMPProfile {
   symbol: string;
-  date: string;
-  period: string;
-  revenuePerShare: number;
-  netIncomePerShare: number;
-  operatingCashFlowPerShare: number;
-  freeCashFlowPerShare: number;
-  cashPerShare: number;
-  bookValuePerShare: number;
-  tangibleBookValuePerShare: number;
-  shareholdersEquityPerShare: number;
-  interestDebtPerShare: number;
+  companyName: string;
+  price: number;
   marketCap: number;
-  enterpriseValue: number;
-  peRatio: number;
-  priceToSalesRatio: number;
-  pocfratio: number;
-  pfcfRatio: number;
-  pbRatio: number;
-  ptbRatio: number;
-  evToSales: number;
-  enterpriseValueOverEBITDA: number;
-  evToOperatingCashFlow: number;
-  evToFreeCashFlow: number;
-  earningsYield: number;
-  freeCashFlowYield: number;
-  debtToEquity: number;
-  debtToAssets: number;
-  netDebtToEBITDA: number;
-  currentRatio: number;
-  interestCoverage: number;
-  incomeQuality: number;
-  dividendYield: number;
-  payoutRatio: number;
-  salesGeneralAndAdministrativeToRevenue: number;
-  researchAndDdevelopementToRevenue: number;
-  intangiblesToTotalAssets: number;
-  capexToOperatingCashFlow: number;
-  capexToRevenue: number;
-  capexToDepreciation: number;
-  stockBasedCompensationToRevenue: number;
-  grahamNumber: number;
-  roic: number;
-  returnOnTangibleAssets: number;
-  grahamNetNet: number;
-  workingCapital: number;
-  tangibleAssetValue: number;
-  netCurrentAssetValue: number;
-  investedCapital: number;
-  averageReceivables: number;
-  averagePayables: number;
-  averageInventory: number;
-  daysSalesOutstanding: number;
-  daysPayablesOutstanding: number;
-  daysOfInventoryOnHand: number;
-  receivablesTurnover: number;
-  payablesTurnover: number;
-  inventoryTurnover: number;
-  roe: number;
-  capexPerShare: number;
+  beta: number;
+  lastDividend: number;
+  range: string;
+  volume: number;
+  averageVolume: number;
+  exchange: string;
+  exchangeFullName: string;
+  industry: string;
+  sector: string;
+  country: string;
+  ipoDate: string;
+  isEtf: boolean;
+  isActivelyTrading: boolean;
+  isAdr: boolean;
+  isFund: boolean;
 }
 
-interface FMPFinancialGrowth {
+interface FMPRatios {
   symbol: string;
   date: string;
+  fiscalYear: string;
   period: string;
-  revenueGrowth: number;
-  grossProfitGrowth: number;
-  ebitgrowth: number;
-  operatingIncomeGrowth: number;
-  netIncomeGrowth: number;
-  epsgrowth: number;
-  epsdilutedGrowth: number;
-  weightedAverageSharesGrowth: number;
-  weightedAverageSharesDilutedGrowth: number;
-  dividendsperShareGrowth: number;
-  operatingCashFlowGrowth: number;
-  freeCashFlowGrowth: number;
-  tenYRevenueGrowthPerShare: number;
-  fiveYRevenueGrowthPerShare: number;
-  threeYRevenueGrowthPerShare: number;
-  tenYOperatingCFGrowthPerShare: number;
-  fiveYOperatingCFGrowthPerShare: number;
-  threeYOperatingCFGrowthPerShare: number;
-  tenYNetIncomeGrowthPerShare: number;
-  fiveYNetIncomeGrowthPerShare: number;
-  threeYNetIncomeGrowthPerShare: number;
-  tenYShareholdersEquityGrowthPerShare: number;
-  fiveYShareholdersEquityGrowthPerShare: number;
-  threeYShareholdersEquityGrowthPerShare: number;
-  tenYDividendperShareGrowthPerShare: number;
-  fiveYDividendperShareGrowthPerShare: number;
-  threeYDividendperShareGrowthPerShare: number;
-  receivablesGrowth: number;
-  inventoryGrowth: number;
-  assetGrowth: number;
-  bookValueperShareGrowth: number;
-  debtGrowth: number;
-  rdexpenseGrowth: number;
-  sgaexpensesGrowth: number;
+  grossProfitMargin: number;
+  netProfitMargin: number;
+  operatingProfitMargin: number;
+  priceToEarningsRatio: number;
+  priceToBookRatio: number;
+  priceToSalesRatio: number;
+  priceToFreeCashFlowRatio: number;
+  dividendYield: number;
+  dividendPayoutRatio: number;
+  dividendPerShare: number;
+  debtToEquityRatio: number;
+  debtToAssetsRatio: number;
+  currentRatio: number;
+  interestCoverageRatio: number;
+  revenuePerShare: number;
+  netIncomePerShare: number;
+  freeCashFlowPerShare: number;
+  operatingCashFlowPerShare: number;
+  bookValuePerShare: number;
+  shareholdersEquityPerShare: number;
+  cashPerShare: number;
+  effectiveTaxRate: number;
+  enterpriseValueMultiple: number;
 }
 
 interface FMPIncomeStatement {
   date: string;
   symbol: string;
   reportedCurrency: string;
-  cik: string;
-  fillingDate: string;
-  acceptedDate: string;
-  calendarYear: string;
+  fiscalYear: string;
   period: string;
   revenue: number;
   costOfRevenue: number;
   grossProfit: number;
-  grossProfitRatio: number;
-  researchAndDevelopmentExpenses: number;
-  generalAndAdministrativeExpenses: number;
-  sellingAndMarketingExpenses: number;
-  sellingGeneralAndAdministrativeExpenses: number;
-  otherExpenses: number;
-  operatingExpenses: number;
-  costAndExpenses: number;
-  interestIncome: number;
-  interestExpense: number;
-  depreciationAndAmortization: number;
-  ebitda: number;
-  ebitdaratio: number;
   operatingIncome: number;
-  operatingIncomeRatio: number;
-  totalOtherIncomeExpensesNet: number;
-  incomeBeforeTax: number;
-  incomeBeforeTaxRatio: number;
-  incomeTaxExpense: number;
   netIncome: number;
-  netIncomeRatio: number;
+  ebitda: number;
+  ebit: number;
   eps: number;
-  epsdiluted: number;
+  epsDiluted: number;
   weightedAverageShsOut: number;
   weightedAverageShsOutDil: number;
-}
-
-// Response type for /stable/actively-trading-list
-interface FMPActivelyTradingStock {
-  symbol: string;
-  name: string;
-  exchange: string;
-  exchangeShortName?: string;
-  price?: number;
-  type?: string;
-}
-
-// Response type for /stable/profile
-interface FMPProfile {
-  symbol: string;
-  companyName: string;
-  marketCap: number;
-  sector: string;
-  industry: string;
-  beta: number;
-  price: number;
-  lastDiv: number;
-  exchange: string;
-  exchangeShortName: string;
-  country: string;
-  isEtf: boolean;
-  isActivelyTrading: boolean;
-  ipoDate: string;
 }
 
 interface CachedUniverse {
@@ -230,65 +140,60 @@ interface CachedUniverse {
   stocks: StockData[];
 }
 
-/**
- * Fetches data from FMP API with error handling
- */
+// --- Core fetch helper ---
+
 async function fetchFMP<T>(endpoint: string): Promise<T | null> {
   if (!FMP_API_KEY) {
-    lastFMPError = "FMP API key is not configured. Set FINANCIAL_MODELING_PREP_API_KEY or FMP_API_KEY environment variable.";
+    lastFMPError = "FMP API key is not configured. Set FINANCIAL_MODELING_PREP_API_KEY environment variable.";
     return null;
   }
 
   try {
     const url = `${FMP_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}apikey=${FMP_API_KEY}`;
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(15000), // 15s timeout per request
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      lastFMPError = `FMP API returned ${response.status} ${response.statusText} for ${endpoint}`;
+      lastFMPError = `FMP API returned ${response.status} for ${endpoint}`;
       if (response.status === 403) {
         lastFMPError += ' — check that your API key is valid and has access to /stable endpoints';
       } else if (response.status === 429) {
         lastFMPError += ' — rate limit exceeded, try again later';
       }
-      console.error(`[FMP] API error: ${response.status} ${response.statusText} for ${endpoint}`, body ? `body: ${body.slice(0, 200)}` : '');
+      console.error(`[FMP] ${response.status} ${response.statusText} for ${endpoint}`, body ? body.slice(0, 200) : '');
       return null;
     }
 
     const data = await response.json();
 
-    // FMP returns an error message object when rate limited or key is invalid
     if (data && typeof data === 'object' && 'Error Message' in data) {
-      lastFMPError = `FMP API error: ${data['Error Message']}`;
-      console.error(`[FMP] API error response: ${data['Error Message']}`);
+      lastFMPError = `FMP: ${data['Error Message']}`;
+      console.error(`[FMP] ${data['Error Message']}`);
       return null;
     }
 
-    // Handle { message: "..." } error format used by some stable endpoints
     if (data && typeof data === 'object' && !Array.isArray(data) && 'message' in data && Object.keys(data).length <= 2) {
-      lastFMPError = `FMP API error: ${data['message']}`;
-      console.error(`[FMP] API error response: ${data['message']}`);
+      lastFMPError = `FMP: ${data['message']}`;
+      console.error(`[FMP] ${data['message']}`);
       return null;
     }
 
-    // Clear error on success
     lastFMPError = null;
     return data as T;
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    lastFMPError = `Network error: ${errorMsg}`;
-    console.error(`[FMP] Fetch error for ${endpoint}:`, errorMsg);
+    const msg = error instanceof Error ? error.message : String(error);
+    lastFMPError = `Network error: ${msg}`;
+    console.error(`[FMP] Fetch error for ${endpoint}:`, msg);
     return null;
   }
 }
 
-/**
- * Maps FMP sector to numeric sector code
- */
+// --- Sector mapping ---
+
 function mapSector(sector: string): number {
-  const sectorMap: { [key: string]: number } = {
+  const sectorMap: Record<string, number> = {
     'Technology': 1,
     'Healthcare': 2,
     'Financial Services': 3,
@@ -302,77 +207,131 @@ function mapSector(sector: string): number {
     'Utilities': 9,
     'Communication Services': 10,
   };
-
   return sectorMap[sector] || 0;
 }
 
-/**
- * Calculates consecutive quarters of positive growth
- */
-function calculateConsecutiveQuarters(growthData: FMPFinancialGrowth[], field: 'revenueGrowth' | 'netIncomeGrowth'): number {
-  if (!growthData || growthData.length === 0) return 0;
+// --- Metric derivation helpers ---
 
-  // Sort by date descending (most recent first)
-  const sorted = [...growthData]
-    .filter(d => d.period === 'Q')
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  let consecutive = 0;
-  for (const item of sorted) {
-    if (item[field] > 0) {
-      consecutive++;
-    } else {
-      break;
-    }
-  }
-
-  return consecutive;
-}
-
-/**
- * Calculates years of consecutive dividend growth
- */
-function calculateDividendGrowthYears(growthData: FMPFinancialGrowth[]): number {
-  if (!growthData || growthData.length === 0) return 0;
-
-  // Get annual data only
-  const annualData = [...growthData]
-    .filter(d => d.period === 'FY')
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
+function deriveDividendGrowthYears(ratios: FMPRatios[]): number {
+  if (ratios.length < 2) return 0;
+  const sorted = [...ratios].sort((a, b) => parseInt(b.fiscalYear) - parseInt(a.fiscalYear));
   let years = 0;
-  for (const item of annualData) {
-    if (item.dividendsperShareGrowth > 0) {
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i].dividendPerShare ?? 0;
+    const previous = sorted[i + 1].dividendPerShare ?? 0;
+    if (current > previous && previous > 0) {
       years++;
     } else {
       break;
     }
   }
-
   return years;
 }
 
+function deriveRevenueGrowth(ratios: FMPRatios[]): number {
+  if (ratios.length < 2) return 0;
+  const sorted = [...ratios].sort((a, b) => parseInt(b.fiscalYear) - parseInt(a.fiscalYear));
+  const current = sorted[0].revenuePerShare;
+  const previous = sorted[1].revenuePerShare;
+  if (!previous || previous === 0) return 0;
+  return (current - previous) / Math.abs(previous);
+}
+
+function deriveEarningsGrowth(ratios: FMPRatios[]): number {
+  if (ratios.length < 2) return 0;
+  const sorted = [...ratios].sort((a, b) => parseInt(b.fiscalYear) - parseInt(a.fiscalYear));
+  const current = sorted[0].netIncomePerShare;
+  const previous = sorted[1].netIncomePerShare;
+  if (!previous || previous === 0) return 0;
+  return (current - previous) / Math.abs(previous);
+}
+
+function deriveROE(ratios: FMPRatios): number {
+  if (!ratios.shareholdersEquityPerShare || ratios.shareholdersEquityPerShare === 0) return 0;
+  return ratios.netIncomePerShare / ratios.shareholdersEquityPerShare;
+}
+
 /**
- * Fetches stock universe using /stable/actively-trading-list + batch quotes + profiles,
- * then enriches top stocks with detailed metrics.
- *
- * Migration note: The legacy /api/v3/stock-screener endpoint is deprecated.
- * We now use /stable/actively-trading-list for the universe, /stable/quote for
- * price data, and /stable/profile for sector/beta/company info.
+ * Derive approximate historical annual returns from ratios data.
+ * Uses (P/E * EPS) as a proxy for year-end stock price.
  */
+function deriveHistoricalReturns(ratios: FMPRatios[]): Record<string, number> {
+  const returns: Record<string, number> = {};
+  if (ratios.length < 2) return returns;
+
+  const sorted = [...ratios].sort((a, b) => parseInt(a.fiscalYear) - parseInt(b.fiscalYear));
+
+  const prices: { year: string; price: number }[] = [];
+  for (const r of sorted) {
+    let impliedPrice = 0;
+    if (r.priceToEarningsRatio > 0 && r.netIncomePerShare > 0) {
+      impliedPrice = r.priceToEarningsRatio * r.netIncomePerShare;
+    } else if (r.priceToBookRatio > 0 && r.bookValuePerShare > 0) {
+      impliedPrice = r.priceToBookRatio * r.bookValuePerShare;
+    } else if (r.priceToSalesRatio > 0 && r.revenuePerShare > 0) {
+      impliedPrice = r.priceToSalesRatio * r.revenuePerShare;
+    }
+    if (impliedPrice > 0) {
+      prices.push({ year: r.fiscalYear, price: impliedPrice });
+    }
+  }
+
+  for (let i = 1; i < prices.length; i++) {
+    const prev = prices[i - 1].price;
+    const curr = prices[i].price;
+    if (prev > 0) {
+      returns[prices[i].year] = (curr - prev) / prev;
+    }
+  }
+
+  return returns;
+}
+
+function deriveConsecutiveQuarterlyGrowth(
+  quarterlyStatements: FMPIncomeStatement[],
+  field: 'revenue' | 'netIncome'
+): number {
+  if (quarterlyStatements.length < 5) return 0;
+  const sorted = [...quarterlyStatements].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+  let consecutive = 0;
+  for (let i = 0; i < sorted.length - 4; i++) {
+    const current = sorted[i][field];
+    const yearAgo = sorted[i + 4]?.[field];
+    if (yearAgo && yearAgo > 0 && current > yearAgo) {
+      consecutive++;
+    } else {
+      break;
+    }
+  }
+  return consecutive;
+}
+
+function deriveSharesChangePct(statements: FMPIncomeStatement[]): number {
+  const annual = [...statements]
+    .filter(s => s.period === 'FY')
+    .sort((a, b) => parseInt(b.fiscalYear) - parseInt(a.fiscalYear));
+  if (annual.length < 2) return 0;
+  const current = annual[0].weightedAverageShsOut;
+  const previous = annual[1].weightedAverageShsOut;
+  if (!previous || previous === 0) return 0;
+  return (current - previous) / previous;
+}
+
+// --- Main data fetching ---
+
 async function fetchAllStocks(): Promise<StockData[]> {
   console.log('[FMP] Fetching stock universe...');
 
-  // Step 1: Get actively trading stocks (replaces deprecated stock-screener)
+  // Step 1: Get actively trading stocks
   const activeStocks = await fetchFMP<FMPActivelyTradingStock[]>('/actively-trading-list');
-
   if (!activeStocks || activeStocks.length === 0) {
     console.error('[FMP] Actively trading list returned no results');
     return [];
   }
 
-  // Step 2: Client-side filtering for NYSE/NASDAQ common stocks
-  // (Previously done server-side by the stock-screener endpoint)
+  // Step 2: Filter to NYSE/NASDAQ common stocks
   const commonStocks = activeStocks.filter(s =>
     s.symbol &&
     !s.symbol.includes('.') &&
@@ -380,54 +339,39 @@ async function fetchAllStocks(): Promise<StockData[]> {
     (s.exchangeShortName === 'NYSE' || s.exchangeShortName === 'NASDAQ' ||
      s.exchange?.includes('NYSE') || s.exchange?.includes('NASDAQ'))
   );
-
   console.log(`[FMP] Filtered to ${commonStocks.length} NYSE/NASDAQ stocks from ${activeStocks.length} total`);
 
-  // Step 3: Batch fetch quotes for price/marketCap data
+  // Step 3: Batch fetch quotes for price/marketCap
   const BATCH_SIZE = 100;
   const quoteMap = new Map<string, FMPQuote>();
-  const allStocks: StockData[] = [];
 
   for (let i = 0; i < Math.min(commonStocks.length, 3000); i += BATCH_SIZE) {
     const batch = commonStocks.slice(i, i + BATCH_SIZE);
     const symbols = batch.map(s => s.symbol).join(',');
-
-    // Stable API uses query param: /quote?symbol=SYM1,SYM2
     const batchQuotes = await fetchFMP<FMPQuote[]>(`/quote?symbol=${symbols}`);
-
-    if (!batchQuotes) {
-      console.warn(`[FMP] Failed to fetch quotes for batch starting at ${i}`);
-      continue;
+    if (batchQuotes) {
+      for (const q of batchQuotes) quoteMap.set(q.symbol, q);
     }
-
-    for (const q of batchQuotes) {
-      quoteMap.set(q.symbol, q);
-    }
-
-    console.log(`[FMP] Fetched quotes for ${quoteMap.size} stocks so far...`);
-
-    // Small delay to respect rate limits
     if (i + BATCH_SIZE < commonStocks.length) {
       await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
+  console.log(`[FMP] Fetched quotes for ${quoteMap.size} stocks`);
 
-  // Step 4: Build StockData entries for stocks with marketCap > $300M
+  // Step 4: Filter by marketCap > $300M and build initial entries
+  const allStocks: StockData[] = [];
   for (const stock of commonStocks) {
     const quote = quoteMap.get(stock.symbol);
     if (!quote || !quote.marketCap || quote.marketCap <= 300_000_000) continue;
 
-    const marketCapBillions = quote.marketCap / 1_000_000_000;
-    const week52HighPct = quote.yearHigh > 0 ? quote.price / quote.yearHigh : 0;
-
     allStocks.push({
       ticker: stock.symbol,
       name: quote.name || stock.name || '',
-      sector: 0, // Set from profile below
+      sector: 0,
       pe_ratio: quote.pe || 0,
       forward_pe: 0,
       price_to_book: 0,
-      dividend_yield: 0, // Set from profile below
+      dividend_yield: 0,
       dividend_growth_years: 0,
       payout_ratio: 0,
       revenue_growth: 0,
@@ -435,66 +379,59 @@ async function fetchAllStocks(): Promise<StockData[]> {
       earnings_growth: 0,
       profit_margin: 0,
       roe: 0,
-      roic: 0,
       debt_to_equity: 0,
       current_ratio: 0,
       free_cash_flow_per_share: 0,
-      market_cap: marketCapBillions,
-      beta: 0, // Set from profile below
-      week52_high_pct: week52HighPct,
+      market_cap: quote.marketCap / 1_000_000_000,
+      beta: 0,
+      week52_high_pct: quote.yearHigh > 0 ? quote.price / quote.yearHigh : 0,
       shares_outstanding: quote.sharesOutstanding || 0,
       shares_change_pct: 0,
       ipo_date: '',
+      eps: quote.eps || 0,
       historical_returns: {},
     });
   }
-
   console.log(`[FMP] ${allStocks.length} stocks with market cap > $300M`);
 
-  // Step 5: Batch fetch profiles for sector, beta, dividend data
+  // Step 5: Batch fetch profiles for sector, beta, dividend
   const profileMap = new Map<string, FMPProfile>();
-
   for (let i = 0; i < allStocks.length; i += BATCH_SIZE) {
     const batch = allStocks.slice(i, i + BATCH_SIZE);
     const symbols = batch.map(s => s.ticker).join(',');
-
-    // Stable API: /profile?symbol=SYM1,SYM2
     const batchProfiles = await fetchFMP<FMPProfile[]>(`/profile?symbol=${symbols}`);
-
     if (batchProfiles) {
       const profiles = Array.isArray(batchProfiles) ? batchProfiles : [batchProfiles];
       for (const p of profiles) {
-        if (p && p.symbol) profileMap.set(p.symbol, p);
+        if (p?.symbol) profileMap.set(p.symbol, p);
       }
     }
-
     if (i + BATCH_SIZE < allStocks.length) {
       await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
 
-  // Apply profile data (sector, beta, dividend, ipoDate)
   for (let i = 0; i < allStocks.length; i++) {
     const profile = profileMap.get(allStocks[i].ticker);
     if (profile) {
       allStocks[i].sector = mapSector(profile.sector || '');
       allStocks[i].beta = profile.beta || 0;
       allStocks[i].ipo_date = profile.ipoDate || '';
-      if (profile.lastDiv && profile.lastDiv > 0) {
+      if (profile.lastDividend > 0) {
         const quote = quoteMap.get(allStocks[i].ticker);
         if (quote && quote.price > 0) {
-          allStocks[i].dividend_yield = profile.lastDiv / quote.price;
+          allStocks[i].dividend_yield = profile.lastDividend / quote.price;
         }
       }
     }
   }
 
-  // Step 6: Enrich top 300 stocks (by market cap) with detailed metrics
+  // Step 6: Enrich top stocks with ratios + income-statement
   const sortedByMarketCap = [...allStocks].sort((a, b) => b.market_cap - a.market_cap);
   const topStocks = sortedByMarketCap.slice(0, 300);
   const topSymbols = new Set(topStocks.map(s => s.ticker));
 
-  console.log(`[FMP] Enriching top ${topStocks.length} stocks with detailed metrics...`);
+  console.log(`[FMP] Enriching top ${topStocks.length} stocks with ratios + income data...`);
 
   const ENRICH_BATCH = 5;
   for (let i = 0; i < topStocks.length; i += ENRICH_BATCH) {
@@ -502,40 +439,59 @@ async function fetchAllStocks(): Promise<StockData[]> {
 
     const enrichPromises = batch.map(async (stock) => {
       try {
-        // Stable API uses query params: /endpoint?symbol=TICKER&param=value
-        const [keyMetrics, growthData, incomeStatements] = await Promise.all([
-          fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${stock.ticker}&period=annual&limit=1`).then(r => r?.[0] || null),
-          fetchFMP<FMPFinancialGrowth[]>(`/financial-growth?symbol=${stock.ticker}&period=quarter&limit=8`).then(r => r || []),
-          fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${stock.ticker}&period=annual&limit=1`).then(r => r || []),
+        const [ratiosData, quarterlyIncome] = await Promise.all([
+          fetchFMP<FMPRatios[]>(`/ratios?symbol=${stock.ticker}&period=annual&limit=20`),
+          fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${stock.ticker}&period=quarter&limit=12`),
         ]);
 
-        // Update the stock in the main array
         const idx = allStocks.findIndex(s => s.ticker === stock.ticker);
         if (idx === -1) return;
 
-        if (keyMetrics) {
-          allStocks[idx].price_to_book = keyMetrics.pbRatio || 0;
-          allStocks[idx].dividend_yield = keyMetrics.dividendYield || allStocks[idx].dividend_yield;
-          allStocks[idx].payout_ratio = keyMetrics.payoutRatio || 0;
-          allStocks[idx].roe = keyMetrics.roe || 0;
-          allStocks[idx].roic = keyMetrics.roic || 0;
-          allStocks[idx].debt_to_equity = keyMetrics.debtToEquity || 0;
-          allStocks[idx].current_ratio = keyMetrics.currentRatio || 0;
-          allStocks[idx].free_cash_flow_per_share = keyMetrics.freeCashFlowPerShare || 0;
+        if (ratiosData && ratiosData.length > 0) {
+          const latest = ratiosData[0];
+
+          // Valuation
+          allStocks[idx].pe_ratio = latest.priceToEarningsRatio || allStocks[idx].pe_ratio;
+          allStocks[idx].price_to_book = latest.priceToBookRatio || 0;
+          allStocks[idx].price_to_sales = latest.priceToSalesRatio || 0;
+          allStocks[idx].price_to_fcf = latest.priceToFreeCashFlowRatio || 0;
+
+          // Profitability
+          allStocks[idx].profit_margin = latest.netProfitMargin || 0;
+          allStocks[idx].gross_margin = latest.grossProfitMargin || 0;
+          allStocks[idx].operating_margin = latest.operatingProfitMargin || 0;
+          allStocks[idx].roe = deriveROE(latest);
+
+          // Dividend
+          allStocks[idx].dividend_yield = latest.dividendYield || allStocks[idx].dividend_yield;
+          allStocks[idx].payout_ratio = latest.dividendPayoutRatio || 0;
+          allStocks[idx].dividend_growth_years = deriveDividendGrowthYears(ratiosData);
+
+          // Leverage & liquidity
+          allStocks[idx].debt_to_equity = latest.debtToEquityRatio || 0;
+          allStocks[idx].debt_to_assets = latest.debtToAssetsRatio || 0;
+          allStocks[idx].current_ratio = latest.currentRatio || 0;
+          allStocks[idx].interest_coverage = latest.interestCoverageRatio || 0;
+
+          // Per-share
+          allStocks[idx].free_cash_flow_per_share = latest.freeCashFlowPerShare || 0;
+          allStocks[idx].eps = latest.netIncomePerShare || allStocks[idx].eps;
+
+          // Growth (YoY from ratios)
+          allStocks[idx].revenue_growth = deriveRevenueGrowth(ratiosData);
+          allStocks[idx].earnings_growth = deriveEarningsGrowth(ratiosData);
+
+          // Historical returns for backtesting chart
+          allStocks[idx].historical_returns = deriveHistoricalReturns(ratiosData);
         }
 
-        if (growthData.length > 0) {
-          const recentGrowth = growthData.find(g => g.period === 'FY') || growthData[0];
-          allStocks[idx].revenue_growth = recentGrowth?.revenueGrowth || 0;
-          allStocks[idx].earnings_growth = recentGrowth?.netIncomeGrowth || 0;
-          allStocks[idx].revenue_growth_quarters = calculateConsecutiveQuarters(growthData, 'revenueGrowth');
-          allStocks[idx].net_income_growth_quarters = calculateConsecutiveQuarters(growthData, 'netIncomeGrowth');
-          allStocks[idx].dividend_growth_years = calculateDividendGrowthYears(growthData);
-        }
-
-        if (incomeStatements.length > 0) {
-          const latestIncome = incomeStatements[0];
-          allStocks[idx].profit_margin = latestIncome.netIncomeRatio || 0;
+        if (quarterlyIncome && quarterlyIncome.length >= 5) {
+          const idx2 = allStocks.findIndex(s => s.ticker === stock.ticker);
+          if (idx2 !== -1) {
+            allStocks[idx2].revenue_growth_quarters = deriveConsecutiveQuarterlyGrowth(quarterlyIncome, 'revenue');
+            allStocks[idx2].net_income_growth_quarters = deriveConsecutiveQuarterlyGrowth(quarterlyIncome, 'netIncome');
+            allStocks[idx2].shares_change_pct = deriveSharesChangePct(quarterlyIncome);
+          }
         }
       } catch (error) {
         console.error(`[FMP] Error enriching ${stock.ticker}:`, error instanceof Error ? error.message : error);
@@ -544,87 +500,61 @@ async function fetchAllStocks(): Promise<StockData[]> {
 
     await Promise.all(enrichPromises);
 
-    // Throttle to respect rate limits
     if (i + ENRICH_BATCH < topStocks.length) {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
 
-  console.log(`[FMP] Completed fetching ${allStocks.length} stocks (${topSymbols.size} enriched with detailed metrics)`);
+  console.log(`[FMP] Completed: ${allStocks.length} stocks (${topSymbols.size} enriched with detailed metrics)`);
   return allStocks;
 }
 
-/**
- * Loads cached stock universe from disk if valid
- */
+// --- Caching ---
+
 async function loadDiskCache(): Promise<StockData[] | null> {
   try {
     const cacheData = await fs.readFile(CACHE_FILE, 'utf-8');
     const cache: CachedUniverse = JSON.parse(cacheData);
-
     const age = Date.now() - cache.lastUpdated;
     if (age < DISK_CACHE_DURATION_MS) {
-      console.log(`[FMP] Using disk-cached stock universe (${Math.round(age / 1000 / 60)} minutes old, ${cache.stocks.length} stocks)`);
+      console.log(`[FMP] Using disk cache (${Math.round(age / 1000 / 60)}min old, ${cache.stocks.length} stocks)`);
       return cache.stocks;
     }
-
-    console.log('[FMP] Disk cache expired, fetching fresh data');
+    console.log('[FMP] Disk cache expired');
     return null;
   } catch {
-    console.log('[FMP] No valid disk cache found');
+    console.log('[FMP] No valid disk cache');
     return null;
   }
 }
 
-/**
- * Saves stock universe to disk cache
- */
 async function saveDiskCache(stocks: StockData[]): Promise<void> {
   try {
-    const cache: CachedUniverse = {
-      lastUpdated: Date.now(),
-      stocks,
-    };
-
-    // Ensure data directory exists
     const dataDir = path.dirname(CACHE_FILE);
     await fs.mkdir(dataDir, { recursive: true });
-
-    await fs.writeFile(CACHE_FILE, JSON.stringify(cache));
+    await fs.writeFile(CACHE_FILE, JSON.stringify({ lastUpdated: Date.now(), stocks }));
     console.log(`[FMP] Cached ${stocks.length} stocks to disk`);
   } catch (error) {
-    console.error('[FMP] Error saving disk cache:', error);
+    console.error('[FMP] Error saving cache:', error);
   }
 }
 
-/**
- * Gets the stock universe with multi-level caching:
- * 1. In-memory cache (10 min TTL) - fastest
- * 2. Disk cache (24h TTL) - survives restarts
- * 3. Fresh FMP API fetch - slowest
- */
 export async function getStockUniverse(): Promise<StockData[]> {
-  // Level 1: In-memory cache
   if (memoryCache && (Date.now() - memoryCache.timestamp) < MEMORY_CACHE_DURATION_MS) {
-    console.log(`[FMP] Using in-memory cache (${memoryCache.stocks.length} stocks)`);
     return memoryCache.stocks;
   }
 
-  // Level 2: Disk cache
   const diskCached = await loadDiskCache();
   if (diskCached && diskCached.length > 0) {
     memoryCache = { stocks: diskCached, timestamp: Date.now() };
     return diskCached;
   }
 
-  // Level 3: Fresh API fetch
   if (!FMP_API_KEY) {
-    console.warn('[FMP] No API key, returning empty array (caller should use fallback)');
-    return [];
+    throw new Error('FMP API key not configured. Set FINANCIAL_MODELING_PREP_API_KEY environment variable.');
   }
 
   const stocks = await fetchAllStocks();
-
   if (stocks.length > 0) {
     memoryCache = { stocks, timestamp: Date.now() };
     await saveDiskCache(stocks);
@@ -633,13 +563,8 @@ export async function getStockUniverse(): Promise<StockData[]> {
   return stocks;
 }
 
-/**
- * Forces a refresh of the stock universe cache
- */
 export async function refreshStockUniverse(): Promise<StockData[]> {
-  console.log('[FMP] Force refreshing stock universe...');
   memoryCache = null;
-
   const stocks = await fetchAllStocks();
   if (stocks.length > 0) {
     memoryCache = { stocks, timestamp: Date.now() };
@@ -648,16 +573,10 @@ export async function refreshStockUniverse(): Promise<StockData[]> {
   return stocks;
 }
 
-/**
- * Checks if FMP API is configured and accessible
- */
 export function isFMPConfigured(): boolean {
   return !!FMP_API_KEY;
 }
 
-/**
- * Returns the last error message from FMP API, if any
- */
 export function getLastFMPError(): string | null {
   return lastFMPError;
 }

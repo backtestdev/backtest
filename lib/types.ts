@@ -48,9 +48,8 @@ export interface BacktestResult {
   debugInfo?: DebugInfo;
   warnings?: string[]; // Warnings about parsing fallbacks or issues
   parsingMethod?: ParsingMethod;
-  dataSource?: "fmp" | "hardcoded";
+  dataSource?: "fmp";
   stockUniverseSize?: number;
-  stockSourceError?: string; // Error message when FMP fails and fallback is used
 }
 
 export interface TimeHorizonResult {
