@@ -159,20 +159,11 @@ async function populateStocks(): Promise<string[]> {
   );
   console.log(`  Found ${filtered.length} common stocks`);
 
-  // Batch upsert in groups of 50
-  const BATCH = 50;
-  for (let i = 0; i < filtered.length; i += BATCH) {
-    const batch = filtered.slice(i, i + BATCH);
-    const values = batch
-      .map(
-        (s) =>
-          `(${esc(s.symbol)}, ${esc(s.companyName)}, ${esc(s.sector)}, ${esc(s.industry)}, ${esc(s.country)}, ${esc(s.exchange)}, ${esc(s.exchangeShortName)}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())`
-      )
-      .join(",\n");
-
-    await sql(`
+  // Upsert individually using tagged templates (neon auto-parameterizes)
+  for (const s of filtered) {
+    await sql`
       INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, exchange_short_name, market_cap, beta, last_annual_dividend, is_etf, is_actively_trading, updated_at)
-      VALUES ${values}
+      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.exchangeShortName}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())
       ON CONFLICT (symbol) DO UPDATE SET
         company_name = EXCLUDED.company_name,
         sector = EXCLUDED.sector,
@@ -186,7 +177,7 @@ async function populateStocks(): Promise<string[]> {
         is_etf = EXCLUDED.is_etf,
         is_actively_trading = EXCLUDED.is_actively_trading,
         updated_at = NOW()
-    `);
+    `;
   }
 
   console.log(`  Inserted/updated ${filtered.length} stocks`);
@@ -213,9 +204,9 @@ async function populateQuotes(symbols: string[]) {
     }
 
     for (const q of quotes) {
-      await sql(`
+      await sql`
         INSERT INTO quotes (symbol, price, changes_percentage, day_low, day_high, year_high, year_low, market_cap, price_avg_50, price_avg_200, volume, avg_volume, eps, pe, shares_outstanding, updated_at)
-        VALUES (${esc(q.symbol)}, ${q.price || 0}, ${q.changesPercentage || 0}, ${q.dayLow || 0}, ${q.dayHigh || 0}, ${q.yearHigh || 0}, ${q.yearLow || 0}, ${q.marketCap || 0}, ${q.priceAvg50 || 0}, ${q.priceAvg200 || 0}, ${q.volume || 0}, ${q.avgVolume || 0}, ${q.eps || 0}, ${q.pe || 0}, ${q.sharesOutstanding || 0}, NOW())
+        VALUES (${q.symbol}, ${q.price || 0}, ${q.changesPercentage || 0}, ${q.dayLow || 0}, ${q.dayHigh || 0}, ${q.yearHigh || 0}, ${q.yearLow || 0}, ${q.marketCap || 0}, ${q.priceAvg50 || 0}, ${q.priceAvg200 || 0}, ${q.volume || 0}, ${q.avgVolume || 0}, ${q.eps || 0}, ${q.pe || 0}, ${q.sharesOutstanding || 0}, NOW())
         ON CONFLICT (symbol) DO UPDATE SET
           price = EXCLUDED.price,
           changes_percentage = EXCLUDED.changes_percentage,
@@ -232,7 +223,7 @@ async function populateQuotes(symbols: string[]) {
           pe = EXCLUDED.pe,
           shares_outstanding = EXCLUDED.shares_outstanding,
           updated_at = NOW()
-      `);
+      `;
       count++;
     }
 
@@ -246,12 +237,10 @@ async function populateQuotes(symbols: string[]) {
 // Step 3: Enrich top 300 with key metrics + growth + income → ratios + profiles
 // ---------------------------------------------------------------------------
 
-async function enrichTopStocks(symbols: string[]) {
+async function enrichTopStocks() {
   // Sort by market cap from stocks table to get top 300
-  const topRows = await sql(`
-    SELECT symbol FROM stocks ORDER BY market_cap DESC LIMIT 300
-  `);
-  const topSymbols = topRows.map((r: { symbol: string }) => r.symbol);
+  const topRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC LIMIT 300`;
+  const topSymbols = topRows.map((r) => String(r.symbol));
   console.log(`Step 3/4: Enriching ${topSymbols.length} top stocks with detailed metrics...`);
 
   const BATCH = 5;
@@ -261,7 +250,7 @@ async function enrichTopStocks(symbols: string[]) {
     const batch = topSymbols.slice(i, i + BATCH);
 
     await Promise.all(
-      batch.map(async (sym: string) => {
+      batch.map(async (sym) => {
         try {
           const [metrics, growth, income] = await Promise.all([
             fetchFMP<FMPKeyMetrics[]>(`/key-metrics/${sym}?period=annual&limit=1`).then((r) => r?.[0] || null),
@@ -271,9 +260,9 @@ async function enrichTopStocks(symbols: string[]) {
 
           // Upsert ratios
           if (metrics) {
-            await sql(`
+            await sql`
               INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
-              VALUES (${esc(sym)}, ${metrics.peRatio || 0}, ${metrics.pbRatio || 0}, ${metrics.priceToSalesRatio || 0}, ${metrics.debtToEquity || 0}, ${metrics.currentRatio || 0}, ${metrics.roe || 0}, ${metrics.roic || 0}, ${metrics.dividendYield || 0}, ${metrics.payoutRatio || 0}, ${metrics.freeCashFlowPerShare || 0}, ${metrics.revenuePerShare || 0}, ${metrics.netIncomePerShare || 0}, ${metrics.earningsYield || 0}, ${metrics.evToSales || 0}, ${metrics.enterpriseValue || 0}, NOW())
+              VALUES (${sym}, ${metrics.peRatio || 0}, ${metrics.pbRatio || 0}, ${metrics.priceToSalesRatio || 0}, ${metrics.debtToEquity || 0}, ${metrics.currentRatio || 0}, ${metrics.roe || 0}, ${metrics.roic || 0}, ${metrics.dividendYield || 0}, ${metrics.payoutRatio || 0}, ${metrics.freeCashFlowPerShare || 0}, ${metrics.revenuePerShare || 0}, ${metrics.netIncomePerShare || 0}, ${metrics.earningsYield || 0}, ${metrics.evToSales || 0}, ${metrics.enterpriseValue || 0}, NOW())
               ON CONFLICT (symbol) DO UPDATE SET
                 pe_ratio = EXCLUDED.pe_ratio,
                 pb_ratio = EXCLUDED.pb_ratio,
@@ -291,7 +280,7 @@ async function enrichTopStocks(symbols: string[]) {
                 ev_to_sales = EXCLUDED.ev_to_sales,
                 enterprise_value = EXCLUDED.enterprise_value,
                 updated_at = NOW()
-            `);
+            `;
           }
 
           // Compute growth stats
@@ -301,9 +290,9 @@ async function enrichTopStocks(symbols: string[]) {
           const recentGrowth = growth.find((g) => g.period === "FY") || growth[0];
           const profitMargin = income[0]?.netIncomeRatio || 0;
 
-          await sql(`
+          await sql`
             INSERT INTO profiles (symbol, revenue_growth, net_income_growth, earnings_growth, revenue_growth_quarters, net_income_growth_quarters, dividend_growth_years, profit_margin, historical_returns, updated_at)
-            VALUES (${esc(sym)}, ${recentGrowth?.revenueGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${revenueGrowthQ}, ${netIncomeGrowthQ}, ${divGrowthYears}, ${profitMargin}, '{}', NOW())
+            VALUES (${sym}, ${recentGrowth?.revenueGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${revenueGrowthQ}, ${netIncomeGrowthQ}, ${divGrowthYears}, ${profitMargin}, ${'{}'}, NOW())
             ON CONFLICT (symbol) DO UPDATE SET
               revenue_growth = EXCLUDED.revenue_growth,
               net_income_growth = EXCLUDED.net_income_growth,
@@ -313,7 +302,7 @@ async function enrichTopStocks(symbols: string[]) {
               dividend_growth_years = EXCLUDED.dividend_growth_years,
               profit_margin = EXCLUDED.profit_margin,
               updated_at = NOW()
-          `);
+          `;
 
           enriched++;
         } catch (e) {
@@ -335,16 +324,17 @@ async function enrichTopStocks(symbols: string[]) {
 
 async function recordMeta() {
   console.log("Step 4/4: Recording metadata...");
-  await sql(`
+  const timestamp = new Date().toISOString();
+  await sql`
     INSERT INTO stock_meta (key, value, updated_at)
-    VALUES ('last_populate', ${esc(new Date().toISOString())}, NOW())
+    VALUES (${'last_populate'}, ${timestamp}, NOW())
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-  `);
+  `;
 
-  const countResult = await sql(`SELECT count(*) as cnt FROM stocks`);
-  const quotesResult = await sql(`SELECT count(*) as cnt FROM quotes`);
-  const ratiosResult = await sql(`SELECT count(*) as cnt FROM ratios`);
-  const profilesResult = await sql(`SELECT count(*) as cnt FROM profiles`);
+  const countResult = await sql`SELECT count(*) as cnt FROM stocks`;
+  const quotesResult = await sql`SELECT count(*) as cnt FROM quotes`;
+  const ratiosResult = await sql`SELECT count(*) as cnt FROM ratios`;
+  const profilesResult = await sql`SELECT count(*) as cnt FROM profiles`;
 
   console.log("\nPopulation complete:");
   console.log(`  stocks:   ${countResult[0].cnt}`);
@@ -356,11 +346,6 @@ async function recordMeta() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function esc(val: string | null | undefined): string {
-  if (val == null) return "''";
-  return `'${String(val).replace(/'/g, "''")}'`;
-}
 
 function consecutivePositive(
   data: FMPFinancialGrowth[],
@@ -399,7 +384,7 @@ async function main() {
 
   const symbols = await populateStocks();
   await populateQuotes(symbols);
-  await enrichTopStocks(symbols);
+  await enrichTopStocks();
   await recordMeta();
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
