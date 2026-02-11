@@ -22,11 +22,24 @@ interface RefreshResult {
   details?: string;
 }
 
+interface CleanupResult {
+  success?: boolean;
+  before?: number;
+  after?: number;
+  deleted?: number;
+  breakdown?: { etf: number; noSector: number; badSymbol: number; namePattern: number };
+  deletedSymbols?: { symbol: string; name: string }[];
+  error?: string;
+  details?: string;
+}
+
 export default function AdminStocks() {
   const [status, setStatus] = useState<StockStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [result, setResult] = useState<RefreshResult | null>(null);
+  const [cleanupResult, setCleanupResult] = useState<CleanupResult | null>(null);
+  const [cleaning, setCleaning] = useState(false);
   const [secret, setSecret] = useState("");
 
   const fetchStatus = useCallback(async () => {
@@ -66,6 +79,30 @@ export default function AdminStocks() {
       setResult({ error: "Network error — could not reach server" });
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleCleanup = async () => {
+    setCleaning(true);
+    setCleanupResult(null);
+    try {
+      const headers: Record<string, string> = {};
+      if (secret.trim()) {
+        headers["x-admin-secret"] = secret.trim();
+      }
+      const res = await fetch("/api/admin/cleanup", {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json();
+      setCleanupResult(data);
+      if (data.success) {
+        fetchStatus();
+      }
+    } catch {
+      setCleanupResult({ error: "Network error — could not reach server" });
+    } finally {
+      setCleaning(false);
     }
   };
 
@@ -175,6 +212,101 @@ export default function AdminStocks() {
             )}
           </button>
         </div>
+
+        {/* Cleanup controls */}
+        <div className="mt-6 bg-white rounded-2xl border border-gray-200 p-6">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Purge Non-Companies</h2>
+          <p className="text-xs text-gray-400 mt-1">
+            Removes mutual funds, indexes, ETFs, SPACs, trusts, preferred securities, and other
+            non-operating-company entries from the database.
+          </p>
+
+          <button
+            onClick={handleCleanup}
+            disabled={cleaning || refreshing}
+            className="mt-4 w-full px-4 py-3 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {cleaning ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Cleaning...
+              </span>
+            ) : (
+              "Purge Non-Companies"
+            )}
+          </button>
+        </div>
+
+        {/* Cleanup result */}
+        {cleanupResult && (
+          <div className={`mt-6 rounded-2xl border p-6 ${
+            cleanupResult.success
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-red-50 border-red-200"
+          }`}>
+            {cleanupResult.success ? (
+              <div className="text-sm">
+                <p className="font-medium text-emerald-800">
+                  {cleanupResult.deleted === 0
+                    ? "Database is clean — no non-companies found"
+                    : `Purged ${cleanupResult.deleted} non-company entries`}
+                </p>
+                {(cleanupResult.deleted ?? 0) > 0 && (
+                  <>
+                    <dl className="mt-3 space-y-1 text-emerald-700">
+                      <div className="flex justify-between">
+                        <dt>Before</dt>
+                        <dd className="font-medium">{cleanupResult.before?.toLocaleString()}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt>After</dt>
+                        <dd className="font-medium">{cleanupResult.after?.toLocaleString()}</dd>
+                      </div>
+                    </dl>
+                    {cleanupResult.breakdown && (
+                      <details className="mt-3">
+                        <summary className="text-emerald-600 cursor-pointer text-xs">Breakdown by reason</summary>
+                        <dl className="mt-2 space-y-1 text-emerald-700 text-xs">
+                          {cleanupResult.breakdown.etf > 0 && (
+                            <div className="flex justify-between"><dt>ETF flag</dt><dd>{cleanupResult.breakdown.etf}</dd></div>
+                          )}
+                          {cleanupResult.breakdown.noSector > 0 && (
+                            <div className="flex justify-between"><dt>No sector</dt><dd>{cleanupResult.breakdown.noSector}</dd></div>
+                          )}
+                          {cleanupResult.breakdown.badSymbol > 0 && (
+                            <div className="flex justify-between"><dt>Bad symbol</dt><dd>{cleanupResult.breakdown.badSymbol}</dd></div>
+                          )}
+                          {cleanupResult.breakdown.namePattern > 0 && (
+                            <div className="flex justify-between"><dt>Name pattern</dt><dd>{cleanupResult.breakdown.namePattern}</dd></div>
+                          )}
+                        </dl>
+                      </details>
+                    )}
+                    {cleanupResult.deletedSymbols && cleanupResult.deletedSymbols.length > 0 && (
+                      <details className="mt-2">
+                        <summary className="text-emerald-600 cursor-pointer text-xs">Deleted symbols ({cleanupResult.deletedSymbols.length})</summary>
+                        <div className="mt-2 max-h-48 overflow-y-auto text-xs text-emerald-700 space-y-0.5">
+                          {cleanupResult.deletedSymbols.map((s) => (
+                            <div key={s.symbol}><span className="font-medium">{s.symbol}</span> — {s.name}</div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm">
+                <p className="font-medium text-red-800">Cleanup failed</p>
+                <p className="text-red-700 mt-1">{cleanupResult.error}</p>
+                {cleanupResult.details && <p className="text-red-600 text-xs mt-2">{cleanupResult.details}</p>}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Result */}
         {result && (
