@@ -1,5 +1,5 @@
 import { StockFilter } from "./types";
-import { getStockUniverse as getFMPStockUniverse } from "./fmpService";
+import { getStockUniverse as getFMPStockUniverse, getLastFMPError } from "./fmpService";
 
 // S&P 500 representative stock data with fundamental metrics
 // Now sourced from Financial Modeling Prep API with daily caching
@@ -56,6 +56,7 @@ export interface StockDatabaseResult {
   stocks: StockData[];
   dataSource: "fmp" | "hardcoded";
   stockCount: number;
+  error?: string; // Error message when FMP fails and fallback is used
 }
 
 /**
@@ -73,9 +74,18 @@ export async function getStockDatabase(): Promise<StockDatabaseResult> {
     console.warn('[StockData] Failed to load FMP data, using fallback:', error);
   }
 
+  // Get the detailed error from FMP service
+  const fmpError = getLastFMPError();
+  const errorMessage = fmpError || "FMP API returned no data. Using hardcoded fallback instead.";
+
   // Fallback to hardcoded data
   console.log(`[StockData] Using hardcoded fallback: ${STOCK_DATABASE.length} stocks`);
-  return { stocks: STOCK_DATABASE, dataSource: "hardcoded", stockCount: STOCK_DATABASE.length };
+  return {
+    stocks: STOCK_DATABASE,
+    dataSource: "hardcoded",
+    stockCount: STOCK_DATABASE.length,
+    error: errorMessage
+  };
 }
 
 // Expanded dataset of ~100 stocks spanning S&P 500, Russell 1000, and Russell 3000

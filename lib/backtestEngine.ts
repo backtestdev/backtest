@@ -15,7 +15,7 @@ function formatMarketCapFilter(filter: StockFilter): string {
 
 export async function runBacktest(params: StrategyParameters): Promise<BacktestResult> {
   // Get stock database (from FMP API with daily cache, or fallback to hardcoded data)
-  const { stocks: stockDatabase, dataSource, stockCount: stockUniverseSize } = await getStockDatabase();
+  const { stocks: stockDatabase, dataSource, stockCount: stockUniverseSize, error: stockSourceError } = await getStockDatabase();
 
   // Log applied filters for debugging
   const mcapFilters = params.filters.filter(f => f.metric === "market_cap");
@@ -81,6 +81,7 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
       debugInfo,
       dataSource,
       stockUniverseSize,
+      stockSourceError,
     };
   }
 
@@ -115,5 +116,6 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
     debugInfo,
     dataSource,
     stockUniverseSize,
+    stockSourceError,
   };
 }

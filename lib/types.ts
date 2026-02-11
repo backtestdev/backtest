@@ -50,6 +50,7 @@ export interface BacktestResult {
   parsingMethod?: ParsingMethod;
   dataSource?: "fmp" | "hardcoded";
   stockUniverseSize?: number;
+  stockSourceError?: string; // Error message when FMP fails and fallback is used
 }
 
 export interface TimeHorizonResult {
