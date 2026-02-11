@@ -231,8 +231,8 @@ interface IncomeData {
   netIncomeRatio: number;
 }
 
-// Name patterns that indicate funds, trusts, SPACs, etc. — NOT operating companies
-const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose)\b/i;
+// Name patterns that indicate funds, trusts, SPACs, debt instruments, etc. — NOT operating companies
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$/i;
 
 // ── Shared refresh logic ───────────────────────────────────────────
 
@@ -504,13 +504,42 @@ async function runRefresh(
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
   `;
 
-  // Cleanup: remove stale stocks not refreshed by screener in the last 7 days.
-  // The screener upserts every stock it finds with updated_at = NOW(), so any
-  // stock older than 7 days has been delisted or no longer meets criteria.
+  // Cleanup: remove non-company entries that slipped through earlier imports.
+  // Uses PostgreSQL POSIX regex (~*) for case-insensitive matching.
   // CASCADE foreign keys auto-delete quotes/ratios/profiles rows.
+  const NON_COMPANY_PATTERN = [
+    '\\y(ETF|ETN)\\y',
+    'Exchange.Traded',
+    '\\y(Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market)\\y',
+    'Closed.End',
+    '\\y(Acquisition Corp|Blank Check|SPAC|Special Purpose)\\y',
+    '\\y(Statutory Trust|Capital Trust|Investment Trust)\\y',
+    'Trust [IVX]+\\y',
+    'Depositary (Shares?|Receipt)',
+    'Preferred (Shares?|Stock|Securities)',
+    '\\d+\\.?\\d*% ',
+    'Fixed.Income',
+    '\\yRights$',
+    '\\yWarrants?$',
+  ].join('|');
+
+  const purged = await sql`
+    DELETE FROM stocks
+    WHERE is_etf = true
+       OR sector IS NULL OR TRIM(sector) = ''
+       OR symbol LIKE '%.%'
+       OR LENGTH(symbol) > 5
+       OR company_name ~* ${NON_COMPANY_PATTERN}
+    RETURNING symbol
+  `;
+  if (purged.length > 0) {
+    console.log(`[refresh] Purged ${purged.length} non-company entries`);
+  }
+
+  // Remove stale stocks not refreshed by screener in the last 7 days.
   await sql`DELETE FROM stocks WHERE updated_at < NOW() - INTERVAL '7 days'`;
 
-  // Also remove orphaned enrichment rows (symbol exists in child but not parent)
+  // Remove orphaned enrichment rows (symbol exists in child but not parent)
   await sql`DELETE FROM quotes   WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
   await sql`DELETE FROM ratios   WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
   await sql`DELETE FROM profiles WHERE symbol NOT IN (SELECT symbol FROM stocks)`;

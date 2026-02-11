@@ -243,8 +243,8 @@ interface IncomeData {
   netIncomeRatio: number;
 }
 
-// Name patterns that indicate funds, trusts, SPACs, etc. — NOT operating companies
-const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose)\b/i;
+// Name patterns that indicate funds, trusts, SPACs, debt instruments, etc. — NOT operating companies
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$/i;
 
 // ---------------------------------------------------------------------------
 // Step 1: Fetch screener → insert stocks
