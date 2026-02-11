@@ -7,7 +7,7 @@
  * FMP Starter plan: 300 req/min. We throttle to ~200 req/min with retry
  * on 429 to stay within limits.
  *
- * Budget: 300 stocks × 5 calls/stock × 300ms ≈ 7.5 min
+ * Budget: ~1500 stocks × 5 calls/stock × 300ms ≈ 37 min
  *
  * Usage:
  *   npx tsx scripts/populate-stocks.ts
@@ -199,12 +199,12 @@ async function populateStocks(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2: Enrich top 300 with quote + key-metrics + growth + income
+// Step 2: Enrich ALL stocks with quote + key-metrics + growth + income
 // 5 API calls per stock, sequential, rate-limited
 // ---------------------------------------------------------------------------
 
 async function enrichTopStocks() {
-  const topRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC LIMIT 300`;
+  const topRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC`;
   const topSymbols = topRows.map((r) => String(r.symbol));
   console.log(`Step 2/3: Enriching ${topSymbols.length} top stocks (5 API calls each)...`);
 
