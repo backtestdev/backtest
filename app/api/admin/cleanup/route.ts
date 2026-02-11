@@ -16,7 +16,8 @@ export const runtime = "nodejs";
 const NON_COMPANY_PATTERN = [
   '\\y(ETF|ETN)\\y',
   'Exchange.Traded',
-  '\\y(Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market)\\y',
+  '\\yFunds?\\y',
+  '\\y(Money Market)\\y',
   'Closed.End',
   '\\y(Acquisition Corp|Blank Check|SPAC|Special Purpose)\\y',
   '\\y(Statutory Trust|Capital Trust|Investment Trust)\\y',
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
     const noSectorCount = await sql`SELECT count(*) as cnt FROM stocks WHERE sector IS NULL OR TRIM(sector) = ''`;
     const badSymbolCount = await sql`SELECT count(*) as cnt FROM stocks WHERE symbol LIKE '%.%' OR LENGTH(symbol) > 5`;
     const namePatternCount = await sql`SELECT count(*) as cnt FROM stocks WHERE company_name ~* ${NON_COMPANY_PATTERN}`;
+    const mutualFundTickerCount = await sql`SELECT count(*) as cnt FROM stocks WHERE LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management'`;
 
     // Delete all matching (CASCADE handles quotes/ratios/profiles)
     const deleted = await sql`
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
          OR symbol LIKE '%.%'
          OR LENGTH(symbol) > 5
          OR company_name ~* ${NON_COMPANY_PATTERN}
+         OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management')
       RETURNING symbol, company_name
     `;
 
@@ -87,6 +90,7 @@ export async function POST(request: NextRequest) {
         noSector: Number(noSectorCount[0].cnt),
         badSymbol: Number(badSymbolCount[0].cnt),
         namePattern: Number(namePatternCount[0].cnt),
+        mutualFundTicker: Number(mutualFundTickerCount[0].cnt),
       },
       deletedSymbols: deleted.map((r) => ({ symbol: r.symbol, name: r.company_name })),
     });
