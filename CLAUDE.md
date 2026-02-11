@@ -9,11 +9,24 @@
 
 ```
 backtest/
-├── CLAUDE.md          # This file — AI assistant guide
-└── (project files to be added)
+├── app/api/
+│   ├── backtest/route.ts            # POST: parse strategy + run backtest
+│   ├── leaderboard/route.ts         # GET/POST: leaderboard CRUD
+│   ├── db/init/route.ts             # POST: initialize all DB tables
+│   └── admin/refresh-stocks/route.ts # POST: refresh stock DB from FMP API
+├── lib/
+│   ├── fmpService.ts                # Stock universe (reads from PostgreSQL)
+│   ├── stockData.ts                 # Filtering, returns calculation, fallback data
+│   ├── backtestEngine.ts            # Core backtest logic
+│   ├── naturalLanguageParser.ts     # NLP → structured strategy params
+│   ├── db.ts                        # Neon PostgreSQL connection
+│   └── types.ts                     # Shared TypeScript interfaces
+├── scripts/
+│   └── populate-stocks.ts           # One-time FMP → PostgreSQL population
+├── components/                      # React UI components
+├── data/                            # Fallback JSON data
+└── CLAUDE.md
 ```
-
-> **Note:** This file will be updated as the project evolves. When adding new modules, tests, or tooling, update the relevant sections below.
 
 ## Development Workflow
 
@@ -31,7 +44,54 @@ backtest/
 
 ## Build & Run
 
-*(To be documented once the project tooling is established.)*
+```bash
+npm install
+npm run dev          # Start Next.js dev server
+npm run build        # Production build
+```
+
+### Stock Database Initialization
+
+The app reads stock data from PostgreSQL (Neon) instead of making live FMP API calls.
+One-time setup to populate the database:
+
+```bash
+# 1. Initialize tables (run once, or after schema changes)
+curl -X POST http://localhost:3000/api/db/init
+
+# 2. Populate stock data from FMP API (~5 min, requires both env vars)
+npx tsx scripts/populate-stocks.ts
+```
+
+**Required env vars:**
+- `DATABASE_URL` — Neon PostgreSQL connection string
+- `FINANCIAL_MODELING_PREP_API_KEY` — FMP API key (alias: `FMP_API_KEY`)
+
+### Refreshing Stock Data
+
+Two options to update the pre-built database:
+
+1. **Admin endpoint** (rate-limited to 1/hour):
+   ```bash
+   curl -X POST http://localhost:3000/api/admin/refresh-stocks \
+     -H "x-admin-secret: $ADMIN_SECRET"
+   ```
+
+2. **CLI script** (no rate limit):
+   ```bash
+   npx tsx scripts/populate-stocks.ts
+   ```
+
+### Database Schema (stock tables)
+
+| Table | Purpose | Primary Key |
+|-------|---------|-------------|
+| `stocks` | Identity & screener data (symbol, sector, market cap) | `symbol` |
+| `quotes` | Price, P/E, volume, 52-week range | `symbol` |
+| `ratios` | Fundamental metrics (P/B, ROE, D/E, etc.) | `symbol` |
+| `profiles` | Growth rates, profit margin, historical returns | `symbol` |
+| `stock_meta` | Metadata (last refresh timestamp) | `key` |
+| `leaderboard` | Saved strategy results | `id` |
 
 ## Testing
 
