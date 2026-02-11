@@ -31,12 +31,12 @@ const METRIC_ALIASES: Record<string, string[]> = {
   debt_to_equity: ["debt to equity", "d/e", "de ratio", "leverage", "debt/equity", "debt equity"],
   current_ratio: ["current ratio", "liquidity ratio"],
   free_cash_flow_per_share: ["fcf", "free cash flow", "fcf per share"],
+  revenue_per_share: ["revenue per share", "rev per share", "sales per share", "rps"],
+  net_income_per_share: ["net income per share", "earnings per share", "ni per share", "nips"],
   market_cap: ["market cap", "mcap", "market capitalization", "market value"],
   beta: ["beta", "volatility"],
   week52_high_pct: ["52 week high", "52-week high", "near high", "52w high"],
   sector: ["sector", "industry"],
-  net_income: ["net income", "net earnings", "bottom line"],
-  revenue: ["revenue", "sales", "top line"],
 };
 
 // Build reverse lookup: alias -> canonical metric name

@@ -12,7 +12,7 @@
  * FMP Starter plan: 300 req/min. We throttle to ~200 req/min.
  *
  * Budget per run (5-min Vercel timeout):
- *   1 screener call + 150 stocks × 5 calls × 300ms ≈ 4 min
+ *   1 screener call + 150 stocks × 6 calls × 300ms ≈ 4.5 min
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -131,6 +131,10 @@ interface KeyMetrics {
   enterpriseValue: number;
 }
 
+interface FinancialRatios {
+  returnOnEquity: number;
+}
+
 interface GrowthData {
   date: string;
   period: string; // "FY", "Q1", "Q2", "Q3", "Q4"
@@ -142,6 +146,9 @@ interface GrowthData {
 interface IncomeData {
   netIncomeRatio: number;
 }
+
+// Name patterns that indicate funds, trusts, SPACs, etc. — NOT operating companies
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose)\b/i;
 
 // ── Shared refresh logic ───────────────────────────────────────────
 
@@ -167,7 +174,8 @@ async function runRefresh(
       !s.isEtf &&
       !s.isFund &&
       s.sector &&
-      s.sector.trim() !== ""
+      s.sector.trim() !== "" &&
+      !EXCLUDE_NAME_PATTERNS.test(s.companyName)
   );
   console.log(`[refresh] ${results.length} screener → ${filtered.length} common stocks`);
 
@@ -200,6 +208,7 @@ async function runRefresh(
     try {
       const quote = await fetchFMP<Quote[]>(`/quote?symbol=${sym}`).then((r) => r?.[0] || null);
       const metrics = await fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
+      const finRatios = await fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
       const annualGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=annual&limit=8`).then((r) => r || []);
       const quarterlyGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
       const income = await fetchFMP<IncomeData[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
@@ -220,11 +229,12 @@ async function runRefresh(
         `;
       }
 
-      // Ratios table — key-metrics with PE fallback from quote
+      // Ratios table — key-metrics + financial-ratios (ROE), PE fallback from quote
       const peRatio = metrics?.peRatio || quote?.pe || 0;
+      const roe = finRatios?.returnOnEquity || 0;
       await sql`
         INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
-        VALUES (${sym}, ${peRatio}, ${metrics?.pbRatio || 0}, ${metrics?.priceToSalesRatio || 0}, ${metrics?.debtToEquity || 0}, ${metrics?.currentRatio || 0}, ${metrics?.roe || 0}, ${metrics?.roic || 0}, ${metrics?.dividendYield || 0}, ${metrics?.payoutRatio || 0}, ${metrics?.freeCashFlowPerShare || 0}, ${metrics?.revenuePerShare || 0}, ${metrics?.netIncomePerShare || 0}, ${metrics?.earningsYield || 0}, ${metrics?.evToSales || 0}, ${metrics?.enterpriseValue || 0}, NOW())
+        VALUES (${sym}, ${peRatio}, ${metrics?.pbRatio || 0}, ${metrics?.priceToSalesRatio || 0}, ${metrics?.debtToEquity || 0}, ${metrics?.currentRatio || 0}, ${roe}, ${metrics?.roic || 0}, ${metrics?.dividendYield || 0}, ${metrics?.payoutRatio || 0}, ${metrics?.freeCashFlowPerShare || 0}, ${metrics?.revenuePerShare || 0}, ${metrics?.netIncomePerShare || 0}, ${metrics?.earningsYield || 0}, ${metrics?.evToSales || 0}, ${metrics?.enterpriseValue || 0}, NOW())
         ON CONFLICT (symbol) DO UPDATE SET
           pe_ratio=EXCLUDED.pe_ratio, pb_ratio=EXCLUDED.pb_ratio, price_to_sales_ratio=EXCLUDED.price_to_sales_ratio,
           debt_to_equity=EXCLUDED.debt_to_equity, current_ratio=EXCLUDED.current_ratio, roe=EXCLUDED.roe, roic=EXCLUDED.roic,
@@ -280,6 +290,17 @@ async function runRefresh(
     VALUES (${'enrich_offset'}, ${String(nextOffset)}, NOW())
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
   `;
+
+  // Cleanup: remove stale stocks not refreshed by screener in the last 7 days.
+  // The screener upserts every stock it finds with updated_at = NOW(), so any
+  // stock older than 7 days has been delisted or no longer meets criteria.
+  // CASCADE foreign keys auto-delete quotes/ratios/profiles rows.
+  await sql`DELETE FROM stocks WHERE updated_at < NOW() - INTERVAL '7 days'`;
+
+  // Also remove orphaned enrichment rows (symbol exists in child but not parent)
+  await sql`DELETE FROM quotes   WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
+  await sql`DELETE FROM ratios   WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
+  await sql`DELETE FROM profiles WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
 
   await refreshStockUniverse();
 
