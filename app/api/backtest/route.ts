@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
           {
             error: "No stocks matched your criteria. Try adjusting your filters.",
             params,
+            dataSource: result.dataSource,
+            stockUniverseSize: result.stockUniverseSize,
           },
           { status: 200 }
         );
@@ -27,6 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ...result,
         parsedParams: structuredParams,
+        parsingMethod: "ai", // Inspector edits are always from an AI-parsed result
       });
     }
 
@@ -40,7 +43,8 @@ export async function POST(request: NextRequest) {
     // Parse natural language into structured parameters
     const params = await parseStrategy(strategy.trim());
 
-    // Log warnings if any
+    // Log parsing method and warnings
+    console.log(`[API] Parsing method: ${params.parsingMethod || "unknown"}`);
     if (params.warnings && params.warnings.length > 0) {
       console.warn("[API] Parsing warnings:", params.warnings);
     }
@@ -54,6 +58,9 @@ export async function POST(request: NextRequest) {
           error: "No stocks matched your criteria. Try adjusting your filters.",
           params,
           warnings: params.warnings,
+          parsingMethod: params.parsingMethod,
+          dataSource: result.dataSource,
+          stockUniverseSize: result.stockUniverseSize,
         },
         { status: 200 }
       );
@@ -66,6 +73,7 @@ export async function POST(request: NextRequest) {
       ...result,
       parsedParams,
       warnings: params.warnings,
+      parsingMethod: params.parsingMethod,
     });
   } catch (error) {
     console.error("Backtest error:", error);

@@ -14,9 +14,12 @@ const METRIC_LABELS: Record<string, string> = {
   earnings_growth: "Earnings Growth",
   profit_margin: "Profit Margin",
   market_cap: "Market Cap ($B)",
-  price_to_book: "Price to Book",
-  debt_to_equity: "Debt to Equity",
-  roe: "Return on Equity",
+  price_to_book: "Price to Book (P/B)",
+  debt_to_equity: "Debt to Equity (D/E)",
+  current_ratio: "Current Ratio",
+  roe: "Return on Equity (ROE)",
+  roic: "Return on Invested Capital (ROIC)",
+  free_cash_flow_per_share: "Free Cash Flow / Share",
   payout_ratio: "Payout Ratio",
   beta: "Beta",
   week52_high_pct: "% of 52-Week High",
@@ -31,6 +34,11 @@ const SECTOR_MAP: Record<string, number> = {
   Financial: 3,
   Energy: 4,
   Consumer: 5,
+  Industrials: 6,
+  "Basic Materials": 7,
+  "Real Estate": 8,
+  Utilities: 9,
+  "Communication Services": 10,
 };
 
 const SECTOR_REVERSE: Record<number, string> = {
@@ -39,14 +47,25 @@ const SECTOR_REVERSE: Record<number, string> = {
   3: "Financial",
   4: "Energy",
   5: "Consumer",
+  6: "Industrials",
+  7: "Basic Materials",
+  8: "Real Estate",
+  9: "Utilities",
+  10: "Communication Services",
 };
 
+const PERCENTAGE_METRICS = new Set([
+  "dividend_yield", "revenue_growth", "earnings_growth",
+  "profit_margin", "roe", "roic", "payout_ratio",
+]);
+
 function formatMetricValue(name: string, value: number): string {
-  if (name === "dividend_yield" || name === "revenue_growth" || name === "earnings_growth" || name === "profit_margin" || name === "roe" || name === "payout_ratio") {
+  if (PERCENTAGE_METRICS.has(name)) {
     return `${(value * 100).toFixed(1)}%`;
   }
   if (name === "market_cap") return `$${value}B`;
   if (name === "sector") return SECTOR_REVERSE[value] || String(value);
+  if (name === "free_cash_flow_per_share") return `$${value.toFixed(2)}`;
   return String(value);
 }
 
