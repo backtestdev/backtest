@@ -199,7 +199,8 @@ export default function HomePage() {
         <footer className="max-w-3xl mx-auto mt-20 pb-12 text-center">
           <p className="text-xs text-gray-300">
             For educational purposes only. Not financial advice. Past performance
-            does not guarantee future results.
+            does not guarantee future results
+            <a href="/admin/stocks" className="text-gray-300 hover:text-gray-400 transition-colors">.</a>
           </p>
         </footer>
       </main>
