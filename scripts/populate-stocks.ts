@@ -4,6 +4,9 @@
  * Fetches stock data from Financial Modeling Prep API and writes it into
  * PostgreSQL tables (stocks, quotes, ratios, profiles).
  *
+ * FMP Starter plan: 300 req/min. We throttle to ~3 req/sec with retry
+ * on 429 to stay well within limits.
+ *
  * Usage:
  *   npx tsx scripts/populate-stocks.ts
  *
@@ -39,20 +42,39 @@ if (!DATABASE_URL) {
 const sql = neon(DATABASE_URL);
 
 // ---------------------------------------------------------------------------
-// FMP fetch helper
+// Rate-limited FMP fetch helper
 // ---------------------------------------------------------------------------
 
-async function fetchFMP<T>(endpoint: string): Promise<T | null> {
+let lastFetchTime = 0;
+const MIN_FETCH_INTERVAL_MS = 350; // ~170 req/min, well under 300/min
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
+  // Throttle: ensure MIN_FETCH_INTERVAL_MS between requests
+  const elapsed = Date.now() - lastFetchTime;
+  if (elapsed < MIN_FETCH_INTERVAL_MS) {
+    await sleep(MIN_FETCH_INTERVAL_MS - elapsed);
+  }
+  lastFetchTime = Date.now();
+
   const url = `${FMP_BASE}${endpoint}${endpoint.includes("?") ? "&" : "?"}apikey=${FMP_API_KEY}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (res.status === 429 && retries > 0) {
+      console.warn(`  FMP 429 rate limited on ${endpoint}, retrying in 3s...`);
+      await sleep(3000);
+      return fetchFMP<T>(endpoint, retries - 1);
+    }
     if (!res.ok) {
       console.error(`  FMP ${res.status} for ${endpoint}`);
       return null;
     }
     const data = await res.json();
     if (data && typeof data === "object" && "Error Message" in data) {
-      console.error(`  FMP error: ${data["Error Message"]}`);
+      console.error(`  FMP error: ${(data as Record<string, string>)["Error Message"]}`);
       return null;
     }
     return data as T;
@@ -60,10 +82,6 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
     console.error(`  FMP network error for ${endpoint}:`, e instanceof Error ? e.message : e);
     return null;
   }
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +102,7 @@ interface FMPScreenerResult {
   exchangeShortName: string;
   country: string;
   isEtf: boolean;
+  isFund: boolean;
   isActivelyTrading: boolean;
 }
 
@@ -147,17 +166,25 @@ interface FMPIncomeStatement {
 async function populateStocks(): Promise<string[]> {
   console.log("Step 1/4: Fetching stock screener...");
   const results = await fetchFMP<FMPScreenerResult[]>(
-    "/company-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
+    "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
   );
 
   if (!results || results.length === 0) {
     throw new Error("Screener returned no results");
   }
 
+  // Filter: common stocks only (no ETFs, funds, or sectorless instruments)
   const filtered = results.filter(
-    (s) => s.marketCap > 0 && !s.symbol.includes(".") && s.symbol.length <= 5 && !s.isEtf
+    (s) =>
+      s.marketCap > 0 &&
+      !s.symbol.includes(".") &&
+      s.symbol.length <= 5 &&
+      !s.isEtf &&
+      !s.isFund &&
+      s.sector &&
+      s.sector.trim() !== ""
   );
-  console.log(`  Found ${filtered.length} common stocks`);
+  console.log(`  ${results.length} screener results → ${filtered.length} common stocks`);
 
   // Upsert individually using tagged templates (neon auto-parameterizes)
   for (const s of filtered) {
@@ -226,15 +253,13 @@ async function populateQuotes(symbols: string[]) {
       `;
       count++;
     }
-
-    if (i + BATCH < symbols.length) await sleep(200);
   }
 
   console.log(`  Inserted/updated ${count} quotes`);
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: Enrich top 300 with key metrics + growth + income → ratios + profiles
+// Step 3: Enrich top 300 — SEQUENTIALLY to respect FMP rate limits
 // ---------------------------------------------------------------------------
 
 async function enrichTopStocks() {
@@ -243,79 +268,71 @@ async function enrichTopStocks() {
   const topSymbols = topRows.map((r) => String(r.symbol));
   console.log(`Step 3/4: Enriching ${topSymbols.length} top stocks with detailed metrics...`);
 
-  const BATCH = 5;
   let enriched = 0;
+  let failed = 0;
 
-  for (let i = 0; i < topSymbols.length; i += BATCH) {
-    const batch = topSymbols.slice(i, i + BATCH);
+  for (const sym of topSymbols) {
+    try {
+      // Sequential calls — each throttled by fetchFMP's rate limiter
+      const metrics = await fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
+      const growth = await fetchFMP<FMPFinancialGrowth[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
+      const income = await fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
 
-    await Promise.all(
-      batch.map(async (sym) => {
-        try {
-          const [metrics, growth, income] = await Promise.all([
-            fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null),
-            fetchFMP<FMPFinancialGrowth[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []),
-            fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []),
-          ]);
+      // Upsert ratios
+      if (metrics) {
+        await sql`
+          INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
+          VALUES (${sym}, ${metrics.peRatio || 0}, ${metrics.pbRatio || 0}, ${metrics.priceToSalesRatio || 0}, ${metrics.debtToEquity || 0}, ${metrics.currentRatio || 0}, ${metrics.roe || 0}, ${metrics.roic || 0}, ${metrics.dividendYield || 0}, ${metrics.payoutRatio || 0}, ${metrics.freeCashFlowPerShare || 0}, ${metrics.revenuePerShare || 0}, ${metrics.netIncomePerShare || 0}, ${metrics.earningsYield || 0}, ${metrics.evToSales || 0}, ${metrics.enterpriseValue || 0}, NOW())
+          ON CONFLICT (symbol) DO UPDATE SET
+            pe_ratio = EXCLUDED.pe_ratio,
+            pb_ratio = EXCLUDED.pb_ratio,
+            price_to_sales_ratio = EXCLUDED.price_to_sales_ratio,
+            debt_to_equity = EXCLUDED.debt_to_equity,
+            current_ratio = EXCLUDED.current_ratio,
+            roe = EXCLUDED.roe,
+            roic = EXCLUDED.roic,
+            dividend_yield = EXCLUDED.dividend_yield,
+            payout_ratio = EXCLUDED.payout_ratio,
+            free_cash_flow_per_share = EXCLUDED.free_cash_flow_per_share,
+            revenue_per_share = EXCLUDED.revenue_per_share,
+            net_income_per_share = EXCLUDED.net_income_per_share,
+            earnings_yield = EXCLUDED.earnings_yield,
+            ev_to_sales = EXCLUDED.ev_to_sales,
+            enterprise_value = EXCLUDED.enterprise_value,
+            updated_at = NOW()
+        `;
+      }
 
-          // Upsert ratios
-          if (metrics) {
-            await sql`
-              INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
-              VALUES (${sym}, ${metrics.peRatio || 0}, ${metrics.pbRatio || 0}, ${metrics.priceToSalesRatio || 0}, ${metrics.debtToEquity || 0}, ${metrics.currentRatio || 0}, ${metrics.roe || 0}, ${metrics.roic || 0}, ${metrics.dividendYield || 0}, ${metrics.payoutRatio || 0}, ${metrics.freeCashFlowPerShare || 0}, ${metrics.revenuePerShare || 0}, ${metrics.netIncomePerShare || 0}, ${metrics.earningsYield || 0}, ${metrics.evToSales || 0}, ${metrics.enterpriseValue || 0}, NOW())
-              ON CONFLICT (symbol) DO UPDATE SET
-                pe_ratio = EXCLUDED.pe_ratio,
-                pb_ratio = EXCLUDED.pb_ratio,
-                price_to_sales_ratio = EXCLUDED.price_to_sales_ratio,
-                debt_to_equity = EXCLUDED.debt_to_equity,
-                current_ratio = EXCLUDED.current_ratio,
-                roe = EXCLUDED.roe,
-                roic = EXCLUDED.roic,
-                dividend_yield = EXCLUDED.dividend_yield,
-                payout_ratio = EXCLUDED.payout_ratio,
-                free_cash_flow_per_share = EXCLUDED.free_cash_flow_per_share,
-                revenue_per_share = EXCLUDED.revenue_per_share,
-                net_income_per_share = EXCLUDED.net_income_per_share,
-                earnings_yield = EXCLUDED.earnings_yield,
-                ev_to_sales = EXCLUDED.ev_to_sales,
-                enterprise_value = EXCLUDED.enterprise_value,
-                updated_at = NOW()
-            `;
-          }
+      // Compute growth stats
+      const revenueGrowthQ = consecutivePositive(growth, "revenueGrowth");
+      const netIncomeGrowthQ = consecutivePositive(growth, "netIncomeGrowth");
+      const divGrowthYears = dividendGrowthYears(growth);
+      const recentGrowth = growth.find((g) => g.period === "FY") || growth[0];
+      const profitMargin = income[0]?.netIncomeRatio || 0;
 
-          // Compute growth stats
-          const revenueGrowthQ = consecutivePositive(growth, "revenueGrowth");
-          const netIncomeGrowthQ = consecutivePositive(growth, "netIncomeGrowth");
-          const divGrowthYears = dividendGrowthYears(growth);
-          const recentGrowth = growth.find((g) => g.period === "FY") || growth[0];
-          const profitMargin = income[0]?.netIncomeRatio || 0;
+      await sql`
+        INSERT INTO profiles (symbol, revenue_growth, net_income_growth, earnings_growth, revenue_growth_quarters, net_income_growth_quarters, dividend_growth_years, profit_margin, historical_returns, updated_at)
+        VALUES (${sym}, ${recentGrowth?.revenueGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${revenueGrowthQ}, ${netIncomeGrowthQ}, ${divGrowthYears}, ${profitMargin}, ${'{}'}, NOW())
+        ON CONFLICT (symbol) DO UPDATE SET
+          revenue_growth = EXCLUDED.revenue_growth,
+          net_income_growth = EXCLUDED.net_income_growth,
+          earnings_growth = EXCLUDED.earnings_growth,
+          revenue_growth_quarters = EXCLUDED.revenue_growth_quarters,
+          net_income_growth_quarters = EXCLUDED.net_income_growth_quarters,
+          dividend_growth_years = EXCLUDED.dividend_growth_years,
+          profit_margin = EXCLUDED.profit_margin,
+          updated_at = NOW()
+      `;
 
-          await sql`
-            INSERT INTO profiles (symbol, revenue_growth, net_income_growth, earnings_growth, revenue_growth_quarters, net_income_growth_quarters, dividend_growth_years, profit_margin, historical_returns, updated_at)
-            VALUES (${sym}, ${recentGrowth?.revenueGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${revenueGrowthQ}, ${netIncomeGrowthQ}, ${divGrowthYears}, ${profitMargin}, ${'{}'}, NOW())
-            ON CONFLICT (symbol) DO UPDATE SET
-              revenue_growth = EXCLUDED.revenue_growth,
-              net_income_growth = EXCLUDED.net_income_growth,
-              earnings_growth = EXCLUDED.earnings_growth,
-              revenue_growth_quarters = EXCLUDED.revenue_growth_quarters,
-              net_income_growth_quarters = EXCLUDED.net_income_growth_quarters,
-              dividend_growth_years = EXCLUDED.dividend_growth_years,
-              profit_margin = EXCLUDED.profit_margin,
-              updated_at = NOW()
-          `;
-
-          enriched++;
-        } catch (e) {
-          console.error(`  Error enriching ${sym}:`, e instanceof Error ? e.message : e);
-        }
-      })
-    );
-
-    if (i + BATCH < topSymbols.length) await sleep(500);
-    if (enriched % 50 === 0) console.log(`  Enriched ${enriched}/${topSymbols.length}...`);
+      enriched++;
+      if (enriched % 25 === 0) console.log(`  Enriched ${enriched}/${topSymbols.length}...`);
+    } catch (e) {
+      failed++;
+      console.error(`  Error enriching ${sym}:`, e instanceof Error ? e.message : e);
+    }
   }
 
-  console.log(`  Enriched ${enriched} stocks`);
+  console.log(`  Enriched ${enriched} stocks (${failed} failed)`);
 }
 
 // ---------------------------------------------------------------------------
