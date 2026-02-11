@@ -37,6 +37,71 @@ const METRIC_ALIASES: Record<string, string[]> = {
   beta: ["beta", "volatility"],
   week52_high_pct: ["52 week high", "52-week high", "near high", "52w high"],
   sector: ["sector", "industry"],
+  // Key Metrics endpoint
+  enterprise_value: ["enterprise value", "ev"],
+  ev_to_sales: ["ev to sales", "ev/sales"],
+  ev_to_operating_cash_flow: ["ev to operating cash flow", "ev/ocf"],
+  ev_to_free_cash_flow: ["ev to free cash flow", "ev/fcf"],
+  ev_to_ebitda: ["ev to ebitda", "ev/ebitda"],
+  net_debt_to_ebitda: ["net debt to ebitda", "net debt/ebitda"],
+  income_quality: ["income quality"],
+  graham_number: ["graham number"],
+  graham_net_net: ["graham net net", "net-net"],
+  tax_burden: ["tax burden"],
+  interest_burden: ["interest burden"],
+  working_capital: ["working capital"],
+  invested_capital: ["invested capital"],
+  return_on_assets: ["roa", "return on assets"],
+  operating_return_on_assets: ["operating roa", "operating return on assets"],
+  return_on_tangible_assets: ["return on tangible assets", "rota"],
+  return_on_capital_employed: ["roce", "return on capital employed"],
+  earnings_yield: ["earnings yield"],
+  free_cash_flow_yield: ["fcf yield", "free cash flow yield"],
+  capex_to_operating_cash_flow: ["capex to ocf", "capex/ocf"],
+  capex_to_depreciation: ["capex to depreciation", "capex/depreciation"],
+  capex_to_revenue: ["capex to revenue", "capex/revenue"],
+  sga_to_revenue: ["sga to revenue", "sg&a to revenue", "selling general admin"],
+  rd_to_revenue: ["r&d to revenue", "rd to revenue", "research development"],
+  sbc_to_revenue: ["sbc to revenue", "stock based comp to revenue"],
+  intangibles_to_total_assets: ["intangibles to assets", "intangible assets ratio"],
+  days_sales_outstanding: ["dso", "days sales outstanding"],
+  days_payables_outstanding: ["dpo", "days payables outstanding"],
+  days_inventory_outstanding: ["dio", "days inventory outstanding"],
+  operating_cycle: ["operating cycle"],
+  cash_conversion_cycle: ["ccc", "cash conversion cycle"],
+  free_cash_flow_to_equity: ["fcfe", "fcf to equity"],
+  free_cash_flow_to_firm: ["fcff", "fcf to firm"],
+  tangible_asset_value: ["tangible asset value", "tav"],
+  net_current_asset_value: ["ncav", "net current asset value"],
+  // Ratios endpoint
+  gross_profit_margin: ["gross margin", "gross profit margin"],
+  ebit_margin: ["ebit margin"],
+  ebitda_margin: ["ebitda margin"],
+  operating_profit_margin: ["operating margin", "operating profit margin"],
+  pretax_profit_margin: ["pretax margin", "pretax profit margin"],
+  net_profit_margin: ["net profit margin", "net margin ratio"],
+  quick_ratio: ["quick ratio", "acid test"],
+  solvency_ratio: ["solvency ratio", "solvency"],
+  cash_ratio: ["cash ratio"],
+  peg_ratio: ["peg", "peg ratio", "price earnings growth"],
+  forward_peg_ratio: ["forward peg", "forward peg ratio"],
+  price_to_fcf_ratio: ["price to fcf", "p/fcf", "price/fcf"],
+  price_to_ocf_ratio: ["price to ocf", "p/ocf", "price/ocf"],
+  debt_to_assets_ratio: ["debt to assets", "debt/assets"],
+  debt_to_capital_ratio: ["debt to capital", "debt/capital"],
+  lt_debt_to_capital_ratio: ["lt debt to capital", "long term debt to capital"],
+  financial_leverage_ratio: ["financial leverage"],
+  interest_coverage_ratio: ["interest coverage", "times interest earned"],
+  debt_service_coverage_ratio: ["dscr", "debt service coverage"],
+  dividend_yield_percentage: ["dividend yield pct", "dividend yield percentage"],
+  cash_per_share: ["cash per share", "cps"],
+  book_value_per_share: ["book value per share", "bvps"],
+  tangible_book_value_per_share: ["tangible book value per share", "tbvps"],
+  operating_cash_flow_per_share: ["ocf per share", "operating cash flow per share"],
+  price_to_fair_value: ["price to fair value", "p/fv"],
+  debt_to_market_cap: ["debt to market cap"],
+  effective_tax_rate: ["effective tax rate", "tax rate"],
+  enterprise_value_multiple: ["ev multiple", "enterprise value multiple"],
 };
 
 // Build reverse lookup: alias -> canonical metric name
@@ -113,6 +178,24 @@ Available metrics:
 - week52_high_pct (percentage of 52-week high, 1.0 = at the high)
 - sector (use value 1 for tech, 2 for healthcare, 3 for finance, 4 for energy, 5 for consumer, 6 for industrials, 7 for basic materials, 8 for real estate, 9 for utilities, 10 for communication services)
 - free_cash_flow_per_share
+- enterprise_value, ev_to_sales, ev_to_operating_cash_flow, ev_to_free_cash_flow, ev_to_ebitda
+- net_debt_to_ebitda, income_quality, graham_number, graham_net_net
+- tax_burden, interest_burden, working_capital, invested_capital
+- return_on_assets (ROA as decimal), operating_return_on_assets, return_on_tangible_assets
+- return_on_capital_employed (ROCE as decimal), earnings_yield, free_cash_flow_yield
+- capex_to_operating_cash_flow, capex_to_depreciation, capex_to_revenue
+- sga_to_revenue, rd_to_revenue, sbc_to_revenue, intangibles_to_total_assets
+- days_sales_outstanding, days_payables_outstanding, days_inventory_outstanding
+- operating_cycle, cash_conversion_cycle
+- free_cash_flow_to_equity, free_cash_flow_to_firm, tangible_asset_value, net_current_asset_value
+- gross_profit_margin, ebit_margin, ebitda_margin, operating_profit_margin, pretax_profit_margin
+- net_profit_margin, quick_ratio, solvency_ratio, cash_ratio
+- peg_ratio, forward_peg_ratio, price_to_fcf_ratio, price_to_ocf_ratio
+- debt_to_assets_ratio, debt_to_capital_ratio, lt_debt_to_capital_ratio, financial_leverage_ratio
+- interest_coverage_ratio, debt_service_coverage_ratio
+- book_value_per_share, tangible_book_value_per_share, cash_per_share
+- operating_cash_flow_per_share, capex_per_share, revenue_per_share, net_income_per_share
+- price_to_fair_value, debt_to_market_cap, effective_tax_rate, enterprise_value_multiple
 
 Available operators: ">", "<", ">=", "<=", "==", "between"
 
