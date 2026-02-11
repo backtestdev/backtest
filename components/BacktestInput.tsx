@@ -11,6 +11,7 @@ interface BacktestInputProps {
   dataSource?: "fmp" | "hardcoded";
   stockUniverseSize?: number;
   warnings?: string[];
+  stockSourceError?: string;
 }
 
 function ParsingBadge({ method }: { method: ParsingMethod }) {
@@ -58,7 +59,7 @@ function DataSourceBadge({ source, count }: { source: "fmp" | "hardcoded"; count
   );
 }
 
-export default function BacktestInput({ onSubmit, isLoading, parsingMethod, dataSource, stockUniverseSize, warnings }: BacktestInputProps) {
+export default function BacktestInput({ onSubmit, isLoading, parsingMethod, dataSource, stockUniverseSize, warnings, stockSourceError }: BacktestInputProps) {
   const [strategy, setStrategy] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -131,6 +132,23 @@ export default function BacktestInput({ onSubmit, isLoading, parsingMethod, data
                 <li key={i}>{w}</li>
               ))}
             </ul>
+          </details>
+        </div>
+      )}
+
+      {/* Stock source details */}
+      {dataSource === "hardcoded" && stockSourceError && (
+        <div className="mt-3 max-w-2xl mx-auto">
+          <details className="text-xs text-gray-600">
+            <summary className="cursor-pointer hover:text-gray-700">View stock source details</summary>
+            <div className="mt-1 pl-4">
+              <p className="text-amber-600">
+                <strong>Using fallback data source:</strong> {stockSourceError}
+              </p>
+              <p className="mt-1 text-gray-500">
+                The backtest is using a hardcoded dataset of {stockUniverseSize} stocks instead of live FMP data.
+              </p>
+            </div>
           </details>
         </div>
       )}

@@ -27,6 +27,9 @@ if (!FMP_API_KEY) {
 // In-memory cache to avoid hitting FMP rate limits
 let memoryCache: { stocks: StockData[]; timestamp: number } | null = null;
 
+// Track last FMP error for detailed error reporting
+let lastFMPError: string | null = null;
+
 interface FMPQuote {
   symbol: string;
   name: string;
@@ -222,6 +225,7 @@ interface CachedUniverse {
  */
 async function fetchFMP<T>(endpoint: string): Promise<T | null> {
   if (!FMP_API_KEY) {
+    lastFMPError = "FMP API key is not configured. Set FINANCIAL_MODELING_PREP_API_KEY or FMP_API_KEY environment variable.";
     return null;
   }
 
@@ -232,6 +236,7 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
     });
 
     if (!response.ok) {
+      lastFMPError = `FMP API returned ${response.status} ${response.statusText}`;
       console.error(`[FMP] API error: ${response.status} ${response.statusText} for ${endpoint}`);
       return null;
     }
@@ -240,13 +245,18 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
 
     // FMP returns an error message object when rate limited or key is invalid
     if (data && typeof data === 'object' && 'Error Message' in data) {
+      lastFMPError = `FMP API error: ${data['Error Message']}`;
       console.error(`[FMP] API error response: ${data['Error Message']}`);
       return null;
     }
 
+    // Clear error on success
+    lastFMPError = null;
     return data as T;
   } catch (error) {
-    console.error(`[FMP] Fetch error for ${endpoint}:`, error instanceof Error ? error.message : error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    lastFMPError = `Network error: ${errorMsg}`;
+    console.error(`[FMP] Fetch error for ${endpoint}:`, errorMsg);
     return null;
   }
 }
@@ -582,4 +592,11 @@ export async function refreshStockUniverse(): Promise<StockData[]> {
  */
 export function isFMPConfigured(): boolean {
   return !!FMP_API_KEY;
+}
+
+/**
+ * Returns the last error message from FMP API, if any
+ */
+export function getLastFMPError(): string | null {
+  return lastFMPError;
 }
