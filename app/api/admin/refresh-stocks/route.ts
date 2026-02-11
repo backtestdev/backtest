@@ -1,26 +1,33 @@
 /**
  * Admin endpoint to refresh the stock database from FMP API.
  *
- * POST /api/admin/refresh-stocks
+ * GET  /api/admin/refresh-stocks — Vercel Cron handler (rotates batches)
+ * POST /api/admin/refresh-stocks — Manual trigger (enriches top 150)
  *
- * Rate-limited: one refresh per hour. Requires ADMIN_SECRET header
- * to prevent unauthorized use.
+ * Vercel cron sends GET with Authorization: Bearer <CRON_SECRET>.
+ * Each cron run: refreshes ALL screener data + enriches the NEXT batch
+ * of 150 stocks. Tracks offset in stock_meta so over ~10 days every
+ * stock gets fully enriched.
  *
- * FMP Starter plan: 300 req/min. We throttle to ~3 req/sec with
- * retry on 429 to stay well within limits.
+ * FMP Starter plan: 300 req/min. We throttle to ~200 req/min.
+ *
+ * Budget per run (5-min Vercel timeout):
+ *   1 screener call + 150 stocks × 5 calls × 300ms ≈ 4 min
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import { neon, NeonQueryFunction } from "@neondatabase/serverless";
 import { refreshStockUniverse } from "@/lib/fmpService";
 import { ensureStockTables } from "@/lib/db";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // 5 minutes — enrichment is slow
+export const maxDuration = 300; // 5 minutes
 
-// Simple in-memory rate limiter: one call per hour
-let lastRefreshAt = 0;
-const RATE_LIMIT_MS = 60 * 60 * 1000; // 1 hour
+const ENRICH_BATCH_SIZE = 150;
+
+// Simple in-memory rate limiter for manual POST: one call per hour
+let lastManualRefreshAt = 0;
+const RATE_LIMIT_MS = 60 * 60 * 1000;
 
 const FMP_API_KEY =
   process.env.FINANCIAL_MODELING_PREP_API_KEY ||
@@ -31,14 +38,13 @@ const FMP_BASE = "https://financialmodelingprep.com/stable";
 // ── Rate-limited FMP fetch ───────────────────────────────────────────
 
 let lastFetchTime = 0;
-const MIN_FETCH_INTERVAL_MS = 350; // ~170 req/min, well under 300/min
+const MIN_FETCH_INTERVAL_MS = 300; // ~200 req/min, under 300/min limit
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
-  // Throttle: ensure MIN_FETCH_INTERVAL_MS between requests
   const elapsed = Date.now() - lastFetchTime;
   if (elapsed < MIN_FETCH_INTERVAL_MS) {
     await sleep(MIN_FETCH_INTERVAL_MS - elapsed);
@@ -50,22 +56,22 @@ async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
     if (res.status === 429 && retries > 0) {
-      console.warn(`[refresh-stocks] FMP 429 rate limited on ${endpoint}, retrying in 3s...`);
+      console.warn(`[refresh] 429 on ${endpoint}, retry in 3s...`);
       await sleep(3000);
       return fetchFMP<T>(endpoint, retries - 1);
     }
     if (!res.ok) {
-      console.error(`[refresh-stocks] FMP ${res.status} for ${endpoint}`);
+      console.error(`[refresh] FMP ${res.status} for ${endpoint}`);
       return null;
     }
     const data = await res.json();
     if (data && typeof data === "object" && "Error Message" in data) {
-      console.error(`[refresh-stocks] FMP error for ${endpoint}:`, (data as Record<string, string>)["Error Message"]);
+      console.error(`[refresh] FMP error for ${endpoint}:`, (data as Record<string, string>)["Error Message"]);
       return null;
     }
     return data as T;
   } catch (err) {
-    console.error(`[refresh-stocks] FMP fetch failed for ${endpoint}:`, err);
+    console.error(`[refresh] FMP fetch failed for ${endpoint}:`, err);
     return null;
   }
 }
@@ -92,7 +98,6 @@ interface ScreenerResult {
 
 interface Quote {
   symbol: string;
-  name: string;
   price: number;
   changesPercentage: number;
   dayLow: number;
@@ -129,7 +134,7 @@ interface KeyMetrics {
 
 interface GrowthData {
   date: string;
-  period: string;
+  period: string; // "FY", "Q1", "Q2", "Q3", "Q4"
   revenueGrowth: number;
   netIncomeGrowth: number;
   dividendsperShareGrowth: number;
@@ -139,100 +144,72 @@ interface IncomeData {
   netIncomeRatio: number;
 }
 
-// ── Route handler ──────────────────────────────────────────────────
+// ── Shared refresh logic ───────────────────────────────────────────
 
-export async function POST(request: NextRequest) {
-  // Auth: accept either Vercel Cron secret (Authorization header) or admin secret
-  const cronSecret = process.env.CRON_SECRET;
-  const adminSecret = process.env.ADMIN_SECRET;
-  const authHeader = request.headers.get("authorization");
-  const adminHeader = request.headers.get("x-admin-secret");
+async function runRefresh(
+  sql: NeonQueryFunction<false, false>,
+  enrichOffset: number
+): Promise<{ stocks: number; enriched: number; enrichFailed: number; nextOffset: number }> {
+  await ensureStockTables(sql);
 
-  const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
-  const isAdmin = adminSecret ? adminHeader === adminSecret : true; // no secret = open
-
-  if (!isCron && !isAdmin) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Step 1: Screener — always refresh ALL stocks basic data
+  const results = await fetchFMP<ScreenerResult[]>(
+    "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
+  );
+  if (!results || results.length === 0) {
+    throw new Error("FMP screener returned no results — check API key and plan");
   }
 
-  // Rate limit (skip for cron — it's already schedule-limited)
-  const now = Date.now();
-  if (!isCron && now - lastRefreshAt < RATE_LIMIT_MS) {
-    const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastRefreshAt)) / 60000);
-    return NextResponse.json(
-      { error: `Rate limited. Try again in ${remaining} minutes.` },
-      { status: 429 }
-    );
+  const filtered = results.filter(
+    (s) =>
+      s.marketCap > 0 &&
+      !s.symbol.includes(".") &&
+      s.symbol.length <= 5 &&
+      !s.isEtf &&
+      !s.isFund &&
+      s.sector &&
+      s.sector.trim() !== ""
+  );
+  console.log(`[refresh] ${results.length} screener → ${filtered.length} common stocks`);
+
+  for (const s of filtered) {
+    await sql`
+      INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, exchange_short_name, market_cap, beta, last_annual_dividend, is_etf, is_actively_trading, updated_at)
+      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.exchangeShortName}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())
+      ON CONFLICT (symbol) DO UPDATE SET
+        company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
+        country = EXCLUDED.country, exchange = EXCLUDED.exchange, exchange_short_name = EXCLUDED.exchange_short_name,
+        market_cap = EXCLUDED.market_cap, beta = EXCLUDED.beta, last_annual_dividend = EXCLUDED.last_annual_dividend,
+        is_etf = EXCLUDED.is_etf, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
+    `;
   }
 
-  // Validate prerequisites
-  if (!FMP_API_KEY) {
-    return NextResponse.json(
-      { error: "FMP API key not configured" },
-      { status: 400 }
-    );
-  }
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    return NextResponse.json(
-      { error: "DATABASE_URL not configured" },
-      { status: 400 }
-    );
-  }
+  // Step 2: Enrich a batch of stocks starting at enrichOffset
+  const allRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC`;
+  const allSymbols = allRows.map((r) => String(r.symbol));
+  const totalStocks = allSymbols.length;
 
-  lastRefreshAt = now;
-  const sql = neon(databaseUrl);
+  // Wrap around if offset is past the end
+  const safeOffset = enrichOffset >= totalStocks ? 0 : enrichOffset;
+  const batch = allSymbols.slice(safeOffset, safeOffset + ENRICH_BATCH_SIZE);
+  console.log(`[refresh] Enriching batch ${safeOffset}–${safeOffset + batch.length - 1} of ${totalStocks} (${batch.length} stocks)`);
 
-  try {
-    // Auto-create tables if they don't exist yet
-    await ensureStockTables(sql);
+  let enriched = 0;
+  let enrichFailed = 0;
 
-    // Step 1: Screener — exclude ETFs and funds
-    const results = await fetchFMP<ScreenerResult[]>(
-      "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
-    );
-    if (!results || results.length === 0) {
-      return NextResponse.json({ error: "FMP screener returned no results — check API key and plan" }, { status: 502 });
-    }
+  for (const sym of batch) {
+    try {
+      const quote = await fetchFMP<Quote[]>(`/quote?symbol=${sym}`).then((r) => r?.[0] || null);
+      const metrics = await fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
+      const annualGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=annual&limit=8`).then((r) => r || []);
+      const quarterlyGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
+      const income = await fetchFMP<IncomeData[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
 
-    // Filter: common stocks only (no ETFs, funds, or sectorless instruments)
-    const filtered = results.filter(
-      (s) =>
-        s.marketCap > 0 &&
-        !s.symbol.includes(".") &&
-        s.symbol.length <= 5 &&
-        !s.isEtf &&
-        !s.isFund &&
-        s.sector &&
-        s.sector.trim() !== ""
-    );
-    console.log(`[refresh-stocks] ${results.length} screener results → ${filtered.length} common stocks`);
-
-    // Upsert stocks
-    for (const s of filtered) {
-      await sql`
-        INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, exchange_short_name, market_cap, beta, last_annual_dividend, is_etf, is_actively_trading, updated_at)
-        VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.exchangeShortName}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())
-        ON CONFLICT (symbol) DO UPDATE SET
-          company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
-          country = EXCLUDED.country, exchange = EXCLUDED.exchange, exchange_short_name = EXCLUDED.exchange_short_name,
-          market_cap = EXCLUDED.market_cap, beta = EXCLUDED.beta, last_annual_dividend = EXCLUDED.last_annual_dividend,
-          is_etf = EXCLUDED.is_etf, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
-      `;
-    }
-
-    // Step 2: Batch quotes (these are efficient — 1 API call per 100 symbols)
-    const symbols = filtered.map((s) => s.symbol);
-    let quotesCount = 0;
-    for (let i = 0; i < Math.min(symbols.length, 2000); i += 100) {
-      const batch = symbols.slice(i, i + 100);
-      const quotes = await fetchFMP<Quote[]>(`/batch-quote?symbols=${batch.join(",")}`);
-      if (!quotes) continue;
-
-      for (const q of quotes) {
+      // Quotes table
+      if (quote) {
         await sql`
           INSERT INTO quotes (symbol, price, changes_percentage, day_low, day_high, year_high, year_low, market_cap, price_avg_50, price_avg_200, volume, avg_volume, eps, pe, shares_outstanding, updated_at)
-          VALUES (${q.symbol}, ${q.price || 0}, ${q.changesPercentage || 0}, ${q.dayLow || 0}, ${q.dayHigh || 0}, ${q.yearHigh || 0}, ${q.yearLow || 0}, ${q.marketCap || 0}, ${q.priceAvg50 || 0}, ${q.priceAvg200 || 0}, ${q.volume || 0}, ${q.avgVolume || 0}, ${q.eps || 0}, ${q.pe || 0}, ${q.sharesOutstanding || 0}, NOW())
+          VALUES (${sym}, ${quote.price || 0}, ${quote.changesPercentage || 0}, ${quote.dayLow || 0}, ${quote.dayHigh || 0}, ${quote.yearHigh || 0}, ${quote.yearLow || 0}, ${quote.marketCap || 0}, ${quote.priceAvg50 || 0}, ${quote.priceAvg200 || 0}, ${quote.volume || 0}, ${quote.avgVolume || 0}, ${quote.eps || 0}, ${quote.pe || 0}, ${quote.sharesOutstanding || 0}, NOW())
           ON CONFLICT (symbol) DO UPDATE SET
             price=EXCLUDED.price, changes_percentage=EXCLUDED.changes_percentage,
             day_low=EXCLUDED.day_low, day_high=EXCLUDED.day_high,
@@ -242,112 +219,175 @@ export async function POST(request: NextRequest) {
             avg_volume=EXCLUDED.avg_volume, eps=EXCLUDED.eps, pe=EXCLUDED.pe,
             shares_outstanding=EXCLUDED.shares_outstanding, updated_at=NOW()
         `;
-        quotesCount++;
       }
+
+      // Ratios table — key-metrics with PE fallback from quote
+      const peRatio = metrics?.peRatio || quote?.pe || 0;
+      await sql`
+        INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
+        VALUES (${sym}, ${peRatio}, ${metrics?.pbRatio || 0}, ${metrics?.priceToSalesRatio || 0}, ${metrics?.debtToEquity || 0}, ${metrics?.currentRatio || 0}, ${metrics?.roe || 0}, ${metrics?.roic || 0}, ${metrics?.dividendYield || 0}, ${metrics?.payoutRatio || 0}, ${metrics?.freeCashFlowPerShare || 0}, ${metrics?.revenuePerShare || 0}, ${metrics?.netIncomePerShare || 0}, ${metrics?.earningsYield || 0}, ${metrics?.evToSales || 0}, ${metrics?.enterpriseValue || 0}, NOW())
+        ON CONFLICT (symbol) DO UPDATE SET
+          pe_ratio=EXCLUDED.pe_ratio, pb_ratio=EXCLUDED.pb_ratio, price_to_sales_ratio=EXCLUDED.price_to_sales_ratio,
+          debt_to_equity=EXCLUDED.debt_to_equity, current_ratio=EXCLUDED.current_ratio, roe=EXCLUDED.roe, roic=EXCLUDED.roic,
+          dividend_yield=EXCLUDED.dividend_yield, payout_ratio=EXCLUDED.payout_ratio, free_cash_flow_per_share=EXCLUDED.free_cash_flow_per_share,
+          revenue_per_share=EXCLUDED.revenue_per_share, net_income_per_share=EXCLUDED.net_income_per_share,
+          earnings_yield=EXCLUDED.earnings_yield, ev_to_sales=EXCLUDED.ev_to_sales, enterprise_value=EXCLUDED.enterprise_value, updated_at=NOW()
+      `;
+
+      // Profiles table — derive growth stats
+      const sortedQ = [...quarterlyGrowth]
+        .filter((g) => g.period.startsWith("Q"))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      let revQ = 0;
+      for (const g of sortedQ) { if (g.revenueGrowth > 0) revQ++; else break; }
+      let niQ = 0;
+      for (const g of sortedQ) { if (g.netIncomeGrowth > 0) niQ++; else break; }
+
+      const sortedA = [...annualGrowth]
+        .filter((g) => g.period === "FY")
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      let divYrs = 0;
+      for (const g of sortedA) { if (g.dividendsperShareGrowth > 0) divYrs++; else break; }
+      const recentAnnual = sortedA[0];
+
+      await sql`
+        INSERT INTO profiles (symbol, revenue_growth, net_income_growth, earnings_growth, revenue_growth_quarters, net_income_growth_quarters, dividend_growth_years, profit_margin, historical_returns, updated_at)
+        VALUES (${sym}, ${recentAnnual?.revenueGrowth || 0}, ${recentAnnual?.netIncomeGrowth || 0}, ${recentAnnual?.netIncomeGrowth || 0}, ${revQ}, ${niQ}, ${divYrs}, ${income[0]?.netIncomeRatio || 0}, ${'{}'}, NOW())
+        ON CONFLICT (symbol) DO UPDATE SET
+          revenue_growth=EXCLUDED.revenue_growth, net_income_growth=EXCLUDED.net_income_growth,
+          earnings_growth=EXCLUDED.earnings_growth, revenue_growth_quarters=EXCLUDED.revenue_growth_quarters,
+          net_income_growth_quarters=EXCLUDED.net_income_growth_quarters, dividend_growth_years=EXCLUDED.dividend_growth_years,
+          profit_margin=EXCLUDED.profit_margin, updated_at=NOW()
+      `;
+
+      enriched++;
+    } catch {
+      enrichFailed++;
     }
+  }
 
-    // Step 3: Enrich top 200 — SEQUENTIALLY to respect rate limits
-    // 200 stocks × 3 calls × 350ms throttle ≈ 210s, fits in 5-min timeout
-    const topRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC LIMIT 200`;
-    const topSymbols = topRows.map((r) => String(r.symbol));
-    let enriched = 0;
-    let enrichFailed = 0;
+  // Calculate next offset (wrap around)
+  const nextOffset = safeOffset + ENRICH_BATCH_SIZE >= totalStocks ? 0 : safeOffset + ENRICH_BATCH_SIZE;
 
-    for (const sym of topSymbols) {
-      try {
-        // Sequential calls — each throttled by fetchFMP
-        const metrics = await fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
-        const growth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
-        const income = await fetchFMP<IncomeData[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
+  // Save next offset + timestamp
+  const timestamp = new Date().toISOString();
+  await sql`
+    INSERT INTO stock_meta (key, value, updated_at)
+    VALUES (${'last_populate'}, ${timestamp}, NOW())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `;
+  await sql`
+    INSERT INTO stock_meta (key, value, updated_at)
+    VALUES (${'enrich_offset'}, ${String(nextOffset)}, NOW())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `;
 
-        if (metrics) {
-          await sql`
-            INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
-            VALUES (${sym}, ${metrics.peRatio || 0}, ${metrics.pbRatio || 0}, ${metrics.priceToSalesRatio || 0}, ${metrics.debtToEquity || 0}, ${metrics.currentRatio || 0}, ${metrics.roe || 0}, ${metrics.roic || 0}, ${metrics.dividendYield || 0}, ${metrics.payoutRatio || 0}, ${metrics.freeCashFlowPerShare || 0}, ${metrics.revenuePerShare || 0}, ${metrics.netIncomePerShare || 0}, ${metrics.earningsYield || 0}, ${metrics.evToSales || 0}, ${metrics.enterpriseValue || 0}, NOW())
-            ON CONFLICT (symbol) DO UPDATE SET
-              pe_ratio=EXCLUDED.pe_ratio, pb_ratio=EXCLUDED.pb_ratio, price_to_sales_ratio=EXCLUDED.price_to_sales_ratio,
-              debt_to_equity=EXCLUDED.debt_to_equity, current_ratio=EXCLUDED.current_ratio, roe=EXCLUDED.roe, roic=EXCLUDED.roic,
-              dividend_yield=EXCLUDED.dividend_yield, payout_ratio=EXCLUDED.payout_ratio, free_cash_flow_per_share=EXCLUDED.free_cash_flow_per_share,
-              revenue_per_share=EXCLUDED.revenue_per_share, net_income_per_share=EXCLUDED.net_income_per_share,
-              earnings_yield=EXCLUDED.earnings_yield, ev_to_sales=EXCLUDED.ev_to_sales, enterprise_value=EXCLUDED.enterprise_value, updated_at=NOW()
-          `;
-        }
+  await refreshStockUniverse();
 
-        // Derive growth stats from quarterly data
-        const sorted = [...growth].filter((g) => g.period === "Q").sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        let revQ = 0;
-        for (const g of sorted) { if (g.revenueGrowth > 0) revQ++; else break; }
-        let niQ = 0;
-        for (const g of sorted) { if (g.netIncomeGrowth > 0) niQ++; else break; }
-        const annual = [...growth].filter((g) => g.period === "FY").sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        let divYrs = 0;
-        for (const g of annual) { if (g.dividendsperShareGrowth > 0) divYrs++; else break; }
-        const recent = growth.find((g) => g.period === "FY") || growth[0];
+  return { stocks: filtered.length, enriched, enrichFailed, nextOffset };
+}
 
-        await sql`
-          INSERT INTO profiles (symbol, revenue_growth, net_income_growth, earnings_growth, revenue_growth_quarters, net_income_growth_quarters, dividend_growth_years, profit_margin, historical_returns, updated_at)
-          VALUES (${sym}, ${recent?.revenueGrowth || 0}, ${recent?.netIncomeGrowth || 0}, ${recent?.netIncomeGrowth || 0}, ${revQ}, ${niQ}, ${divYrs}, ${income[0]?.netIncomeRatio || 0}, ${'{}'}, NOW())
-          ON CONFLICT (symbol) DO UPDATE SET
-            revenue_growth=EXCLUDED.revenue_growth, net_income_growth=EXCLUDED.net_income_growth,
-            earnings_growth=EXCLUDED.earnings_growth, revenue_growth_quarters=EXCLUDED.revenue_growth_quarters,
-            net_income_growth_quarters=EXCLUDED.net_income_growth_quarters, dividend_growth_years=EXCLUDED.dividend_growth_years,
-            profit_margin=EXCLUDED.profit_margin, updated_at=NOW()
-        `;
+// ── GET: Vercel Cron handler + status ──────────────────────────────
 
-        enriched++;
-      } catch {
-        enrichFailed++;
-      }
+export async function GET(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization");
+  const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+
+  if (!isCron) {
+    // Not a cron request — return status
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      return NextResponse.json({ configured: false, message: "DATABASE_URL not set" });
     }
+    try {
+      const sql = neon(databaseUrl);
+      const meta = await sql`SELECT * FROM stock_meta WHERE key IN ('last_populate', 'enrich_offset')`;
+      const stockCount = await sql`SELECT count(*) as cnt FROM stocks`;
+      const lastPopulate = meta.find((r) => r.key === "last_populate")?.value || null;
+      const enrichOffset = meta.find((r) => r.key === "enrich_offset")?.value || "0";
+      return NextResponse.json({
+        configured: true,
+        lastPopulate,
+        enrichOffset: Number(enrichOffset),
+        stockCount: Number(stockCount[0]?.cnt || 0),
+      });
+    } catch {
+      return NextResponse.json({ configured: true, error: "Could not query stock_meta — run POST /api/db/init first" });
+    }
+  }
 
-    // Record metadata
-    const timestamp = new Date().toISOString();
-    await sql`
-      INSERT INTO stock_meta (key, value, updated_at)
-      VALUES (${'last_populate'}, ${timestamp}, NOW())
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-    `;
+  // Cron request — run refresh with rotating batch
+  if (!FMP_API_KEY) {
+    return NextResponse.json({ error: "FMP API key not configured" }, { status: 400 });
+  }
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 400 });
+  }
 
-    // Clear FmpService in-memory cache so next request gets fresh DB data
-    await refreshStockUniverse();
+  const sql = neon(databaseUrl);
+
+  try {
+    // Read current offset from DB (persists across invocations)
+    await ensureStockTables(sql);
+    let offset = 0;
+    try {
+      const offsetRow = await sql`SELECT value FROM stock_meta WHERE key = 'enrich_offset'`;
+      if (offsetRow[0]?.value) offset = parseInt(offsetRow[0].value as string, 10) || 0;
+    } catch { /* first run, start at 0 */ }
+
+    console.log(`[cron] Starting refresh, enrich offset: ${offset}`);
+    const result = await runRefresh(sql, offset);
 
     return NextResponse.json({
       success: true,
-      stocks: filtered.length,
-      quotes: quotesCount,
-      enriched,
-      enrichFailed,
+      ...result,
+      message: `Enriched batch ${offset}–${offset + result.enriched - 1}, next batch starts at ${result.nextOffset}`,
     });
   } catch (error) {
-    console.error("Refresh error:", error);
-    return NextResponse.json(
-      { error: "Refresh failed", details: String(error) },
-      { status: 500 }
-    );
+    console.error("Cron refresh error:", error);
+    return NextResponse.json({ error: "Refresh failed", details: String(error) }, { status: 500 });
   }
 }
 
-export async function GET() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    return NextResponse.json({ configured: false, message: "DATABASE_URL not set" });
+// ── POST: Manual trigger ───────────────────────────────────────────
+
+export async function POST(request: NextRequest) {
+  const adminSecret = process.env.ADMIN_SECRET;
+  const adminHeader = request.headers.get("x-admin-secret");
+  const isAdmin = adminSecret ? adminHeader === adminSecret : true;
+
+  if (!isAdmin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const sql = neon(databaseUrl);
-    const meta = await sql`SELECT * FROM stock_meta WHERE key = 'last_populate'`;
-    const stockCount = await sql`SELECT count(*) as cnt FROM stocks`;
+  const now = Date.now();
+  if (now - lastManualRefreshAt < RATE_LIMIT_MS) {
+    const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastManualRefreshAt)) / 60000);
+    return NextResponse.json(
+      { error: `Rate limited. Try again in ${remaining} minutes.` },
+      { status: 429 }
+    );
+  }
 
-    return NextResponse.json({
-      configured: true,
-      lastPopulate: meta[0]?.value || null,
-      stockCount: Number(stockCount[0]?.cnt || 0),
-      rateLimitResetMinutes:
-        lastRefreshAt > 0
-          ? Math.max(0, Math.ceil((RATE_LIMIT_MS - (Date.now() - lastRefreshAt)) / 60000))
-          : 0,
-    });
-  } catch {
-    return NextResponse.json({ configured: true, error: "Could not query stock_meta — run POST /api/db/init first" });
+  if (!FMP_API_KEY) {
+    return NextResponse.json({ error: "FMP API key not configured" }, { status: 400 });
+  }
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 400 });
+  }
+
+  lastManualRefreshAt = now;
+  const sql = neon(databaseUrl);
+
+  try {
+    // Manual trigger always starts at offset 0 (top stocks by market cap)
+    const result = await runRefresh(sql, 0);
+    return NextResponse.json({ success: true, ...result });
+  } catch (error) {
+    console.error("Refresh error:", error);
+    return NextResponse.json({ error: "Refresh failed", details: String(error) }, { status: 500 });
   }
 }
