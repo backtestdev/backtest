@@ -4,8 +4,10 @@
  * Fetches stock data from Financial Modeling Prep API and writes it into
  * PostgreSQL tables (stocks, quotes, ratios, profiles).
  *
- * FMP Starter plan: 300 req/min. We throttle to ~3 req/sec with retry
- * on 429 to stay well within limits.
+ * FMP Starter plan: 300 req/min. We throttle to ~200 req/min with retry
+ * on 429 to stay within limits.
+ *
+ * Budget: 300 stocks × 5 calls/stock × 300ms ≈ 7.5 min
  *
  * Usage:
  *   npx tsx scripts/populate-stocks.ts
@@ -46,14 +48,13 @@ const sql = neon(DATABASE_URL);
 // ---------------------------------------------------------------------------
 
 let lastFetchTime = 0;
-const MIN_FETCH_INTERVAL_MS = 350; // ~170 req/min, well under 300/min
+const MIN_FETCH_INTERVAL_MS = 300; // ~200 req/min, under 300/min limit
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
-  // Throttle: ensure MIN_FETCH_INTERVAL_MS between requests
   const elapsed = Date.now() - lastFetchTime;
   if (elapsed < MIN_FETCH_INTERVAL_MS) {
     await sleep(MIN_FETCH_INTERVAL_MS - elapsed);
@@ -85,10 +86,10 @@ async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Types (mirrors FMP response shapes)
+// Types (mirrors FMP /stable/ response shapes — all camelCase)
 // ---------------------------------------------------------------------------
 
-interface FMPScreenerResult {
+interface ScreenerResult {
   symbol: string;
   companyName: string;
   marketCap: number;
@@ -106,9 +107,8 @@ interface FMPScreenerResult {
   isActivelyTrading: boolean;
 }
 
-interface FMPQuote {
+interface Quote {
   symbol: string;
-  name: string;
   price: number;
   changesPercentage: number;
   dayLow: number;
@@ -125,10 +125,9 @@ interface FMPQuote {
   sharesOutstanding: number;
 }
 
-interface FMPKeyMetrics {
-  symbol: string;
-  pbRatio: number;
+interface KeyMetrics {
   peRatio: number;
+  pbRatio: number;
   priceToSalesRatio: number;
   debtToEquity: number;
   currentRatio: number;
@@ -144,18 +143,15 @@ interface FMPKeyMetrics {
   enterpriseValue: number;
 }
 
-interface FMPFinancialGrowth {
-  symbol: string;
+interface GrowthData {
   date: string;
-  period: string;
+  period: string; // "FY", "Q1", "Q2", "Q3", "Q4"
   revenueGrowth: number;
   netIncomeGrowth: number;
-  epsgrowth: number;
   dividendsperShareGrowth: number;
 }
 
-interface FMPIncomeStatement {
-  symbol: string;
+interface IncomeData {
   netIncomeRatio: number;
 }
 
@@ -164,8 +160,8 @@ interface FMPIncomeStatement {
 // ---------------------------------------------------------------------------
 
 async function populateStocks(): Promise<string[]> {
-  console.log("Step 1/4: Fetching stock screener...");
-  const results = await fetchFMP<FMPScreenerResult[]>(
+  console.log("Step 1/3: Fetching stock screener...");
+  const results = await fetchFMP<ScreenerResult[]>(
     "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
   );
 
@@ -186,24 +182,15 @@ async function populateStocks(): Promise<string[]> {
   );
   console.log(`  ${results.length} screener results → ${filtered.length} common stocks`);
 
-  // Upsert individually using tagged templates (neon auto-parameterizes)
   for (const s of filtered) {
     await sql`
       INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, exchange_short_name, market_cap, beta, last_annual_dividend, is_etf, is_actively_trading, updated_at)
       VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.exchangeShortName}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())
       ON CONFLICT (symbol) DO UPDATE SET
-        company_name = EXCLUDED.company_name,
-        sector = EXCLUDED.sector,
-        industry = EXCLUDED.industry,
-        country = EXCLUDED.country,
-        exchange = EXCLUDED.exchange,
-        exchange_short_name = EXCLUDED.exchange_short_name,
-        market_cap = EXCLUDED.market_cap,
-        beta = EXCLUDED.beta,
-        last_annual_dividend = EXCLUDED.last_annual_dividend,
-        is_etf = EXCLUDED.is_etf,
-        is_actively_trading = EXCLUDED.is_actively_trading,
-        updated_at = NOW()
+        company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
+        country = EXCLUDED.country, exchange = EXCLUDED.exchange, exchange_short_name = EXCLUDED.exchange_short_name,
+        market_cap = EXCLUDED.market_cap, beta = EXCLUDED.beta, last_annual_dividend = EXCLUDED.last_annual_dividend,
+        is_etf = EXCLUDED.is_etf, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
     `;
   }
 
@@ -212,116 +199,82 @@ async function populateStocks(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2: Fetch batch quotes → insert quotes
-// ---------------------------------------------------------------------------
-
-async function populateQuotes(symbols: string[]) {
-  console.log("Step 2/4: Fetching batch quotes...");
-  const BATCH = 100;
-  let count = 0;
-
-  for (let i = 0; i < Math.min(symbols.length, 2000); i += BATCH) {
-    const batch = symbols.slice(i, i + BATCH);
-    const joined = batch.join(",");
-    const quotes = await fetchFMP<FMPQuote[]>(`/batch-quote?symbols=${joined}`);
-
-    if (!quotes) {
-      console.warn(`  Skipping quote batch at ${i}`);
-      continue;
-    }
-
-    for (const q of quotes) {
-      await sql`
-        INSERT INTO quotes (symbol, price, changes_percentage, day_low, day_high, year_high, year_low, market_cap, price_avg_50, price_avg_200, volume, avg_volume, eps, pe, shares_outstanding, updated_at)
-        VALUES (${q.symbol}, ${q.price || 0}, ${q.changesPercentage || 0}, ${q.dayLow || 0}, ${q.dayHigh || 0}, ${q.yearHigh || 0}, ${q.yearLow || 0}, ${q.marketCap || 0}, ${q.priceAvg50 || 0}, ${q.priceAvg200 || 0}, ${q.volume || 0}, ${q.avgVolume || 0}, ${q.eps || 0}, ${q.pe || 0}, ${q.sharesOutstanding || 0}, NOW())
-        ON CONFLICT (symbol) DO UPDATE SET
-          price = EXCLUDED.price,
-          changes_percentage = EXCLUDED.changes_percentage,
-          day_low = EXCLUDED.day_low,
-          day_high = EXCLUDED.day_high,
-          year_high = EXCLUDED.year_high,
-          year_low = EXCLUDED.year_low,
-          market_cap = EXCLUDED.market_cap,
-          price_avg_50 = EXCLUDED.price_avg_50,
-          price_avg_200 = EXCLUDED.price_avg_200,
-          volume = EXCLUDED.volume,
-          avg_volume = EXCLUDED.avg_volume,
-          eps = EXCLUDED.eps,
-          pe = EXCLUDED.pe,
-          shares_outstanding = EXCLUDED.shares_outstanding,
-          updated_at = NOW()
-      `;
-      count++;
-    }
-  }
-
-  console.log(`  Inserted/updated ${count} quotes`);
-}
-
-// ---------------------------------------------------------------------------
-// Step 3: Enrich top 300 — SEQUENTIALLY to respect FMP rate limits
+// Step 2: Enrich top 300 with quote + key-metrics + growth + income
+// 5 API calls per stock, sequential, rate-limited
 // ---------------------------------------------------------------------------
 
 async function enrichTopStocks() {
-  // Sort by market cap from stocks table to get top 300
   const topRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC LIMIT 300`;
   const topSymbols = topRows.map((r) => String(r.symbol));
-  console.log(`Step 3/4: Enriching ${topSymbols.length} top stocks with detailed metrics...`);
+  console.log(`Step 2/3: Enriching ${topSymbols.length} top stocks (5 API calls each)...`);
 
   let enriched = 0;
   let failed = 0;
 
   for (const sym of topSymbols) {
     try {
-      // Sequential calls — each throttled by fetchFMP's rate limiter
-      const metrics = await fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
-      const growth = await fetchFMP<FMPFinancialGrowth[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
-      const income = await fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
+      // 5 sequential calls per stock, each throttled
+      const quote = await fetchFMP<Quote[]>(`/quote?symbol=${sym}`).then((r) => r?.[0] || null);
+      const metrics = await fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
+      const annualGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=annual&limit=8`).then((r) => r || []);
+      const quarterlyGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
+      const income = await fetchFMP<IncomeData[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
 
-      // Upsert ratios
-      if (metrics) {
+      // Quotes table
+      if (quote) {
         await sql`
-          INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
-          VALUES (${sym}, ${metrics.peRatio || 0}, ${metrics.pbRatio || 0}, ${metrics.priceToSalesRatio || 0}, ${metrics.debtToEquity || 0}, ${metrics.currentRatio || 0}, ${metrics.roe || 0}, ${metrics.roic || 0}, ${metrics.dividendYield || 0}, ${metrics.payoutRatio || 0}, ${metrics.freeCashFlowPerShare || 0}, ${metrics.revenuePerShare || 0}, ${metrics.netIncomePerShare || 0}, ${metrics.earningsYield || 0}, ${metrics.evToSales || 0}, ${metrics.enterpriseValue || 0}, NOW())
+          INSERT INTO quotes (symbol, price, changes_percentage, day_low, day_high, year_high, year_low, market_cap, price_avg_50, price_avg_200, volume, avg_volume, eps, pe, shares_outstanding, updated_at)
+          VALUES (${sym}, ${quote.price || 0}, ${quote.changesPercentage || 0}, ${quote.dayLow || 0}, ${quote.dayHigh || 0}, ${quote.yearHigh || 0}, ${quote.yearLow || 0}, ${quote.marketCap || 0}, ${quote.priceAvg50 || 0}, ${quote.priceAvg200 || 0}, ${quote.volume || 0}, ${quote.avgVolume || 0}, ${quote.eps || 0}, ${quote.pe || 0}, ${quote.sharesOutstanding || 0}, NOW())
           ON CONFLICT (symbol) DO UPDATE SET
-            pe_ratio = EXCLUDED.pe_ratio,
-            pb_ratio = EXCLUDED.pb_ratio,
-            price_to_sales_ratio = EXCLUDED.price_to_sales_ratio,
-            debt_to_equity = EXCLUDED.debt_to_equity,
-            current_ratio = EXCLUDED.current_ratio,
-            roe = EXCLUDED.roe,
-            roic = EXCLUDED.roic,
-            dividend_yield = EXCLUDED.dividend_yield,
-            payout_ratio = EXCLUDED.payout_ratio,
-            free_cash_flow_per_share = EXCLUDED.free_cash_flow_per_share,
-            revenue_per_share = EXCLUDED.revenue_per_share,
-            net_income_per_share = EXCLUDED.net_income_per_share,
-            earnings_yield = EXCLUDED.earnings_yield,
-            ev_to_sales = EXCLUDED.ev_to_sales,
-            enterprise_value = EXCLUDED.enterprise_value,
-            updated_at = NOW()
+            price = EXCLUDED.price, changes_percentage = EXCLUDED.changes_percentage,
+            day_low = EXCLUDED.day_low, day_high = EXCLUDED.day_high,
+            year_high = EXCLUDED.year_high, year_low = EXCLUDED.year_low,
+            market_cap = EXCLUDED.market_cap, price_avg_50 = EXCLUDED.price_avg_50,
+            price_avg_200 = EXCLUDED.price_avg_200, volume = EXCLUDED.volume,
+            avg_volume = EXCLUDED.avg_volume, eps = EXCLUDED.eps, pe = EXCLUDED.pe,
+            shares_outstanding = EXCLUDED.shares_outstanding, updated_at = NOW()
         `;
       }
 
-      // Compute growth stats
-      const revenueGrowthQ = consecutivePositive(growth, "revenueGrowth");
-      const netIncomeGrowthQ = consecutivePositive(growth, "netIncomeGrowth");
-      const divGrowthYears = dividendGrowthYears(growth);
-      const recentGrowth = growth.find((g) => g.period === "FY") || growth[0];
-      const profitMargin = income[0]?.netIncomeRatio || 0;
+      // Ratios table — use key-metrics, fall back to quote for PE
+      const peRatio = metrics?.peRatio || quote?.pe || 0;
+      await sql`
+        INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
+        VALUES (${sym}, ${peRatio}, ${metrics?.pbRatio || 0}, ${metrics?.priceToSalesRatio || 0}, ${metrics?.debtToEquity || 0}, ${metrics?.currentRatio || 0}, ${metrics?.roe || 0}, ${metrics?.roic || 0}, ${metrics?.dividendYield || 0}, ${metrics?.payoutRatio || 0}, ${metrics?.freeCashFlowPerShare || 0}, ${metrics?.revenuePerShare || 0}, ${metrics?.netIncomePerShare || 0}, ${metrics?.earningsYield || 0}, ${metrics?.evToSales || 0}, ${metrics?.enterpriseValue || 0}, NOW())
+        ON CONFLICT (symbol) DO UPDATE SET
+          pe_ratio = EXCLUDED.pe_ratio, pb_ratio = EXCLUDED.pb_ratio, price_to_sales_ratio = EXCLUDED.price_to_sales_ratio,
+          debt_to_equity = EXCLUDED.debt_to_equity, current_ratio = EXCLUDED.current_ratio, roe = EXCLUDED.roe, roic = EXCLUDED.roic,
+          dividend_yield = EXCLUDED.dividend_yield, payout_ratio = EXCLUDED.payout_ratio, free_cash_flow_per_share = EXCLUDED.free_cash_flow_per_share,
+          revenue_per_share = EXCLUDED.revenue_per_share, net_income_per_share = EXCLUDED.net_income_per_share,
+          earnings_yield = EXCLUDED.earnings_yield, ev_to_sales = EXCLUDED.ev_to_sales, enterprise_value = EXCLUDED.enterprise_value, updated_at = NOW()
+      `;
+
+      // Profiles table — derive growth stats
+      // Quarterly: period is "Q1","Q2","Q3","Q4" in /stable/ API (NOT "Q")
+      const sortedQ = [...quarterlyGrowth]
+        .filter((g) => g.period.startsWith("Q"))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      let revQ = 0;
+      for (const g of sortedQ) { if (g.revenueGrowth > 0) revQ++; else break; }
+      let niQ = 0;
+      for (const g of sortedQ) { if (g.netIncomeGrowth > 0) niQ++; else break; }
+
+      // Annual: dividend growth years + recent annual growth rate
+      const sortedA = [...annualGrowth]
+        .filter((g) => g.period === "FY")
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      let divYrs = 0;
+      for (const g of sortedA) { if (g.dividendsperShareGrowth > 0) divYrs++; else break; }
+      const recentAnnual = sortedA[0];
 
       await sql`
         INSERT INTO profiles (symbol, revenue_growth, net_income_growth, earnings_growth, revenue_growth_quarters, net_income_growth_quarters, dividend_growth_years, profit_margin, historical_returns, updated_at)
-        VALUES (${sym}, ${recentGrowth?.revenueGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${recentGrowth?.netIncomeGrowth || 0}, ${revenueGrowthQ}, ${netIncomeGrowthQ}, ${divGrowthYears}, ${profitMargin}, ${'{}'}, NOW())
+        VALUES (${sym}, ${recentAnnual?.revenueGrowth || 0}, ${recentAnnual?.netIncomeGrowth || 0}, ${recentAnnual?.netIncomeGrowth || 0}, ${revQ}, ${niQ}, ${divYrs}, ${income[0]?.netIncomeRatio || 0}, ${'{}'}, NOW())
         ON CONFLICT (symbol) DO UPDATE SET
-          revenue_growth = EXCLUDED.revenue_growth,
-          net_income_growth = EXCLUDED.net_income_growth,
-          earnings_growth = EXCLUDED.earnings_growth,
-          revenue_growth_quarters = EXCLUDED.revenue_growth_quarters,
-          net_income_growth_quarters = EXCLUDED.net_income_growth_quarters,
-          dividend_growth_years = EXCLUDED.dividend_growth_years,
-          profit_margin = EXCLUDED.profit_margin,
-          updated_at = NOW()
+          revenue_growth = EXCLUDED.revenue_growth, net_income_growth = EXCLUDED.net_income_growth,
+          earnings_growth = EXCLUDED.earnings_growth, revenue_growth_quarters = EXCLUDED.revenue_growth_quarters,
+          net_income_growth_quarters = EXCLUDED.net_income_growth_quarters, dividend_growth_years = EXCLUDED.dividend_growth_years,
+          profit_margin = EXCLUDED.profit_margin, updated_at = NOW()
       `;
 
       enriched++;
@@ -336,11 +289,11 @@ async function enrichTopStocks() {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: Record metadata
+// Step 3: Record metadata
 // ---------------------------------------------------------------------------
 
 async function recordMeta() {
-  console.log("Step 4/4: Recording metadata...");
+  console.log("Step 3/3: Recording metadata...");
   const timestamp = new Date().toISOString();
   await sql`
     INSERT INTO stock_meta (key, value, updated_at)
@@ -361,37 +314,6 @@ async function recordMeta() {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function consecutivePositive(
-  data: FMPFinancialGrowth[],
-  field: "revenueGrowth" | "netIncomeGrowth"
-): number {
-  const sorted = [...data]
-    .filter((d) => d.period === "Q")
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  let count = 0;
-  for (const item of sorted) {
-    if (item[field] > 0) count++;
-    else break;
-  }
-  return count;
-}
-
-function dividendGrowthYears(data: FMPFinancialGrowth[]): number {
-  const annual = [...data]
-    .filter((d) => d.period === "FY")
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  let years = 0;
-  for (const item of annual) {
-    if (item.dividendsperShareGrowth > 0) years++;
-    else break;
-  }
-  return years;
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -399,8 +321,7 @@ async function main() {
   console.log("=== Stock Database Population ===\n");
   const start = Date.now();
 
-  const symbols = await populateStocks();
-  await populateQuotes(symbols);
+  await populateStocks();
   await enrichTopStocks();
   await recordMeta();
 
