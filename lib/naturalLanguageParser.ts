@@ -167,7 +167,9 @@ export async function parseStrategy(
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    return fallbackParse(userInput);
+    const reason = "OpenAI API key not configured - using rule-based parser";
+    console.warn(`[Parser] WARNING: ${reason}`);
+    return fallbackParse(userInput, reason);
   }
 
   try {
@@ -184,15 +186,31 @@ export async function parseStrategy(
     });
 
     const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("Empty response from OpenAI");
+    if (!content) {
+      const reason = "OpenAI returned empty response - using rule-based parser";
+      console.error(`[Parser] ERROR: ${reason}`);
+      return fallbackParse(userInput, reason);
+    }
 
-    const parsed = JSON.parse(content) as StrategyParameters;
+    let parsed: StrategyParameters;
+    try {
+      parsed = JSON.parse(content) as StrategyParameters;
+    } catch (jsonError) {
+      const reason = `OpenAI response was not valid JSON - using rule-based parser. Response: ${content.substring(0, 100)}`;
+      console.error(`[Parser] ERROR: JSON parsing failed:`, jsonError);
+      console.error(`[Parser] OpenAI response was:`, content);
+      return fallbackParse(userInput, reason);
+    }
+
     normalizeMarketCapValues(parsed);
+    console.log("[Parser] ✓ Successfully parsed with OpenAI");
     console.log("[Parser] Parsed filters:", JSON.stringify(parsed.filters, null, 2));
     return parsed;
   } catch (error) {
-    console.error("OpenAI parsing failed, using fallback:", error);
-    return fallbackParse(userInput);
+    const reason = `OpenAI API call failed: ${error instanceof Error ? error.message : String(error)} - using rule-based parser`;
+    console.error(`[Parser] ERROR: ${reason}`);
+    console.error("[Parser] Full error:", error);
+    return fallbackParse(userInput, reason);
   }
 }
 
@@ -200,6 +218,10 @@ export async function parseStrategy(
 // If OpenAI returns raw dollar values (e.g. 10000000000 instead of 10),
 // convert them to billions to match our stock database format.
 function normalizeMarketCapValues(params: StrategyParameters): void {
+  if (!params.warnings) {
+    params.warnings = [];
+  }
+
   for (const filter of params.filters) {
     if (filter.metric === "market_cap") {
       // If value is >= 1000, it's likely in raw dollars or millions instead of billions
@@ -207,22 +229,27 @@ function normalizeMarketCapValues(params: StrategyParameters): void {
       if (filter.value > 5000) {
         const original = filter.value;
         filter.value = filter.value / 1_000_000_000;
-        console.log(`[Parser] Normalized market_cap value from ${original} to ${filter.value} (converted to billions)`);
+        const warning = `Market cap value auto-corrected from ${original} to ${filter.value}B (OpenAI returned incorrect units)`;
+        console.warn(`[Parser] WARNING: ${warning}`);
+        params.warnings.push(warning);
       }
       if (filter.valueEnd !== undefined && filter.valueEnd !== null && filter.valueEnd > 5000) {
         const original = filter.valueEnd;
         filter.valueEnd = filter.valueEnd / 1_000_000_000;
-        console.log(`[Parser] Normalized market_cap valueEnd from ${original} to ${filter.valueEnd} (converted to billions)`);
+        const warning = `Market cap upper bound auto-corrected from ${original} to ${filter.valueEnd}B (OpenAI returned incorrect units)`;
+        console.warn(`[Parser] WARNING: ${warning}`);
+        params.warnings.push(warning);
       }
     }
   }
 }
 
 // Rule-based fallback parser for when OpenAI is unavailable
-function fallbackParse(input: string): StrategyParameters {
+function fallbackParse(input: string, reason: string): StrategyParameters {
   const lower = input.toLowerCase();
   const filters: StockFilter[] = [];
   let description = input;
+  const warnings: string[] = [reason];
 
   // P/E ratio patterns
   const peMatch = lower.match(/p\/e\s*(?:ratio\s*)?(?:under|below|less than|<)\s*(\d+)/);
@@ -317,7 +344,8 @@ function fallbackParse(input: string): StrategyParameters {
     description = input + " (interpreted as general growth stocks)";
     filters.push({ metric: "revenue_growth", operator: ">", value: 0.10 });
     filters.push({ metric: "pe_ratio", operator: "<", value: 30 });
+    warnings.push("No specific patterns matched - using generic growth stock filter");
   }
 
-  return { description, filters };
+  return { description, filters, warnings };
 }
