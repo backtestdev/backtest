@@ -197,24 +197,6 @@ interface FMPIncomeStatement {
   weightedAverageShsOutDil: number;
 }
 
-// FMP stock screener result type
-interface FMPScreenerResult {
-  symbol: string;
-  companyName: string;
-  marketCap: number;
-  sector: string;
-  industry: string;
-  beta: number;
-  price: number;
-  lastAnnualDividend: number;
-  volume: number;
-  exchange: string;
-  exchangeShortName: string;
-  country: string;
-  isEtf: boolean;
-  isActivelyTrading: boolean;
-}
-
 // Response type for /stable/actively-trading-list
 interface FMPActivelyTradingStock {
   symbol: string;
