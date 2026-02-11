@@ -35,8 +35,9 @@ const NAME_PATTERNS = [
   // ETFs, ETNs, exchange-traded products
   `\\y(ETF|ETN)\\y`,
   `Exchange.Traded`,
-  // Funds
-  `\\y(Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market)\\y`,
+  // Funds — standalone "Fund" or "Funds" catches all fund types
+  `\\yFunds?\\y`,
+  `\\y(Money Market)\\y`,
   `Closed.End`,
   // SPACs & shell companies
   `\\y(Acquisition Corp|Blank Check|SPAC|Special Purpose)\\y`,
@@ -96,6 +97,13 @@ async function main() {
     for (const r of nameRows) console.log(`  ${r.symbol}  ${r.company_name}`);
   }
 
+  // 5. Find and report 5-letter tickers ending in X under Asset Management (mutual fund tickers)
+  const mfTickerRows = await sql`SELECT symbol, company_name FROM stocks WHERE LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management' ORDER BY symbol`;
+  if (mfTickerRows.length > 0) {
+    console.log(`\n[MF ticker] ${mfTickerRows.length} entries:`);
+    for (const r of mfTickerRows) console.log(`  ${r.symbol}  ${r.company_name}`);
+  }
+
   // Total unique symbols to delete
   const toDelete = await sql`
     SELECT count(*) as cnt FROM stocks
@@ -104,6 +112,7 @@ async function main() {
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
        OR company_name ~* ${COMBINED_PATTERN}
+       OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management')
   `;
   const deleteCount = Number(toDelete[0].cnt);
 
@@ -122,6 +131,7 @@ async function main() {
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
        OR company_name ~* ${COMBINED_PATTERN}
+       OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management')
     RETURNING symbol
   `;
 

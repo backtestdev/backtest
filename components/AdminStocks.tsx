@@ -27,7 +27,7 @@ interface CleanupResult {
   before?: number;
   after?: number;
   deleted?: number;
-  breakdown?: { etf: number; noSector: number; badSymbol: number; namePattern: number };
+  breakdown?: { etf: number; noSector: number; badSymbol: number; namePattern: number; mutualFundTicker: number };
   deletedSymbols?: { symbol: string; name: string }[];
   error?: string;
   details?: string;
@@ -281,6 +281,9 @@ export default function AdminStocks() {
                           )}
                           {cleanupResult.breakdown.namePattern > 0 && (
                             <div className="flex justify-between"><dt>Name pattern</dt><dd>{cleanupResult.breakdown.namePattern}</dd></div>
+                          )}
+                          {cleanupResult.breakdown.mutualFundTicker > 0 && (
+                            <div className="flex justify-between"><dt>MF ticker (5-char X)</dt><dd>{cleanupResult.breakdown.mutualFundTicker}</dd></div>
                           )}
                         </dl>
                       </details>
