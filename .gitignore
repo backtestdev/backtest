@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# stock universe cache (regenerated daily)
+/data/stock-universe-cache.json

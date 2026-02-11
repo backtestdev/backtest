@@ -1,5 +1,5 @@
 import { BacktestResult, StrategyParameters, StockFilter, DebugInfo } from "./types";
-import { filterStocks, getStockNames, calculateReturns } from "./stockData";
+import { filterStocks, getStockNames, calculateReturns, getStockDatabase } from "./stockData";
 
 function formatMarketCapFilter(filter: StockFilter): string {
   const formatVal = (v: number) => {
@@ -13,7 +13,10 @@ function formatMarketCapFilter(filter: StockFilter): string {
   return `Market cap ${filter.operator} ${formatVal(filter.value)}`;
 }
 
-export function runBacktest(params: StrategyParameters): BacktestResult {
+export async function runBacktest(params: StrategyParameters): Promise<BacktestResult> {
+  // Get stock database (from FMP API with daily cache, or fallback to hardcoded data)
+  const stockDatabase = await getStockDatabase();
+
   // Log applied filters for debugging
   const mcapFilters = params.filters.filter(f => f.metric === "market_cap");
   if (mcapFilters.length > 0) {
@@ -22,7 +25,7 @@ export function runBacktest(params: StrategyParameters): BacktestResult {
     }
   }
 
-  const matchedStocks = filterStocks(params.filters);
+  const matchedStocks = filterStocks(params.filters, stockDatabase);
 
   // Log filtering results
   console.log(`[Backtest] Filtered to ${matchedStocks.length} stocks matching all criteria`);

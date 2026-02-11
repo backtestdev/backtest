@@ -1,35 +1,78 @@
 import { StockFilter } from "./types";
+import { getStockUniverse as getFMPStockUniverse } from "./fmpService";
 
 // S&P 500 representative stock data with fundamental metrics
-// In production, this would come from a financial data API like Polygon.io or Yahoo Finance
-// Using realistic data based on well-known public companies
-interface StockData {
+// Now sourced from Financial Modeling Prep API with daily caching
+export interface StockData {
   ticker: string;
   name: string;
-  sector: number; // 1=tech, 2=healthcare, 3=finance, 4=energy, 5=consumer
+  sector: number; // 1=tech, 2=healthcare, 3=finance, 4=energy, 5=consumer, etc.
+
+  // Valuation metrics
   pe_ratio: number;
   forward_pe: number;
+  price_to_book: number;
+
+  // Dividend metrics
   dividend_yield: number;
   dividend_growth_years: number;
+  payout_ratio: number;
+
+  // Growth metrics
   revenue_growth: number;
   revenue_growth_quarters: number;
+  net_income_growth_quarters?: number;
   earnings_growth: number;
+
+  // Profitability metrics
   profit_margin: number;
-  market_cap: number; // in billions
-  price_to_book: number;
-  debt_to_equity: number;
   roe: number;
-  payout_ratio: number;
+  roic?: number;
+
+  // Leverage & liquidity
+  debt_to_equity: number;
+  current_ratio?: number;
+  free_cash_flow_per_share?: number;
+
+  // Market metrics
+  market_cap: number; // in billions
   beta: number;
   week52_high_pct: number;
+
+  // Share metrics
+  shares_outstanding?: number;
+  shares_change_pct?: number;
+
+  // Other
+  ipo_date?: string;
+
   // Historical annual returns for backtesting (approximate)
   historical_returns: {
     [year: string]: number; // annual return as decimal
   };
 }
 
+/**
+ * Gets the stock database from FMP API (cached daily) with fallback to hardcoded data
+ */
+export async function getStockDatabase(): Promise<StockData[]> {
+  try {
+    // Try to get fresh data from FMP (will use cache if available)
+    const fmpStocks = await getFMPStockUniverse();
+    if (fmpStocks && fmpStocks.length > 0) {
+      return fmpStocks;
+    }
+  } catch (error) {
+    console.warn('Failed to load FMP data, using fallback:', error);
+  }
+
+  // Fallback to hardcoded data
+  return STOCK_DATABASE;
+}
+
 // Expanded dataset of ~100 stocks spanning S&P 500, Russell 1000, and Russell 3000
 // Includes large-cap, mid-cap, and select small-cap names for broader coverage
+// This serves as fallback data when FMP API is unavailable
 const STOCK_DATABASE: StockData[] = [
   { ticker: "AAPL", name: "Apple Inc.", sector: 1, pe_ratio: 28.5, forward_pe: 26.1, dividend_yield: 0.005, dividend_growth_years: 12, revenue_growth: 0.08, revenue_growth_quarters: 6, earnings_growth: 0.11, profit_margin: 0.26, market_cap: 2900, price_to_book: 45.2, debt_to_equity: 1.73, roe: 1.47, payout_ratio: 0.15, beta: 1.24, week52_high_pct: 0.97, historical_returns: { "2024": 0.33, "2023": 0.48, "2022": -0.27, "2021": 0.34, "2020": 0.82, "2019": 0.89, "2018": -0.05, "2017": 0.48, "2016": 0.12, "2015": -0.03, "2014": 0.40, "2013": 0.08, "2012": 0.33, "2011": 0.26, "2010": 0.53, "2009": 0.147, "2008": -0.57, "2007": 1.33, "2006": 0.18, "2005": 1.23 } },
   { ticker: "MSFT", name: "Microsoft Corp.", sector: 1, pe_ratio: 35.2, forward_pe: 30.8, dividend_yield: 0.007, dividend_growth_years: 21, revenue_growth: 0.16, revenue_growth_quarters: 8, earnings_growth: 0.20, profit_margin: 0.36, market_cap: 3100, price_to_book: 12.5, debt_to_equity: 0.42, roe: 0.38, payout_ratio: 0.25, beta: 0.93, week52_high_pct: 0.95, historical_returns: { "2024": 0.19, "2023": 0.57, "2022": -0.28, "2021": 0.52, "2020": 0.42, "2019": 0.57, "2018": 0.21, "2017": 0.40, "2016": 0.15, "2015": 0.23, "2014": 0.28, "2013": 0.44, "2012": 0.06, "2011": -0.04, "2010": -0.07, "2009": 0.60, "2008": -0.44, "2007": 0.20, "2006": 0.15, "2005": -0.01 } },
@@ -145,8 +188,9 @@ const SPY_RETURNS: { [year: string]: number } = {
   "2008": -0.37, "2007": 0.05, "2006": 0.16, "2005": 0.05,
 };
 
-export function filterStocks(filters: StockFilter[]): StockData[] {
-  return STOCK_DATABASE.filter((stock) => {
+export function filterStocks(filters: StockFilter[], stocks?: StockData[]): StockData[] {
+  const database = stocks || STOCK_DATABASE;
+  return database.filter((stock) => {
     return filters.every((filter) => {
       const value = stock[filter.metric as keyof StockData] as number;
       if (value === undefined || value === null) return false;

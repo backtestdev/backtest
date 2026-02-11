@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     if (structuredParams) {
       const filters = structuredParamsToFilters(structuredParams as StructuredParameters);
       const params = { description: strategy || "Manual adjustment", filters };
-      const result = runBacktest(params);
+      const result = await runBacktest(params);
 
       if (result.matchedStockCount === 0) {
         return NextResponse.json(
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Run the backtest
-    const result = runBacktest(params);
+    const result = await runBacktest(params);
 
     if (result.matchedStockCount === 0) {
       return NextResponse.json(
