@@ -1,0 +1,14 @@
+import { NextResponse } from "next/server";
+export const runtime = "nodejs";
+
+export async function GET() {
+  const key = process.env.FMP_API_KEY;
+  const url = `https://financialmodelingprep.com/api/v3/stock/list?apikey=${key}`;
+  const res = await fetch(url);
+  const text = await res.text();
+
+  return NextResponse.json({
+    status: res.status,
+    sample: text.slice(0, 300),
+  });
+}
