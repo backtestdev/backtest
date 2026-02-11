@@ -11,7 +11,7 @@ import * as path from 'path';
 
 // Support both env var names (FINANCIAL_MODELING_PREP_API_KEY is the canonical one on Vercel)
 const FMP_API_KEY = process.env.FINANCIAL_MODELING_PREP_API_KEY || process.env.FMP_API_KEY || '';
-const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
+const FMP_BASE_URL = 'https://financialmodelingprep.com/stable';
 const CACHE_FILE = path.join(process.cwd(), 'data', 'stock-universe-cache.json');
 const DISK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours for disk cache
 const MEMORY_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes for in-memory cache
@@ -215,6 +215,34 @@ interface FMPScreenerResult {
   isActivelyTrading: boolean;
 }
 
+// Response type for /stable/actively-trading-list
+interface FMPActivelyTradingStock {
+  symbol: string;
+  name: string;
+  exchange: string;
+  exchangeShortName?: string;
+  price?: number;
+  type?: string;
+}
+
+// Response type for /stable/profile
+interface FMPProfile {
+  symbol: string;
+  companyName: string;
+  marketCap: number;
+  sector: string;
+  industry: string;
+  beta: number;
+  price: number;
+  lastDiv: number;
+  exchange: string;
+  exchangeShortName: string;
+  country: string;
+  isEtf: boolean;
+  isActivelyTrading: boolean;
+  ipoDate: string;
+}
+
 interface CachedUniverse {
   lastUpdated: number;
   stocks: StockData[];
@@ -236,8 +264,14 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
     });
 
     if (!response.ok) {
-      lastFMPError = `FMP API returned ${response.status} ${response.statusText}`;
-      console.error(`[FMP] API error: ${response.status} ${response.statusText} for ${endpoint}`);
+      const body = await response.text().catch(() => '');
+      lastFMPError = `FMP API returned ${response.status} ${response.statusText} for ${endpoint}`;
+      if (response.status === 403) {
+        lastFMPError += ' — check that your API key is valid and has access to /stable endpoints';
+      } else if (response.status === 429) {
+        lastFMPError += ' — rate limit exceeded, try again later';
+      }
+      console.error(`[FMP] API error: ${response.status} ${response.statusText} for ${endpoint}`, body ? `body: ${body.slice(0, 200)}` : '');
       return null;
     }
 
@@ -247,6 +281,13 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
     if (data && typeof data === 'object' && 'Error Message' in data) {
       lastFMPError = `FMP API error: ${data['Error Message']}`;
       console.error(`[FMP] API error response: ${data['Error Message']}`);
+      return null;
+    }
+
+    // Handle { message: "..." } error format used by some stable endpoints
+    if (data && typeof data === 'object' && !Array.isArray(data) && 'message' in data && Object.keys(data).length <= 2) {
+      lastFMPError = `FMP API error: ${data['message']}`;
+      console.error(`[FMP] API error response: ${data['message']}`);
       return null;
     }
 
@@ -330,98 +371,58 @@ function calculateDividendGrowthYears(growthData: FMPFinancialGrowth[]): number 
 }
 
 /**
- * Fetches stock universe using the screener endpoint (more efficient)
- * then enriches top stocks with detailed metrics
+ * Fetches stock universe using /stable/actively-trading-list + batch quotes + profiles,
+ * then enriches top stocks with detailed metrics.
+ *
+ * Migration note: The legacy /api/v3/stock-screener endpoint is deprecated.
+ * We now use /stable/actively-trading-list for the universe, /stable/quote for
+ * price data, and /stable/profile for sector/beta/company info.
  */
 async function fetchAllStocks(): Promise<StockData[]> {
   console.log('[FMP] Fetching stock universe...');
 
-  // Use stock screener - much more efficient than individual stock queries
-  // Fetch stocks with market cap > $300M to get a meaningful universe
-  const screenerResults = await fetchFMP<FMPScreenerResult[]>(
-    '/stock-screener?marketCapMoreThan=300000000&isEtf=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000'
-  );
+  // Step 1: Get actively trading stocks (replaces deprecated stock-screener)
+  const activeStocks = await fetchFMP<FMPActivelyTradingStock[]>('/actively-trading-list');
 
-  if (!screenerResults || screenerResults.length === 0) {
-    console.error('[FMP] Stock screener returned no results');
+  if (!activeStocks || activeStocks.length === 0) {
+    console.error('[FMP] Actively trading list returned no results');
     return [];
   }
 
-  // Filter out non-common stocks
-  const commonStocks = screenerResults.filter(s =>
-    s.marketCap > 0 &&
+  // Step 2: Client-side filtering for NYSE/NASDAQ common stocks
+  // (Previously done server-side by the stock-screener endpoint)
+  const commonStocks = activeStocks.filter(s =>
+    s.symbol &&
     !s.symbol.includes('.') &&
     s.symbol.length <= 5 &&
-    !s.isEtf
+    (s.exchangeShortName === 'NYSE' || s.exchangeShortName === 'NASDAQ' ||
+     s.exchange?.includes('NYSE') || s.exchange?.includes('NASDAQ'))
   );
 
-  console.log(`[FMP] Found ${commonStocks.length} stocks from screener`);
+  console.log(`[FMP] Filtered to ${commonStocks.length} NYSE/NASDAQ stocks from ${activeStocks.length} total`);
 
-  // Also fetch batch quotes for price data
-  // FMP allows batch quotes in chunks
+  // Step 3: Batch fetch quotes for price/marketCap data
   const BATCH_SIZE = 100;
+  const quoteMap = new Map<string, FMPQuote>();
   const allStocks: StockData[] = [];
 
-  // Process in batches to get key metrics
-  for (let i = 0; i < Math.min(commonStocks.length, 2000); i += BATCH_SIZE) {
+  for (let i = 0; i < Math.min(commonStocks.length, 3000); i += BATCH_SIZE) {
     const batch = commonStocks.slice(i, i + BATCH_SIZE);
     const symbols = batch.map(s => s.symbol).join(',');
 
-    // Fetch batch quotes
-    const batchQuotes = await fetchFMP<FMPQuote[]>(`/quote/${symbols}`);
+    // Stable API uses query param: /quote?symbol=SYM1,SYM2
+    const batchQuotes = await fetchFMP<FMPQuote[]>(`/quote?symbol=${symbols}`);
 
     if (!batchQuotes) {
       console.warn(`[FMP] Failed to fetch quotes for batch starting at ${i}`);
       continue;
     }
 
-    // Create a lookup map for quick access
-    const quoteMap = new Map<string, FMPQuote>();
     for (const q of batchQuotes) {
       quoteMap.set(q.symbol, q);
     }
 
-    // For each stock in this batch, build a StockData entry
-    // Use screener data + quote data (skip individual API calls for efficiency)
-    for (const screenerStock of batch) {
-      const quote = quoteMap.get(screenerStock.symbol);
-      if (!quote) continue;
-
-      const marketCapBillions = (quote.marketCap || screenerStock.marketCap || 0) / 1_000_000_000;
-      const week52HighPct = quote.yearHigh > 0 ? quote.price / quote.yearHigh : 0;
-
-      allStocks.push({
-        ticker: screenerStock.symbol,
-        name: screenerStock.companyName || quote.name,
-        sector: mapSector(screenerStock.sector || ''),
-        pe_ratio: quote.pe || 0,
-        forward_pe: 0,
-        price_to_book: 0, // Will be enriched for top stocks
-        dividend_yield: screenerStock.lastAnnualDividend && quote.price > 0
-          ? screenerStock.lastAnnualDividend / quote.price
-          : 0,
-        dividend_growth_years: 0,
-        payout_ratio: 0,
-        revenue_growth: 0,
-        revenue_growth_quarters: 0,
-        earnings_growth: 0,
-        profit_margin: 0,
-        roe: 0,
-        roic: 0,
-        debt_to_equity: 0,
-        current_ratio: 0,
-        free_cash_flow_per_share: 0,
-        market_cap: marketCapBillions,
-        beta: screenerStock.beta || 0,
-        week52_high_pct: week52HighPct,
-        shares_outstanding: quote.sharesOutstanding || 0,
-        shares_change_pct: 0,
-        ipo_date: '',
-        historical_returns: {},
-      });
-    }
-
-    console.log(`[FMP] Processed ${allStocks.length} stocks so far...`);
+    console.log(`[FMP] Fetched quotes for ${quoteMap.size} stocks so far...`);
 
     // Small delay to respect rate limits
     if (i + BATCH_SIZE < commonStocks.length) {
@@ -429,7 +430,84 @@ async function fetchAllStocks(): Promise<StockData[]> {
     }
   }
 
-  // Enrich top 300 stocks (by market cap) with detailed metrics
+  // Step 4: Build StockData entries for stocks with marketCap > $300M
+  for (const stock of commonStocks) {
+    const quote = quoteMap.get(stock.symbol);
+    if (!quote || !quote.marketCap || quote.marketCap <= 300_000_000) continue;
+
+    const marketCapBillions = quote.marketCap / 1_000_000_000;
+    const week52HighPct = quote.yearHigh > 0 ? quote.price / quote.yearHigh : 0;
+
+    allStocks.push({
+      ticker: stock.symbol,
+      name: quote.name || stock.name || '',
+      sector: 0, // Set from profile below
+      pe_ratio: quote.pe || 0,
+      forward_pe: 0,
+      price_to_book: 0,
+      dividend_yield: 0, // Set from profile below
+      dividend_growth_years: 0,
+      payout_ratio: 0,
+      revenue_growth: 0,
+      revenue_growth_quarters: 0,
+      earnings_growth: 0,
+      profit_margin: 0,
+      roe: 0,
+      roic: 0,
+      debt_to_equity: 0,
+      current_ratio: 0,
+      free_cash_flow_per_share: 0,
+      market_cap: marketCapBillions,
+      beta: 0, // Set from profile below
+      week52_high_pct: week52HighPct,
+      shares_outstanding: quote.sharesOutstanding || 0,
+      shares_change_pct: 0,
+      ipo_date: '',
+      historical_returns: {},
+    });
+  }
+
+  console.log(`[FMP] ${allStocks.length} stocks with market cap > $300M`);
+
+  // Step 5: Batch fetch profiles for sector, beta, dividend data
+  const profileMap = new Map<string, FMPProfile>();
+
+  for (let i = 0; i < allStocks.length; i += BATCH_SIZE) {
+    const batch = allStocks.slice(i, i + BATCH_SIZE);
+    const symbols = batch.map(s => s.ticker).join(',');
+
+    // Stable API: /profile?symbol=SYM1,SYM2
+    const batchProfiles = await fetchFMP<FMPProfile[]>(`/profile?symbol=${symbols}`);
+
+    if (batchProfiles) {
+      const profiles = Array.isArray(batchProfiles) ? batchProfiles : [batchProfiles];
+      for (const p of profiles) {
+        if (p && p.symbol) profileMap.set(p.symbol, p);
+      }
+    }
+
+    if (i + BATCH_SIZE < allStocks.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+
+  // Apply profile data (sector, beta, dividend, ipoDate)
+  for (let i = 0; i < allStocks.length; i++) {
+    const profile = profileMap.get(allStocks[i].ticker);
+    if (profile) {
+      allStocks[i].sector = mapSector(profile.sector || '');
+      allStocks[i].beta = profile.beta || 0;
+      allStocks[i].ipo_date = profile.ipoDate || '';
+      if (profile.lastDiv && profile.lastDiv > 0) {
+        const quote = quoteMap.get(allStocks[i].ticker);
+        if (quote && quote.price > 0) {
+          allStocks[i].dividend_yield = profile.lastDiv / quote.price;
+        }
+      }
+    }
+  }
+
+  // Step 6: Enrich top 300 stocks (by market cap) with detailed metrics
   const sortedByMarketCap = [...allStocks].sort((a, b) => b.market_cap - a.market_cap);
   const topStocks = sortedByMarketCap.slice(0, 300);
   const topSymbols = new Set(topStocks.map(s => s.ticker));
@@ -442,10 +520,11 @@ async function fetchAllStocks(): Promise<StockData[]> {
 
     const enrichPromises = batch.map(async (stock) => {
       try {
+        // Stable API uses query params: /endpoint?symbol=TICKER&param=value
         const [keyMetrics, growthData, incomeStatements] = await Promise.all([
-          fetchFMP<FMPKeyMetrics[]>(`/key-metrics/${stock.ticker}?period=annual&limit=1`).then(r => r?.[0] || null),
-          fetchFMP<FMPFinancialGrowth[]>(`/financial-growth/${stock.ticker}?period=quarter&limit=8`).then(r => r || []),
-          fetchFMP<FMPIncomeStatement[]>(`/income-statement/${stock.ticker}?period=annual&limit=1`).then(r => r || []),
+          fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${stock.ticker}&period=annual&limit=1`).then(r => r?.[0] || null),
+          fetchFMP<FMPFinancialGrowth[]>(`/financial-growth?symbol=${stock.ticker}&period=quarter&limit=8`).then(r => r || []),
+          fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${stock.ticker}&period=annual&limit=1`).then(r => r || []),
         ]);
 
         // Update the stock in the main array
