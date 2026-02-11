@@ -54,6 +54,96 @@ export interface StockData {
   historical_returns: {
     [year: string]: number; // annual return as decimal
   };
+
+  // ── Key Metrics endpoint fields ──
+  enterprise_value?: number;
+  ev_to_sales?: number;
+  ev_to_operating_cash_flow?: number;
+  ev_to_free_cash_flow?: number;
+  ev_to_ebitda?: number;
+  net_debt_to_ebitda?: number;
+  income_quality?: number;
+  graham_number?: number;
+  graham_net_net?: number;
+  tax_burden?: number;
+  interest_burden?: number;
+  working_capital?: number;
+  invested_capital?: number;
+  return_on_assets?: number;
+  operating_return_on_assets?: number;
+  return_on_tangible_assets?: number;
+  return_on_capital_employed?: number;
+  earnings_yield?: number;
+  free_cash_flow_yield?: number;
+  capex_to_operating_cash_flow?: number;
+  capex_to_depreciation?: number;
+  capex_to_revenue?: number;
+  sga_to_revenue?: number;
+  rd_to_revenue?: number;
+  sbc_to_revenue?: number;
+  intangibles_to_total_assets?: number;
+  average_receivables?: number;
+  average_payables?: number;
+  average_inventory?: number;
+  days_sales_outstanding?: number;
+  days_payables_outstanding?: number;
+  days_inventory_outstanding?: number;
+  operating_cycle?: number;
+  cash_conversion_cycle?: number;
+  free_cash_flow_to_equity?: number;
+  free_cash_flow_to_firm?: number;
+  tangible_asset_value?: number;
+  net_current_asset_value?: number;
+
+  // ── Ratios endpoint fields ──
+  gross_profit_margin?: number;
+  ebit_margin?: number;
+  ebitda_margin?: number;
+  operating_profit_margin?: number;
+  pretax_profit_margin?: number;
+  continuous_operations_profit_margin?: number;
+  net_profit_margin?: number;
+  bottom_line_profit_margin?: number;
+  receivables_turnover?: number;
+  payables_turnover?: number;
+  inventory_turnover?: number;
+  fixed_asset_turnover?: number;
+  asset_turnover?: number;
+  quick_ratio?: number;
+  solvency_ratio?: number;
+  cash_ratio?: number;
+  peg_ratio?: number;
+  forward_peg_ratio?: number;
+  price_to_fcf_ratio?: number;
+  price_to_ocf_ratio?: number;
+  debt_to_assets_ratio?: number;
+  debt_to_capital_ratio?: number;
+  lt_debt_to_capital_ratio?: number;
+  financial_leverage_ratio?: number;
+  working_capital_turnover_ratio?: number;
+  operating_cash_flow_ratio?: number;
+  operating_cash_flow_sales_ratio?: number;
+  fcf_to_ocf_ratio?: number;
+  debt_service_coverage_ratio?: number;
+  interest_coverage_ratio?: number;
+  short_term_ocf_coverage_ratio?: number;
+  ocf_coverage_ratio?: number;
+  capex_coverage_ratio?: number;
+  div_capex_coverage_ratio?: number;
+  dividend_yield_percentage?: number;
+  interest_debt_per_share?: number;
+  cash_per_share?: number;
+  book_value_per_share?: number;
+  tangible_book_value_per_share?: number;
+  shareholders_equity_per_share?: number;
+  operating_cash_flow_per_share?: number;
+  capex_per_share?: number;
+  net_income_per_ebt?: number;
+  ebt_per_ebit?: number;
+  price_to_fair_value?: number;
+  debt_to_market_cap?: number;
+  effective_tax_rate?: number;
+  enterprise_value_multiple?: number;
 }
 
 export interface StockDatabaseResult {
