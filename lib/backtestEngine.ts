@@ -42,6 +42,7 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
     profit_margin: "Profit margin", market_cap: "Market cap", price_to_book: "P/B",
     debt_to_equity: "D/E", current_ratio: "Current ratio", roe: "ROE", roic: "ROIC",
     free_cash_flow_per_share: "FCF/share", payout_ratio: "Payout ratio",
+    revenue_per_share: "Revenue/share", net_income_per_share: "Net income/share",
     beta: "Beta", week52_high_pct: "52-wk high %", sector: "Sector",
   };
   const SECTOR_NAMES: Record<number, string> = {

@@ -64,11 +64,14 @@ async function queryStocksFromDb(): Promise<StockData[]> {
 
         q.price,
         q.pe,
+        q.eps,
         q.year_high,
         q.market_cap  AS q_market_cap,
         q.shares_outstanding,
 
+        r.pe_ratio,
         r.pb_ratio,
+        r.price_to_sales_ratio,
         r.dividend_yield,
         r.payout_ratio,
         r.roe,
@@ -76,6 +79,9 @@ async function queryStocksFromDb(): Promise<StockData[]> {
         r.debt_to_equity,
         r.current_ratio,
         r.free_cash_flow_per_share,
+        r.revenue_per_share,
+        r.net_income_per_share,
+        r.earnings_yield,
 
         p.revenue_growth,
         p.earnings_growth,
@@ -85,9 +91,9 @@ async function queryStocksFromDb(): Promise<StockData[]> {
         p.profit_margin,
         p.historical_returns
       FROM stocks s
-      LEFT JOIN quotes  q ON q.symbol = s.symbol
-      LEFT JOIN ratios  r ON r.symbol = s.symbol
-      LEFT JOIN profiles p ON p.symbol = s.symbol
+      INNER JOIN quotes   q ON q.symbol = s.symbol
+      INNER JOIN ratios   r ON r.symbol = s.symbol
+      INNER JOIN profiles p ON p.symbol = s.symbol
       WHERE s.is_actively_trading = true
         AND s.is_etf = false
       ORDER BY s.market_cap DESC
@@ -132,7 +138,8 @@ function toStockData(row: Record<string, unknown>): StockData {
     name: String(row.company_name),
     sector: SECTOR_MAP[String(row.sector)] || 0,
 
-    pe_ratio: num(row.pe),
+    // PE: prefer ratios table (key-metrics), fall back to quote
+    pe_ratio: num(row.pe_ratio) || num(row.pe),
     forward_pe: 0,
     price_to_book: num(row.pb_ratio),
 
@@ -152,6 +159,9 @@ function toStockData(row: Record<string, unknown>): StockData {
     debt_to_equity: num(row.debt_to_equity),
     current_ratio: num(row.current_ratio),
     free_cash_flow_per_share: num(row.free_cash_flow_per_share),
+
+    revenue_per_share: num(row.revenue_per_share),
+    net_income_per_share: num(row.net_income_per_share),
 
     market_cap: marketCapBillions,
     beta: num(row.beta),

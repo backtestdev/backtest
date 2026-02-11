@@ -27,12 +27,16 @@ export interface StockData {
   // Profitability metrics
   profit_margin: number;
   roe: number;
-  roic?: number;
+  roic: number;
 
   // Leverage & liquidity
   debt_to_equity: number;
-  current_ratio?: number;
-  free_cash_flow_per_share?: number;
+  current_ratio: number;
+  free_cash_flow_per_share: number;
+
+  // Per-share metrics
+  revenue_per_share: number;
+  net_income_per_share: number;
 
   // Market metrics
   market_cap: number; // in billions
@@ -40,8 +44,8 @@ export interface StockData {
   week52_high_pct: number;
 
   // Share metrics
-  shares_outstanding?: number;
-  shares_change_pct?: number;
+  shares_outstanding: number;
+  shares_change_pct: number;
 
   // Other
   ipo_date?: string;
@@ -91,7 +95,8 @@ export async function getStockDatabase(): Promise<StockDatabaseResult> {
 // Expanded dataset of ~100 stocks spanning S&P 500, Russell 1000, and Russell 3000
 // Includes large-cap, mid-cap, and select small-cap names for broader coverage
 // This serves as fallback data when FMP API is unavailable
-const STOCK_DATABASE: StockData[] = [
+// Hardcoded fallback — raw entries get defaults filled via _RAW → STOCK_DATABASE map
+const _RAW_STOCKS: Partial<StockData>[] = [
   { ticker: "AAPL", name: "Apple Inc.", sector: 1, pe_ratio: 28.5, forward_pe: 26.1, dividend_yield: 0.005, dividend_growth_years: 12, revenue_growth: 0.08, revenue_growth_quarters: 6, earnings_growth: 0.11, profit_margin: 0.26, market_cap: 2900, price_to_book: 45.2, debt_to_equity: 1.73, roe: 1.47, payout_ratio: 0.15, beta: 1.24, week52_high_pct: 0.97, historical_returns: { "2024": 0.33, "2023": 0.48, "2022": -0.27, "2021": 0.34, "2020": 0.82, "2019": 0.89, "2018": -0.05, "2017": 0.48, "2016": 0.12, "2015": -0.03, "2014": 0.40, "2013": 0.08, "2012": 0.33, "2011": 0.26, "2010": 0.53, "2009": 0.147, "2008": -0.57, "2007": 1.33, "2006": 0.18, "2005": 1.23 } },
   { ticker: "MSFT", name: "Microsoft Corp.", sector: 1, pe_ratio: 35.2, forward_pe: 30.8, dividend_yield: 0.007, dividend_growth_years: 21, revenue_growth: 0.16, revenue_growth_quarters: 8, earnings_growth: 0.20, profit_margin: 0.36, market_cap: 3100, price_to_book: 12.5, debt_to_equity: 0.42, roe: 0.38, payout_ratio: 0.25, beta: 0.93, week52_high_pct: 0.95, historical_returns: { "2024": 0.19, "2023": 0.57, "2022": -0.28, "2021": 0.52, "2020": 0.42, "2019": 0.57, "2018": 0.21, "2017": 0.40, "2016": 0.15, "2015": 0.23, "2014": 0.28, "2013": 0.44, "2012": 0.06, "2011": -0.04, "2010": -0.07, "2009": 0.60, "2008": -0.44, "2007": 0.20, "2006": 0.15, "2005": -0.01 } },
   { ticker: "GOOGL", name: "Alphabet Inc.", sector: 1, pe_ratio: 23.1, forward_pe: 20.5, dividend_yield: 0.005, dividend_growth_years: 1, revenue_growth: 0.14, revenue_growth_quarters: 7, earnings_growth: 0.31, profit_margin: 0.24, market_cap: 2100, price_to_book: 6.8, debt_to_equity: 0.10, roe: 0.29, payout_ratio: 0.04, beta: 1.06, week52_high_pct: 0.88, historical_returns: { "2024": 0.36, "2023": 0.58, "2022": -0.39, "2021": 0.65, "2020": 0.31, "2019": 0.28, "2018": -0.01, "2017": 0.33, "2016": 0.02, "2015": 0.47, "2014": -0.05, "2013": 0.58, "2012": 0.10, "2011": -0.08, "2010": -0.04, "2009": 1.02, "2008": -0.56, "2007": 0.50, "2006": -0.04, "2005": 0.15 } },
@@ -196,6 +201,19 @@ const STOCK_DATABASE: StockData[] = [
   { ticker: "DVN", name: "Devon Energy", sector: 4, pe_ratio: 7.2, forward_pe: 7.8, dividend_yield: 0.045, dividend_growth_years: 2, revenue_growth: 0.02, revenue_growth_quarters: 1, earnings_growth: -0.18, profit_margin: 0.18, market_cap: 25, price_to_book: 1.8, debt_to_equity: 0.55, roe: 0.25, payout_ratio: 0.35, beta: 1.85, week52_high_pct: 0.62, historical_returns: { "2024": -0.12, "2023": -0.22, "2022": 1.32, "2021": 1.82, "2020": -0.38, "2019": -0.12, "2018": -0.42, "2017": -0.25, "2016": 0.18, "2015": -0.52, "2014": -0.22, "2013": 0.28, "2012": -0.08, "2011": 0.02, "2010": 0.22, "2009": 0.18, "2008": -0.68, "2007": 0.55, "2006": 0.28, "2005": 0.68 } },
   { ticker: "EOG", name: "EOG Resources", sector: 4, pe_ratio: 10.5, forward_pe: 9.8, dividend_yield: 0.028, dividend_growth_years: 8, revenue_growth: 0.08, revenue_growth_quarters: 3, earnings_growth: -0.08, profit_margin: 0.25, market_cap: 72, price_to_book: 2.8, debt_to_equity: 0.18, roe: 0.28, payout_ratio: 0.28, beta: 1.32, week52_high_pct: 0.75, historical_returns: { "2024": 0.02, "2023": 0.08, "2022": 0.62, "2021": 0.92, "2020": -0.28, "2019": -0.15, "2018": 0.05, "2017": -0.08, "2016": 0.42, "2015": -0.35, "2014": -0.22, "2013": 0.35, "2012": -0.02, "2011": 0.08, "2010": 0.15, "2009": 0.22, "2008": -0.42, "2007": 0.55, "2006": -0.12, "2005": 0.82 } },
 ];
+
+// Fill in defaults for metrics not present in hardcoded fallback data
+const STOCK_DATABASE: StockData[] = _RAW_STOCKS.map(s => ({
+  roic: 0,
+  current_ratio: 0,
+  free_cash_flow_per_share: 0,
+  revenue_per_share: 0,
+  net_income_per_share: 0,
+  shares_outstanding: 0,
+  shares_change_pct: 0,
+  net_income_growth_quarters: 0,
+  ...s,
+}) as StockData);
 
 // S&P 500 (SPY) historical annual returns
 const SPY_RETURNS: { [year: string]: number } = {

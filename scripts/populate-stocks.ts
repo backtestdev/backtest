@@ -131,7 +131,6 @@ interface KeyMetrics {
   priceToSalesRatio: number;
   debtToEquity: number;
   currentRatio: number;
-  roe: number;
   roic: number;
   dividendYield: number;
   payoutRatio: number;
@@ -141,6 +140,10 @@ interface KeyMetrics {
   earningsYield: number;
   evToSales: number;
   enterpriseValue: number;
+}
+
+interface FinancialRatios {
+  returnOnEquity: number;
 }
 
 interface GrowthData {
@@ -154,6 +157,9 @@ interface GrowthData {
 interface IncomeData {
   netIncomeRatio: number;
 }
+
+// Name patterns that indicate funds, trusts, SPACs, etc. — NOT operating companies
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose)\b/i;
 
 // ---------------------------------------------------------------------------
 // Step 1: Fetch screener → insert stocks
@@ -178,7 +184,8 @@ async function populateStocks(): Promise<string[]> {
       !s.isEtf &&
       !s.isFund &&
       s.sector &&
-      s.sector.trim() !== ""
+      s.sector.trim() !== "" &&
+      !EXCLUDE_NAME_PATTERNS.test(s.companyName)
   );
   console.log(`  ${results.length} screener results → ${filtered.length} common stocks`);
 
@@ -213,9 +220,10 @@ async function enrichTopStocks() {
 
   for (const sym of topSymbols) {
     try {
-      // 5 sequential calls per stock, each throttled
+      // 6 sequential calls per stock, each throttled
       const quote = await fetchFMP<Quote[]>(`/quote?symbol=${sym}`).then((r) => r?.[0] || null);
       const metrics = await fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
+      const finRatios = await fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
       const annualGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=annual&limit=8`).then((r) => r || []);
       const quarterlyGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
       const income = await fetchFMP<IncomeData[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
@@ -236,11 +244,12 @@ async function enrichTopStocks() {
         `;
       }
 
-      // Ratios table — use key-metrics, fall back to quote for PE
+      // Ratios table — key-metrics + financial-ratios (ROE), PE fallback from quote
       const peRatio = metrics?.peRatio || quote?.pe || 0;
+      const roe = finRatios?.returnOnEquity || 0;
       await sql`
         INSERT INTO ratios (symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic, dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share, earnings_yield, ev_to_sales, enterprise_value, updated_at)
-        VALUES (${sym}, ${peRatio}, ${metrics?.pbRatio || 0}, ${metrics?.priceToSalesRatio || 0}, ${metrics?.debtToEquity || 0}, ${metrics?.currentRatio || 0}, ${metrics?.roe || 0}, ${metrics?.roic || 0}, ${metrics?.dividendYield || 0}, ${metrics?.payoutRatio || 0}, ${metrics?.freeCashFlowPerShare || 0}, ${metrics?.revenuePerShare || 0}, ${metrics?.netIncomePerShare || 0}, ${metrics?.earningsYield || 0}, ${metrics?.evToSales || 0}, ${metrics?.enterpriseValue || 0}, NOW())
+        VALUES (${sym}, ${peRatio}, ${metrics?.pbRatio || 0}, ${metrics?.priceToSalesRatio || 0}, ${metrics?.debtToEquity || 0}, ${metrics?.currentRatio || 0}, ${roe}, ${metrics?.roic || 0}, ${metrics?.dividendYield || 0}, ${metrics?.payoutRatio || 0}, ${metrics?.freeCashFlowPerShare || 0}, ${metrics?.revenuePerShare || 0}, ${metrics?.netIncomePerShare || 0}, ${metrics?.earningsYield || 0}, ${metrics?.evToSales || 0}, ${metrics?.enterpriseValue || 0}, NOW())
         ON CONFLICT (symbol) DO UPDATE SET
           pe_ratio = EXCLUDED.pe_ratio, pb_ratio = EXCLUDED.pb_ratio, price_to_sales_ratio = EXCLUDED.price_to_sales_ratio,
           debt_to_equity = EXCLUDED.debt_to_equity, current_ratio = EXCLUDED.current_ratio, roe = EXCLUDED.roe, roic = EXCLUDED.roic,
