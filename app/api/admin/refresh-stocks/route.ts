@@ -25,9 +25,8 @@ export const maxDuration = 300; // 5 minutes
 
 const ENRICH_BATCH_SIZE = 150;
 
-// Simple in-memory rate limiter for manual POST: one call per hour
-let lastManualRefreshAt = 0;
-const RATE_LIMIT_MS = 60 * 60 * 1000;
+// No rate limit — manual POST uses the same rotating offset as cron
+// so you can call it repeatedly to populate all stocks.
 
 const FMP_API_KEY =
   process.env.FINANCIAL_MODELING_PREP_API_KEY ||
@@ -362,15 +361,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const now = Date.now();
-  if (now - lastManualRefreshAt < RATE_LIMIT_MS) {
-    const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastManualRefreshAt)) / 60000);
-    return NextResponse.json(
-      { error: `Rate limited. Try again in ${remaining} minutes.` },
-      { status: 429 }
-    );
-  }
-
   if (!FMP_API_KEY) {
     return NextResponse.json({ error: "FMP API key not configured" }, { status: 400 });
   }
@@ -379,13 +369,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 400 });
   }
 
-  lastManualRefreshAt = now;
   const sql = neon(databaseUrl);
 
   try {
-    // Manual trigger always starts at offset 0 (top stocks by market cap)
-    const result = await runRefresh(sql, 0);
-    return NextResponse.json({ success: true, ...result });
+    // Read rotating offset from DB (same mechanism as cron)
+    await ensureStockTables(sql);
+    let offset = 0;
+    try {
+      const offsetRow = await sql`SELECT value FROM stock_meta WHERE key = 'enrich_offset'`;
+      if (offsetRow[0]?.value) offset = parseInt(offsetRow[0].value as string, 10) || 0;
+    } catch { /* first run */ }
+
+    const result = await runRefresh(sql, offset);
+    return NextResponse.json({
+      success: true,
+      ...result,
+      message: `Enriched batch ${offset}–${offset + result.enriched - 1}, next batch starts at ${result.nextOffset}`,
+    });
   } catch (error) {
     console.error("Refresh error:", error);
     return NextResponse.json({ error: "Refresh failed", details: String(error) }, { status: 500 });
