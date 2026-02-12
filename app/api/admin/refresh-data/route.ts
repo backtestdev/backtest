@@ -8,10 +8,12 @@
  *   2. Fetch stock screener (1 API call) → INSERT into stocks_new
  *   3. Wait 10s, fetch ratios-ttm-bulk (1 API call) → UPDATE stocks_new
  *   4. Wait 10s, fetch key-metrics-ttm-bulk (1 API call) → UPDATE stocks_new
- *   5. Swap: stocks → stocks_old, stocks_new → stocks
- *   6. Log verification counts
+ *   5. If bulk returned no data (starter plan), fall back to per-stock enrichment
+ *   6. Swap: stocks → stocks_old, stocks_new → stocks
+ *   7. Log verification counts
  *
- * Total: 3 API calls instead of thousands.
+ * On premium plans: 3 bulk API calls total.
+ * On starter plans: screener + per-stock enrichment (concurrent, time-bounded).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -395,7 +397,108 @@ export async function POST(request: NextRequest) {
       log.push("WARNING: key-metrics-ttm-bulk returned no data");
     }
 
-    // ── Step 2d: Swap tables ─────────────────────────────────────
+    // ── Step 2d: Per-stock fallback if bulk returned no data ─────
+    const bulkWorked =
+      (ratiosBulk && ratiosBulk.length > 0) ||
+      (metricsBulk && metricsBulk.length > 0);
+
+    if (!bulkWorked) {
+      log.push(
+        "Bulk endpoints not available (starter plan?), falling back to per-stock enrichment..."
+      );
+
+      // Get all symbols ordered by market cap (most important first)
+      const symbolRows = await sql`SELECT symbol FROM stocks_new ORDER BY market_cap DESC NULLS LAST`;
+      const allSymbols = symbolRows.map((r) => r.symbol as string);
+
+      const CONCURRENCY = 5;
+      const TIME_BUDGET_MS = 210_000; // 3.5 minutes for enrichment
+      const enrichStart = Date.now();
+      let enriched = 0;
+      let enrichFailed = 0;
+
+      for (let i = 0; i < allSymbols.length; i += CONCURRENCY) {
+        if (Date.now() - enrichStart > TIME_BUDGET_MS) {
+          log.push(
+            `Time budget reached after enriching ${enriched}/${allSymbols.length} stocks`
+          );
+          break;
+        }
+
+        const batch = allSymbols.slice(i, i + CONCURRENCY);
+        const results = await Promise.allSettled(
+          batch.map(async (symbol) => {
+            const [ratiosData, metricsData] = await Promise.all([
+              fetchFMP<Record<string, unknown>[]>(
+                `/ratios?symbol=${symbol}&period=annual&limit=1`
+              ),
+              fetchFMP<Record<string, unknown>[]>(
+                `/key-metrics?symbol=${symbol}&period=annual&limit=1`
+              ),
+            ]);
+
+            const updates: Record<string, number> = {};
+            const sources = [
+              ...(ratiosData && ratiosData.length > 0 ? [ratiosData[0]] : []),
+              ...(metricsData && metricsData.length > 0
+                ? [metricsData[0]]
+                : []),
+            ];
+
+            for (const source of sources) {
+              for (const [key, value] of Object.entries(source)) {
+                if (key === "symbol" || key === "date" || key === "period")
+                  continue;
+                const col = resolveColumn(key);
+                if (
+                  col &&
+                  value != null &&
+                  typeof value === "number" &&
+                  Number.isFinite(value)
+                ) {
+                  updates[col] = value;
+                }
+              }
+            }
+
+            if (Object.keys(updates).length === 0) return;
+
+            const setClauses = Object.entries(updates)
+              .map(([col, val]) => `${col} = ${val}`)
+              .join(", ");
+
+            await (
+              sql as unknown as (
+                q: string,
+                p: unknown[]
+              ) => Promise<unknown>
+            )(
+              `UPDATE stocks_new SET ${setClauses}, updated_at = NOW() WHERE symbol = $1`,
+              [symbol]
+            );
+          })
+        );
+
+        for (const r of results) {
+          if (r.status === "fulfilled") enriched++;
+          else enrichFailed++;
+        }
+
+        // Log progress every 100 stocks
+        if ((i + CONCURRENCY) % 100 < CONCURRENCY) {
+          const elapsed = Math.round((Date.now() - enrichStart) / 1000);
+          log.push(
+            `  ...enriched ${enriched}/${allSymbols.length} (${elapsed}s elapsed)`
+          );
+        }
+      }
+
+      log.push(
+        `Per-stock enrichment: ${enriched} enriched, ${enrichFailed} failed, ${allSymbols.length - enriched - enrichFailed} skipped (timeout)`
+      );
+    }
+
+    // ── Step 3: Swap tables ───────────────────────────────────────
     log.push("Swapping tables...");
 
     // Drop old backup if it exists
