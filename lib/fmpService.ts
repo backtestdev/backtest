@@ -2,11 +2,11 @@
  * Stock Universe Service — PostgreSQL-backed
  *
  * Reads pre-populated stock data from the Neon PostgreSQL database
- * (tables: stocks, quotes, ratios, profiles) instead of making live
- * FMP API calls during requests.
+ * (single unified `stocks` table) instead of making live FMP API calls
+ * during requests.
  *
- * Data is populated offline via `npx tsx scripts/populate-stocks.ts`
- * and can be refreshed through the admin endpoint POST /api/admin/refresh-stocks.
+ * Data is populated via POST /api/admin/refresh-data which uses bulk
+ * FMP API calls (screener + ratios-ttm-bulk + key-metrics-ttm-bulk).
  *
  * Maintains the same StockData interface so all downstream code
  * (stockData.ts, backtestEngine.ts, API routes) works unchanged.
@@ -23,7 +23,7 @@ let memoryCache: { stocks: StockData[]; timestamp: number } | null = null;
 let lastError: string | null = null;
 
 // ---------------------------------------------------------------------------
-// Sector mapping (same as before, applied during DB → StockData transform)
+// Sector mapping (applied during DB → StockData transform)
 // ---------------------------------------------------------------------------
 
 const SECTOR_MAP: Record<string, number> = {
@@ -42,7 +42,7 @@ const SECTOR_MAP: Record<string, number> = {
 };
 
 // ---------------------------------------------------------------------------
-// Core query — single JOIN across all four tables
+// Core query — single unified stocks table, no JOINs
 // ---------------------------------------------------------------------------
 
 async function queryStocksFromDb(): Promise<StockData[]> {
@@ -55,135 +55,115 @@ async function queryStocksFromDb(): Promise<StockData[]> {
   try {
     const rows = await sql`
       SELECT
-        s.symbol,
-        s.company_name,
-        s.sector,
-        s.market_cap  AS s_market_cap,
-        s.beta,
-        s.last_annual_dividend,
+        symbol,
+        company_name,
+        sector,
+        industry,
+        market_cap,
+        price,
+        beta,
+        volume,
+        avg_volume,
+        last_dividend,
+        is_etf,
+        is_actively_trading,
 
-        q.price,
-        q.pe,
-        q.eps,
-        q.year_high,
-        q.market_cap  AS q_market_cap,
-        q.shares_outstanding,
+        -- Valuation
+        price_to_earnings_ratio,
+        price_to_earnings_growth_ratio,
+        price_to_book_ratio,
+        price_to_sales_ratio,
+        price_to_free_cash_flow_ratio,
+        price_to_operating_cash_flow_ratio,
+        price_to_fair_value,
+        enterprise_value_multiple,
 
-        r.pe_ratio,
-        r.pb_ratio,
-        r.price_to_sales_ratio,
-        r.dividend_yield,
-        r.payout_ratio,
-        r.roe,
-        r.roic,
-        r.debt_to_equity,
-        r.current_ratio,
-        r.free_cash_flow_per_share,
-        r.revenue_per_share,
-        r.net_income_per_share,
-        r.earnings_yield,
-        r.enterprise_value,
-        r.ev_to_sales,
-        -- Key Metrics fields
-        r.ev_to_operating_cash_flow,
-        r.ev_to_free_cash_flow,
-        r.ev_to_ebitda,
-        r.net_debt_to_ebitda,
-        r.income_quality,
-        r.graham_number,
-        r.graham_net_net,
-        r.tax_burden,
-        r.interest_burden,
-        r.working_capital,
-        r.invested_capital,
-        r.return_on_assets,
-        r.operating_return_on_assets,
-        r.return_on_tangible_assets,
-        r.return_on_capital_employed,
-        r.free_cash_flow_yield,
-        r.capex_to_operating_cash_flow,
-        r.capex_to_depreciation,
-        r.capex_to_revenue,
-        r.sga_to_revenue,
-        r.rd_to_revenue,
-        r.sbc_to_revenue,
-        r.intangibles_to_total_assets,
-        r.average_receivables,
-        r.average_payables,
-        r.average_inventory,
-        r.days_sales_outstanding,
-        r.days_payables_outstanding,
-        r.days_inventory_outstanding,
-        r.operating_cycle,
-        r.cash_conversion_cycle,
-        r.free_cash_flow_to_equity,
-        r.free_cash_flow_to_firm,
-        r.tangible_asset_value,
-        r.net_current_asset_value,
-        -- Ratios endpoint fields
-        r.gross_profit_margin,
-        r.ebit_margin,
-        r.ebitda_margin,
-        r.operating_profit_margin,
-        r.pretax_profit_margin,
-        r.continuous_operations_profit_margin,
-        r.net_profit_margin,
-        r.bottom_line_profit_margin,
-        r.receivables_turnover,
-        r.payables_turnover,
-        r.inventory_turnover,
-        r.fixed_asset_turnover,
-        r.asset_turnover,
-        r.quick_ratio,
-        r.solvency_ratio,
-        r.cash_ratio,
-        r.peg_ratio,
-        r.forward_peg_ratio,
-        r.price_to_fcf_ratio,
-        r.price_to_ocf_ratio,
-        r.debt_to_assets_ratio,
-        r.debt_to_capital_ratio,
-        r.lt_debt_to_capital_ratio,
-        r.financial_leverage_ratio,
-        r.working_capital_turnover_ratio,
-        r.operating_cash_flow_ratio,
-        r.operating_cash_flow_sales_ratio,
-        r.fcf_to_ocf_ratio,
-        r.debt_service_coverage_ratio,
-        r.interest_coverage_ratio,
-        r.short_term_ocf_coverage_ratio,
-        r.ocf_coverage_ratio,
-        r.capex_coverage_ratio,
-        r.div_capex_coverage_ratio,
-        r.dividend_yield_percentage,
-        r.interest_debt_per_share,
-        r.cash_per_share,
-        r.book_value_per_share,
-        r.tangible_book_value_per_share,
-        r.shareholders_equity_per_share,
-        r.operating_cash_flow_per_share,
-        r.capex_per_share,
-        r.net_income_per_ebt,
-        r.ebt_per_ebit,
-        r.price_to_fair_value,
-        r.debt_to_market_cap,
-        r.effective_tax_rate,
-        r.enterprise_value_multiple,
+        -- Profitability
+        gross_profit_margin,
+        ebit_margin,
+        ebitda_margin,
+        operating_profit_margin,
+        pretax_profit_margin,
+        net_profit_margin,
+        effective_tax_rate,
 
-        p.revenue_growth,
-        p.earnings_growth,
-        p.revenue_growth_quarters,
-        p.net_income_growth_quarters,
-        p.dividend_growth_years,
-        p.profit_margin,
-        p.historical_returns
-      FROM stocks s
-      INNER JOIN quotes   q ON q.symbol = s.symbol
-      INNER JOIN ratios   r ON r.symbol = s.symbol
-      INNER JOIN profiles p ON p.symbol = s.symbol
-      WHERE s.is_actively_trading = true
-        AND s.is_etf = false
-      ORDER BY s.market_cap DESC
+        -- Returns
+        return_on_assets,
+        return_on_equity,
+        return_on_invested_capital,
+        return_on_capital_employed,
+        earnings_yield,
+        free_cash_flow_yield,
+
+        -- Liquidity & Solvency
+        current_ratio,
+        quick_ratio,
+        cash_ratio,
+
+        -- Leverage/Debt
+        debt_to_equity_ratio,
+        debt_to_assets_ratio,
+        debt_to_capital_ratio,
+        financial_leverage_ratio,
+        debt_to_market_cap,
+        interest_coverage_ratio,
+
+        -- Dividends
+        dividend_yield,
+        dividend_yield_percentage,
+        dividend_payout_ratio,
+
+        -- Per share
+        revenue_per_share,
+        net_income_per_share,
+        book_value_per_share,
+        tangible_book_value_per_share,
+        operating_cash_flow_per_share,
+        free_cash_flow_per_share,
+        cash_per_share,
+
+        -- Efficiency
+        asset_turnover,
+        inventory_turnover,
+        receivables_turnover,
+        days_of_sales_outstanding,
+        days_of_inventory_outstanding,
+        days_of_payables_outstanding,
+        cash_conversion_cycle,
+
+        -- Enterprise Value
+        enterprise_value,
+        ev_to_sales,
+        ev_to_ebitda,
+        ev_to_operating_cash_flow,
+        ev_to_free_cash_flow,
+        net_debt_to_ebitda,
+
+        -- Cash Flow
+        capex_to_revenue,
+        free_cash_flow_operating_cash_flow_ratio,
+        operating_cash_flow_sales_ratio,
+        income_quality,
+
+        -- Other
+        graham_number,
+        working_capital,
+        invested_capital,
+        tangible_asset_value,
+        research_and_development_to_revenue,
+        stock_based_compensation_to_revenue,
+
+        -- Trend data
+        consecutive_dividend_growth_years,
+        consecutive_revenue_growth_years,
+        consecutive_net_income_growth_years,
+        revenue_growth_3yr_avg,
+        net_income_growth_3yr_avg
+
+      FROM stocks
+      WHERE is_actively_trading = true
+        AND is_etf = false
+      ORDER BY market_cap DESC
     `;
 
     lastError = null;
@@ -193,8 +173,14 @@ async function queryStocksFromDb(): Promise<StockData[]> {
     // Missing tables means DB hasn't been populated yet — not a real error,
     // just return empty so the hardcoded fallback in stockData.ts kicks in.
     if (msg.includes('relation') && msg.includes('does not exist')) {
-      lastError = 'Stock tables not yet created. Run POST /api/db/init then populate data.';
+      lastError = 'Stock tables not yet created. Run POST /api/db/init then POST /api/admin/refresh-data.';
       console.warn('[FMP-DB] Stock tables not found — using fallback data');
+      return [];
+    }
+    // Column not found means old schema — need to run refresh-data
+    if (msg.includes('column') && msg.includes('does not exist')) {
+      lastError = 'Stock table has old schema. Run POST /api/admin/refresh-data to migrate.';
+      console.warn('[FMP-DB] Old schema detected — using fallback data');
       return [];
     }
     lastError = `Database query failed: ${msg}`;
@@ -209,61 +195,64 @@ async function queryStocksFromDb(): Promise<StockData[]> {
 
 function toStockData(row: Record<string, unknown>): StockData {
   const price = num(row.price);
-  const yearHigh = num(row.year_high);
-  const marketCapRaw = num(row.q_market_cap) || num(row.s_market_cap);
+  const marketCapRaw = num(row.market_cap);
   const marketCapBillions = marketCapRaw / 1_000_000_000;
 
-  // Compute dividend yield from last_annual_dividend if ratios row is missing
+  // Compute dividend yield from last_dividend if dividend_yield column is null
   const dividendYield =
     num(row.dividend_yield) ||
-    (num(row.last_annual_dividend) && price > 0
-      ? num(row.last_annual_dividend) / price
+    (num(row.last_dividend) && price > 0
+      ? num(row.last_dividend) / price
       : 0);
 
   return {
     ticker: String(row.symbol),
-    name: String(row.company_name),
+    name: String(row.company_name || ''),
     sector: SECTOR_MAP[String(row.sector)] || 0,
 
-    // PE: prefer ratios table, fall back to quote
-    pe_ratio: num(row.pe_ratio) || num(row.pe),
+    // Valuation
+    pe_ratio: num(row.price_to_earnings_ratio),
     forward_pe: 0,
-    price_to_book: num(row.pb_ratio),
+    price_to_book: num(row.price_to_book_ratio),
 
+    // Dividends
     dividend_yield: dividendYield,
-    dividend_growth_years: num(row.dividend_growth_years),
-    payout_ratio: num(row.payout_ratio),
+    dividend_growth_years: num(row.consecutive_dividend_growth_years),
+    payout_ratio: num(row.dividend_payout_ratio),
 
-    revenue_growth: num(row.revenue_growth),
-    revenue_growth_quarters: num(row.revenue_growth_quarters),
-    net_income_growth_quarters: num(row.net_income_growth_quarters),
-    earnings_growth: num(row.earnings_growth),
+    // Growth
+    revenue_growth: num(row.revenue_growth_3yr_avg),
+    revenue_growth_quarters: num(row.consecutive_revenue_growth_years),
+    net_income_growth_quarters: num(row.consecutive_net_income_growth_years),
+    earnings_growth: num(row.net_income_growth_3yr_avg),
 
-    profit_margin: num(row.profit_margin),
-    roe: num(row.roe),
-    roic: num(row.roic),
+    // Profitability
+    profit_margin: num(row.net_profit_margin),
+    roe: num(row.return_on_equity),
+    roic: num(row.return_on_invested_capital),
 
-    debt_to_equity: num(row.debt_to_equity),
+    // Leverage & liquidity
+    debt_to_equity: num(row.debt_to_equity_ratio),
     current_ratio: num(row.current_ratio),
     free_cash_flow_per_share: num(row.free_cash_flow_per_share),
 
+    // Per-share
     revenue_per_share: num(row.revenue_per_share),
     net_income_per_share: num(row.net_income_per_share),
 
+    // Market
     market_cap: marketCapBillions,
     beta: num(row.beta),
-    week52_high_pct: yearHigh > 0 ? price / yearHigh : 0,
+    week52_high_pct: 0, // Not stored in unified table
 
-    shares_outstanding: num(row.shares_outstanding),
+    // Share metrics
+    shares_outstanding: 0,
     shares_change_pct: 0,
-    ipo_date: '',
 
-    historical_returns:
-      row.historical_returns && typeof row.historical_returns === 'object'
-        ? (row.historical_returns as Record<string, number>)
-        : {},
+    // Historical returns — not in the unified table yet, empty for now
+    historical_returns: {},
 
-    // Key Metrics endpoint fields
+    // Enterprise value / EV metrics
     enterprise_value: num(row.enterprise_value),
     ev_to_sales: num(row.ev_to_sales),
     ev_to_operating_cash_flow: num(row.ev_to_operating_cash_flow),
@@ -272,36 +261,36 @@ function toStockData(row: Record<string, unknown>): StockData {
     net_debt_to_ebitda: num(row.net_debt_to_ebitda),
     income_quality: num(row.income_quality),
     graham_number: num(row.graham_number),
-    graham_net_net: num(row.graham_net_net),
-    tax_burden: num(row.tax_burden),
-    interest_burden: num(row.interest_burden),
+    graham_net_net: 0,
+    tax_burden: 0,
+    interest_burden: 0,
     working_capital: num(row.working_capital),
     invested_capital: num(row.invested_capital),
     return_on_assets: num(row.return_on_assets),
-    operating_return_on_assets: num(row.operating_return_on_assets),
-    return_on_tangible_assets: num(row.return_on_tangible_assets),
+    operating_return_on_assets: 0,
+    return_on_tangible_assets: 0,
     return_on_capital_employed: num(row.return_on_capital_employed),
     earnings_yield: num(row.earnings_yield),
     free_cash_flow_yield: num(row.free_cash_flow_yield),
-    capex_to_operating_cash_flow: num(row.capex_to_operating_cash_flow),
-    capex_to_depreciation: num(row.capex_to_depreciation),
+    capex_to_operating_cash_flow: 0,
+    capex_to_depreciation: 0,
     capex_to_revenue: num(row.capex_to_revenue),
-    sga_to_revenue: num(row.sga_to_revenue),
-    rd_to_revenue: num(row.rd_to_revenue),
-    sbc_to_revenue: num(row.sbc_to_revenue),
-    intangibles_to_total_assets: num(row.intangibles_to_total_assets),
-    average_receivables: num(row.average_receivables),
-    average_payables: num(row.average_payables),
-    average_inventory: num(row.average_inventory),
-    days_sales_outstanding: num(row.days_sales_outstanding),
-    days_payables_outstanding: num(row.days_payables_outstanding),
-    days_inventory_outstanding: num(row.days_inventory_outstanding),
-    operating_cycle: num(row.operating_cycle),
+    sga_to_revenue: 0,
+    rd_to_revenue: num(row.research_and_development_to_revenue),
+    sbc_to_revenue: num(row.stock_based_compensation_to_revenue),
+    intangibles_to_total_assets: 0,
+    average_receivables: 0,
+    average_payables: 0,
+    average_inventory: 0,
+    days_sales_outstanding: num(row.days_of_sales_outstanding),
+    days_payables_outstanding: num(row.days_of_payables_outstanding),
+    days_inventory_outstanding: num(row.days_of_inventory_outstanding),
+    operating_cycle: 0,
     cash_conversion_cycle: num(row.cash_conversion_cycle),
-    free_cash_flow_to_equity: num(row.free_cash_flow_to_equity),
-    free_cash_flow_to_firm: num(row.free_cash_flow_to_firm),
+    free_cash_flow_to_equity: 0,
+    free_cash_flow_to_firm: 0,
     tangible_asset_value: num(row.tangible_asset_value),
-    net_current_asset_value: num(row.net_current_asset_value),
+    net_current_asset_value: 0,
 
     // Ratios endpoint fields
     gross_profit_margin: num(row.gross_profit_margin),
@@ -309,45 +298,45 @@ function toStockData(row: Record<string, unknown>): StockData {
     ebitda_margin: num(row.ebitda_margin),
     operating_profit_margin: num(row.operating_profit_margin),
     pretax_profit_margin: num(row.pretax_profit_margin),
-    continuous_operations_profit_margin: num(row.continuous_operations_profit_margin),
+    continuous_operations_profit_margin: 0,
     net_profit_margin: num(row.net_profit_margin),
-    bottom_line_profit_margin: num(row.bottom_line_profit_margin),
+    bottom_line_profit_margin: 0,
     receivables_turnover: num(row.receivables_turnover),
-    payables_turnover: num(row.payables_turnover),
+    payables_turnover: 0,
     inventory_turnover: num(row.inventory_turnover),
-    fixed_asset_turnover: num(row.fixed_asset_turnover),
+    fixed_asset_turnover: 0,
     asset_turnover: num(row.asset_turnover),
     quick_ratio: num(row.quick_ratio),
-    solvency_ratio: num(row.solvency_ratio),
+    solvency_ratio: 0,
     cash_ratio: num(row.cash_ratio),
-    peg_ratio: num(row.peg_ratio),
-    forward_peg_ratio: num(row.forward_peg_ratio),
-    price_to_fcf_ratio: num(row.price_to_fcf_ratio),
-    price_to_ocf_ratio: num(row.price_to_ocf_ratio),
+    peg_ratio: num(row.price_to_earnings_growth_ratio),
+    forward_peg_ratio: 0,
+    price_to_fcf_ratio: num(row.price_to_free_cash_flow_ratio),
+    price_to_ocf_ratio: num(row.price_to_operating_cash_flow_ratio),
     debt_to_assets_ratio: num(row.debt_to_assets_ratio),
     debt_to_capital_ratio: num(row.debt_to_capital_ratio),
-    lt_debt_to_capital_ratio: num(row.lt_debt_to_capital_ratio),
+    lt_debt_to_capital_ratio: 0,
     financial_leverage_ratio: num(row.financial_leverage_ratio),
-    working_capital_turnover_ratio: num(row.working_capital_turnover_ratio),
-    operating_cash_flow_ratio: num(row.operating_cash_flow_ratio),
+    working_capital_turnover_ratio: 0,
+    operating_cash_flow_ratio: 0,
     operating_cash_flow_sales_ratio: num(row.operating_cash_flow_sales_ratio),
-    fcf_to_ocf_ratio: num(row.fcf_to_ocf_ratio),
-    debt_service_coverage_ratio: num(row.debt_service_coverage_ratio),
+    fcf_to_ocf_ratio: num(row.free_cash_flow_operating_cash_flow_ratio),
+    debt_service_coverage_ratio: 0,
     interest_coverage_ratio: num(row.interest_coverage_ratio),
-    short_term_ocf_coverage_ratio: num(row.short_term_ocf_coverage_ratio),
-    ocf_coverage_ratio: num(row.ocf_coverage_ratio),
-    capex_coverage_ratio: num(row.capex_coverage_ratio),
-    div_capex_coverage_ratio: num(row.div_capex_coverage_ratio),
+    short_term_ocf_coverage_ratio: 0,
+    ocf_coverage_ratio: 0,
+    capex_coverage_ratio: 0,
+    div_capex_coverage_ratio: 0,
     dividend_yield_percentage: num(row.dividend_yield_percentage),
-    interest_debt_per_share: num(row.interest_debt_per_share),
+    interest_debt_per_share: 0,
     cash_per_share: num(row.cash_per_share),
     book_value_per_share: num(row.book_value_per_share),
     tangible_book_value_per_share: num(row.tangible_book_value_per_share),
-    shareholders_equity_per_share: num(row.shareholders_equity_per_share),
+    shareholders_equity_per_share: 0,
     operating_cash_flow_per_share: num(row.operating_cash_flow_per_share),
-    capex_per_share: num(row.capex_per_share),
-    net_income_per_ebt: num(row.net_income_per_ebt),
-    ebt_per_ebit: num(row.ebt_per_ebit),
+    capex_per_share: 0,
+    net_income_per_ebt: 0,
+    ebt_per_ebit: 0,
     price_to_fair_value: num(row.price_to_fair_value),
     debt_to_market_cap: num(row.debt_to_market_cap),
     effective_tax_rate: num(row.effective_tax_rate),
@@ -362,7 +351,7 @@ function num(v: unknown): number {
 }
 
 // ---------------------------------------------------------------------------
-// Public API — same signatures as the old fmpService
+// Public API — same signatures as before
 // ---------------------------------------------------------------------------
 
 /**
@@ -370,7 +359,6 @@ function num(v: unknown): number {
  * Uses 10-minute in-memory cache to avoid redundant DB queries.
  */
 export async function getStockUniverse(): Promise<StockData[]> {
-  // In-memory cache check
   if (memoryCache && Date.now() - memoryCache.timestamp < MEMORY_CACHE_TTL_MS) {
     console.log(`[FMP-DB] Serving ${memoryCache.stocks.length} stocks from memory cache`);
     return memoryCache.stocks;
@@ -391,8 +379,7 @@ export async function getStockUniverse(): Promise<StockData[]> {
 
 /**
  * Clears the in-memory cache so the next getStockUniverse() call
- * re-queries the database. Does NOT re-fetch from the FMP API —
- * use the admin endpoint or populate script for that.
+ * re-queries the database.
  */
 export async function refreshStockUniverse(): Promise<StockData[]> {
   console.log('[FMP-DB] Clearing memory cache, re-querying DB...');

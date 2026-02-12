@@ -2,12 +2,12 @@
  * One-time stock database population script.
  *
  * Fetches stock data from Financial Modeling Prep API and writes it into
- * PostgreSQL tables (stocks, quotes, ratios, profiles).
+ * the unified PostgreSQL `stocks` table (single table for all metrics).
  *
  * FMP Starter plan: 300 req/min. We throttle to ~200 req/min with retry
  * on 429 to stay within limits.
  *
- * Budget: ~1500 stocks × 5 calls/stock × 300ms ≈ 37 min
+ * Budget: ~1500 stocks × 3 calls/stock × 300ms ≈ 22 min
  *
  * Usage:
  *   npx tsx scripts/populate-stocks.ts
@@ -108,25 +108,14 @@ interface ScreenerResult {
 }
 
 interface Quote {
-  symbol: string;
   price: number;
-  changesPercentage: number;
-  dayLow: number;
-  dayHigh: number;
-  yearHigh: number;
-  yearLow: number;
   marketCap: number;
-  priceAvg50: number;
-  priceAvg200: number;
   volume: number;
   avgVolume: number;
-  eps: number;
   pe: number;
-  sharesOutstanding: number;
 }
 
 interface KeyMetrics {
-  marketCap: number;
   enterpriseValue: number;
   evToSales: number;
   evToOperatingCashFlow: number;
@@ -136,38 +125,18 @@ interface KeyMetrics {
   currentRatio: number;
   incomeQuality: number;
   grahamNumber: number;
-  grahamNetNet: number;
-  taxBurden: number;
-  interestBurden: number;
   workingCapital: number;
   investedCapital: number;
   returnOnAssets: number;
-  operatingReturnOnAssets: number;
-  returnOnTangibleAssets: number;
   returnOnEquity: number;
   returnOnInvestedCapital: number;
   returnOnCapitalEmployed: number;
   earningsYield: number;
   freeCashFlowYield: number;
-  capexToOperatingCashFlow: number;
-  capexToDepreciation: number;
   capexToRevenue: number;
-  salesGeneralAndAdministrativeToRevenue: number;
   researchAndDevelopementToRevenue: number;
   stockBasedCompensationToRevenue: number;
-  intangiblesToTotalAssets: number;
-  averageReceivables: number;
-  averagePayables: number;
-  averageInventory: number;
-  daysOfSalesOutstanding: number;
-  daysOfPayablesOutstanding: number;
-  daysOfInventoryOutstanding: number;
-  operatingCycle: number;
-  cashConversionCycle: number;
-  freeCashFlowToEquity: number;
-  freeCashFlowToFirm: number;
   tangibleAssetValue: number;
-  netCurrentAssetValue: number;
 }
 
 interface FinancialRatios {
@@ -176,78 +145,172 @@ interface FinancialRatios {
   ebitdaMargin: number;
   operatingProfitMargin: number;
   pretaxProfitMargin: number;
-  continuousOperationsProfitMargin: number;
   netProfitMargin: number;
-  bottomLineProfitMargin: number;
-  receivablesTurnover: number;
-  payablesTurnover: number;
-  inventoryTurnover: number;
-  fixedAssetTurnover: number;
-  assetTurnover: number;
-  currentRatio: number;
-  quickRatio: number;
-  solvencyRatio: number;
-  cashRatio: number;
+  effectiveTaxRate: number;
   priceToEarningsRatio: number;
   priceToEarningsGrowthRatio: number;
-  forwardPriceToEarningsGrowthRatio: number;
   priceToBookRatio: number;
   priceToSalesRatio: number;
   priceToFreeCashFlowRatio: number;
   priceToOperatingCashFlowRatio: number;
-  debtToAssetsRatio: number;
   debtToEquityRatio: number;
+  debtToAssetsRatio: number;
   debtToCapitalRatio: number;
-  longTermDebtToCapitalRatio: number;
   financialLeverageRatio: number;
-  workingCapitalTurnoverRatio: number;
-  operatingCashFlowRatio: number;
-  operatingCashFlowSalesRatio: number;
-  freeCashFlowOperatingCashFlowRatio: number;
-  debtServiceCoverageRatio: number;
   interestCoverageRatio: number;
-  shortTermOperatingCashFlowCoverageRatio: number;
-  operatingCashFlowCoverageRatio: number;
-  capitalExpenditureCoverageRatio: number;
-  dividendPaidAndCapexCoverageRatio: number;
-  dividendPayoutRatio: number;
+  quickRatio: number;
+  cashRatio: number;
   dividendYield: number;
   dividendYieldPercentage: number;
+  dividendPayoutRatio: number;
   revenuePerShare: number;
   netIncomePerShare: number;
-  interestDebtPerShare: number;
-  cashPerShare: number;
   bookValuePerShare: number;
   tangibleBookValuePerShare: number;
-  shareholdersEquityPerShare: number;
   operatingCashFlowPerShare: number;
-  capexPerShare: number;
   freeCashFlowPerShare: number;
-  netIncomePerEBT: number;
-  ebtPerEbit: number;
+  cashPerShare: number;
+  assetTurnover: number;
+  inventoryTurnover: number;
+  receivablesTurnover: number;
+  daysOfSalesOutstanding: number;
+  daysOfInventoryOutstanding: number;
+  daysOfPayablesOutstanding: number;
+  cashConversionCycle: number;
+  operatingCashFlowSalesRatio: number;
+  freeCashFlowOperatingCashFlowRatio: number;
   priceToFairValue: number;
   debtToMarketCap: number;
-  effectiveTaxRate: number;
   enterpriseValueMultiple: number;
 }
 
-interface GrowthData {
-  date: string;
-  period: string; // "FY", "Q1", "Q2", "Q3", "Q4"
-  revenueGrowth: number;
-  netIncomeGrowth: number;
-  dividendsperShareGrowth: number;
-}
-
-interface IncomeData {
-  netIncomeRatio: number;
-}
-
-// Name patterns that indicate funds, trusts, SPACs, debt instruments, etc. — NOT operating companies
+// Name patterns that indicate funds, trusts, SPACs, etc.
 const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$/i;
 
 // ---------------------------------------------------------------------------
-// Step 1: Fetch screener → insert stocks
+// Step 1: Ensure unified stocks table exists
+// ---------------------------------------------------------------------------
+
+async function ensureTables() {
+  console.log("Ensuring unified stocks table exists...");
+  await sql`
+    CREATE TABLE IF NOT EXISTS stocks (
+      id SERIAL PRIMARY KEY,
+      symbol VARCHAR(10) UNIQUE NOT NULL,
+      company_name VARCHAR(255),
+      exchange VARCHAR(50),
+      sector VARCHAR(100),
+      industry VARCHAR(100),
+      country VARCHAR(50) DEFAULT 'US',
+      market_cap BIGINT,
+      price DECIMAL(12,4),
+      beta DECIMAL(8,4),
+      volume BIGINT,
+      avg_volume BIGINT,
+      last_dividend DECIMAL(8,4),
+      ipo_date DATE,
+      is_etf BOOLEAN DEFAULT FALSE,
+      is_fund BOOLEAN DEFAULT FALSE,
+      is_actively_trading BOOLEAN DEFAULT TRUE,
+      description TEXT,
+      full_time_employees INT,
+      price_to_earnings_ratio DECIMAL(16,8),
+      price_to_earnings_growth_ratio DECIMAL(16,8),
+      price_to_book_ratio DECIMAL(16,8),
+      price_to_sales_ratio DECIMAL(16,8),
+      price_to_free_cash_flow_ratio DECIMAL(16,8),
+      price_to_operating_cash_flow_ratio DECIMAL(16,8),
+      price_to_fair_value DECIMAL(16,8),
+      enterprise_value_multiple DECIMAL(16,8),
+      gross_profit_margin DECIMAL(16,8),
+      ebit_margin DECIMAL(16,8),
+      ebitda_margin DECIMAL(16,8),
+      operating_profit_margin DECIMAL(16,8),
+      pretax_profit_margin DECIMAL(16,8),
+      net_profit_margin DECIMAL(16,8),
+      effective_tax_rate DECIMAL(16,8),
+      return_on_assets DECIMAL(16,8),
+      return_on_equity DECIMAL(16,8),
+      return_on_invested_capital DECIMAL(16,8),
+      return_on_capital_employed DECIMAL(16,8),
+      earnings_yield DECIMAL(16,8),
+      free_cash_flow_yield DECIMAL(16,8),
+      current_ratio DECIMAL(16,8),
+      quick_ratio DECIMAL(16,8),
+      cash_ratio DECIMAL(16,8),
+      debt_to_equity_ratio DECIMAL(16,8),
+      debt_to_assets_ratio DECIMAL(16,8),
+      debt_to_capital_ratio DECIMAL(16,8),
+      financial_leverage_ratio DECIMAL(16,8),
+      debt_to_market_cap DECIMAL(16,8),
+      interest_coverage_ratio DECIMAL(16,8),
+      dividend_yield DECIMAL(16,8),
+      dividend_yield_percentage DECIMAL(16,8),
+      dividend_payout_ratio DECIMAL(16,8),
+      revenue_per_share DECIMAL(16,8),
+      net_income_per_share DECIMAL(16,8),
+      book_value_per_share DECIMAL(16,8),
+      tangible_book_value_per_share DECIMAL(16,8),
+      operating_cash_flow_per_share DECIMAL(16,8),
+      free_cash_flow_per_share DECIMAL(16,8),
+      cash_per_share DECIMAL(16,8),
+      asset_turnover DECIMAL(16,8),
+      inventory_turnover DECIMAL(16,8),
+      receivables_turnover DECIMAL(16,8),
+      days_of_sales_outstanding DECIMAL(16,8),
+      days_of_inventory_outstanding DECIMAL(16,8),
+      days_of_payables_outstanding DECIMAL(16,8),
+      cash_conversion_cycle DECIMAL(16,8),
+      enterprise_value BIGINT,
+      ev_to_sales DECIMAL(16,8),
+      ev_to_ebitda DECIMAL(16,8),
+      ev_to_operating_cash_flow DECIMAL(16,8),
+      ev_to_free_cash_flow DECIMAL(16,8),
+      net_debt_to_ebitda DECIMAL(16,8),
+      capex_to_revenue DECIMAL(16,8),
+      free_cash_flow_operating_cash_flow_ratio DECIMAL(16,8),
+      operating_cash_flow_sales_ratio DECIMAL(16,8),
+      income_quality DECIMAL(16,8),
+      graham_number DECIMAL(16,8),
+      working_capital BIGINT,
+      invested_capital BIGINT,
+      tangible_asset_value BIGINT,
+      research_and_development_to_revenue DECIMAL(16,8),
+      stock_based_compensation_to_revenue DECIMAL(16,8),
+      revenue_history JSONB,
+      net_income_history JSONB,
+      eps_history JSONB,
+      consecutive_revenue_growth_years INT DEFAULT 0,
+      consecutive_net_income_growth_years INT DEFAULT 0,
+      consecutive_dividend_growth_years INT DEFAULT 0,
+      consecutive_eps_growth_years INT DEFAULT 0,
+      revenue_growth_3yr_avg DECIMAL(16,8),
+      revenue_growth_5yr_avg DECIMAL(16,8),
+      net_income_growth_3yr_avg DECIMAL(16,8),
+      net_income_growth_5yr_avg DECIMAL(16,8),
+      revenue_growth_positive_3yr_count INT DEFAULT 0,
+      net_income_growth_positive_3yr_count INT DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+
+  await sql`CREATE INDEX IF NOT EXISTS idx_stocks_symbol ON stocks(symbol)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_stocks_sector ON stocks(sector)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_stocks_market_cap ON stocks(market_cap)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_stocks_pe ON stocks(price_to_earnings_ratio)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_stocks_roe ON stocks(return_on_equity)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS stock_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Fetch screener → insert stocks
 // ---------------------------------------------------------------------------
 
 async function populateStocks(): Promise<string[]> {
@@ -260,7 +323,6 @@ async function populateStocks(): Promise<string[]> {
     throw new Error("Screener returned no results");
   }
 
-  // Filter: common stocks only (no ETFs, funds, or sectorless instruments)
   const filtered = results.filter(
     (s) =>
       s.marketCap > 0 &&
@@ -276,13 +338,14 @@ async function populateStocks(): Promise<string[]> {
 
   for (const s of filtered) {
     await sql`
-      INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, exchange_short_name, market_cap, beta, last_annual_dividend, is_etf, is_actively_trading, updated_at)
-      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.exchangeShortName}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())
+      INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, market_cap, beta, last_dividend, price, volume, is_etf, is_fund, is_actively_trading, updated_at)
+      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.price || 0}, ${s.volume || 0}, ${s.isEtf}, ${s.isFund || false}, ${s.isActivelyTrading}, NOW())
       ON CONFLICT (symbol) DO UPDATE SET
         company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
-        country = EXCLUDED.country, exchange = EXCLUDED.exchange, exchange_short_name = EXCLUDED.exchange_short_name,
-        market_cap = EXCLUDED.market_cap, beta = EXCLUDED.beta, last_annual_dividend = EXCLUDED.last_annual_dividend,
-        is_etf = EXCLUDED.is_etf, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
+        country = EXCLUDED.country, exchange = EXCLUDED.exchange,
+        market_cap = EXCLUDED.market_cap, beta = EXCLUDED.beta, last_dividend = EXCLUDED.last_dividend,
+        price = EXCLUDED.price, volume = EXCLUDED.volume,
+        is_etf = EXCLUDED.is_etf, is_fund = EXCLUDED.is_fund, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
     `;
   }
 
@@ -291,218 +354,106 @@ async function populateStocks(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2: Enrich ALL stocks with quote + key-metrics + growth + income
-// 5 API calls per stock, sequential, rate-limited
+// Step 3: Enrich ALL stocks — UPDATE the unified table directly
 // ---------------------------------------------------------------------------
 
-async function enrichTopStocks() {
+async function enrichAllStocks() {
   const topRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC`;
   const topSymbols = topRows.map((r) => String(r.symbol));
-  console.log(`Step 2/3: Enriching ${topSymbols.length} top stocks (5 API calls each)...`);
+  console.log(`Step 2/3: Enriching ${topSymbols.length} stocks (3 API calls each)...`);
 
   let enriched = 0;
   let failed = 0;
 
   for (const sym of topSymbols) {
     try {
-      // 6 sequential calls per stock, each throttled
       const quote = await fetchFMP<Quote[]>(`/quote?symbol=${sym}`).then((r) => r?.[0] || null);
       const metrics = await fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
       const finRatios = await fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
-      const annualGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=annual&limit=8`).then((r) => r || []);
-      const quarterlyGrowth = await fetchFMP<GrowthData[]>(`/financial-growth?symbol=${sym}&period=quarter&limit=8`).then((r) => r || []);
-      const income = await fetchFMP<IncomeData[]>(`/income-statement?symbol=${sym}&period=annual&limit=1`).then((r) => r || []);
-
-      // Quotes table
-      if (quote) {
-        await sql`
-          INSERT INTO quotes (symbol, price, changes_percentage, day_low, day_high, year_high, year_low, market_cap, price_avg_50, price_avg_200, volume, avg_volume, eps, pe, shares_outstanding, updated_at)
-          VALUES (${sym}, ${quote.price || 0}, ${quote.changesPercentage || 0}, ${quote.dayLow || 0}, ${quote.dayHigh || 0}, ${quote.yearHigh || 0}, ${quote.yearLow || 0}, ${quote.marketCap || 0}, ${quote.priceAvg50 || 0}, ${quote.priceAvg200 || 0}, ${quote.volume || 0}, ${quote.avgVolume || 0}, ${quote.eps || 0}, ${quote.pe || 0}, ${quote.sharesOutstanding || 0}, NOW())
-          ON CONFLICT (symbol) DO UPDATE SET
-            price = EXCLUDED.price, changes_percentage = EXCLUDED.changes_percentage,
-            day_low = EXCLUDED.day_low, day_high = EXCLUDED.day_high,
-            year_high = EXCLUDED.year_high, year_low = EXCLUDED.year_low,
-            market_cap = EXCLUDED.market_cap, price_avg_50 = EXCLUDED.price_avg_50,
-            price_avg_200 = EXCLUDED.price_avg_200, volume = EXCLUDED.volume,
-            avg_volume = EXCLUDED.avg_volume, eps = EXCLUDED.eps, pe = EXCLUDED.pe,
-            shares_outstanding = EXCLUDED.shares_outstanding, updated_at = NOW()
-        `;
-      }
-
-      // Ratios table — data from BOTH key-metrics and ratios endpoints
-      // PE from ratios endpoint (priceToEarningsRatio), fallback to quote
-      const peRatio = finRatios?.priceToEarningsRatio || quote?.pe || 0;
-      const pbRatio = finRatios?.priceToBookRatio || 0;
-      const priceToSales = finRatios?.priceToSalesRatio || 0;
-      const debtToEquity = finRatios?.debtToEquityRatio || 0;
-      const roe = metrics?.returnOnEquity || 0;
-      const roic = metrics?.returnOnInvestedCapital || 0;
-      const divYield = finRatios?.dividendYield || 0;
-      const payoutR = finRatios?.dividendPayoutRatio || 0;
-      const fcfPerShare = finRatios?.freeCashFlowPerShare || 0;
-      const revPerShare = finRatios?.revenuePerShare || 0;
-      const niPerShare = finRatios?.netIncomePerShare || 0;
 
       await sql`
-        INSERT INTO ratios (
-          symbol, pe_ratio, pb_ratio, price_to_sales_ratio, debt_to_equity, current_ratio, roe, roic,
-          dividend_yield, payout_ratio, free_cash_flow_per_share, revenue_per_share, net_income_per_share,
-          earnings_yield, ev_to_sales, enterprise_value,
-          -- Key Metrics fields
-          ev_to_operating_cash_flow, ev_to_free_cash_flow, ev_to_ebitda, net_debt_to_ebitda,
-          income_quality, graham_number, graham_net_net, tax_burden, interest_burden,
-          working_capital, invested_capital, return_on_assets, operating_return_on_assets,
-          return_on_tangible_assets, return_on_capital_employed, free_cash_flow_yield,
-          capex_to_operating_cash_flow, capex_to_depreciation, capex_to_revenue,
-          sga_to_revenue, rd_to_revenue, sbc_to_revenue, intangibles_to_total_assets,
-          average_receivables, average_payables, average_inventory,
-          days_sales_outstanding, days_payables_outstanding, days_inventory_outstanding,
-          operating_cycle, cash_conversion_cycle, free_cash_flow_to_equity, free_cash_flow_to_firm,
-          tangible_asset_value, net_current_asset_value,
-          -- Ratios endpoint fields
-          gross_profit_margin, ebit_margin, ebitda_margin, operating_profit_margin,
-          pretax_profit_margin, continuous_operations_profit_margin, net_profit_margin, bottom_line_profit_margin,
-          receivables_turnover, payables_turnover, inventory_turnover, fixed_asset_turnover, asset_turnover,
-          quick_ratio, solvency_ratio, cash_ratio, peg_ratio, forward_peg_ratio,
-          price_to_fcf_ratio, price_to_ocf_ratio, debt_to_assets_ratio,
-          debt_to_capital_ratio, lt_debt_to_capital_ratio, financial_leverage_ratio,
-          working_capital_turnover_ratio, operating_cash_flow_ratio, operating_cash_flow_sales_ratio,
-          fcf_to_ocf_ratio, debt_service_coverage_ratio, interest_coverage_ratio,
-          short_term_ocf_coverage_ratio, ocf_coverage_ratio, capex_coverage_ratio, div_capex_coverage_ratio,
-          dividend_yield_percentage, interest_debt_per_share, cash_per_share,
-          book_value_per_share, tangible_book_value_per_share, shareholders_equity_per_share,
-          operating_cash_flow_per_share, capex_per_share,
-          net_income_per_ebt, ebt_per_ebit, price_to_fair_value, debt_to_market_cap,
-          effective_tax_rate, enterprise_value_multiple,
-          updated_at
-        ) VALUES (
-          ${sym}, ${peRatio}, ${pbRatio}, ${priceToSales}, ${debtToEquity},
-          ${metrics?.currentRatio || finRatios?.currentRatio || 0}, ${roe}, ${roic},
-          ${divYield}, ${payoutR}, ${fcfPerShare}, ${revPerShare}, ${niPerShare},
-          ${metrics?.earningsYield || 0}, ${metrics?.evToSales || 0}, ${metrics?.enterpriseValue || 0},
-          -- Key Metrics values
-          ${metrics?.evToOperatingCashFlow || 0}, ${metrics?.evToFreeCashFlow || 0},
-          ${metrics?.evToEBITDA || 0}, ${metrics?.netDebtToEBITDA || 0},
-          ${metrics?.incomeQuality || 0}, ${metrics?.grahamNumber || 0}, ${metrics?.grahamNetNet || 0},
-          ${metrics?.taxBurden || 0}, ${metrics?.interestBurden || 0},
-          ${metrics?.workingCapital || 0}, ${metrics?.investedCapital || 0},
-          ${metrics?.returnOnAssets || 0}, ${metrics?.operatingReturnOnAssets || 0},
-          ${metrics?.returnOnTangibleAssets || 0}, ${metrics?.returnOnCapitalEmployed || 0},
-          ${metrics?.freeCashFlowYield || 0},
-          ${metrics?.capexToOperatingCashFlow || 0}, ${metrics?.capexToDepreciation || 0}, ${metrics?.capexToRevenue || 0},
-          ${metrics?.salesGeneralAndAdministrativeToRevenue || 0}, ${metrics?.researchAndDevelopementToRevenue || 0},
-          ${metrics?.stockBasedCompensationToRevenue || 0}, ${metrics?.intangiblesToTotalAssets || 0},
-          ${metrics?.averageReceivables || 0}, ${metrics?.averagePayables || 0}, ${metrics?.averageInventory || 0},
-          ${metrics?.daysOfSalesOutstanding || 0}, ${metrics?.daysOfPayablesOutstanding || 0}, ${metrics?.daysOfInventoryOutstanding || 0},
-          ${metrics?.operatingCycle || 0}, ${metrics?.cashConversionCycle || 0},
-          ${metrics?.freeCashFlowToEquity || 0}, ${metrics?.freeCashFlowToFirm || 0},
-          ${metrics?.tangibleAssetValue || 0}, ${metrics?.netCurrentAssetValue || 0},
-          -- Ratios endpoint values
-          ${finRatios?.grossProfitMargin || 0}, ${finRatios?.ebitMargin || 0},
-          ${finRatios?.ebitdaMargin || 0}, ${finRatios?.operatingProfitMargin || 0},
-          ${finRatios?.pretaxProfitMargin || 0}, ${finRatios?.continuousOperationsProfitMargin || 0},
-          ${finRatios?.netProfitMargin || 0}, ${finRatios?.bottomLineProfitMargin || 0},
-          ${finRatios?.receivablesTurnover || 0}, ${finRatios?.payablesTurnover || 0},
-          ${finRatios?.inventoryTurnover || 0}, ${finRatios?.fixedAssetTurnover || 0}, ${finRatios?.assetTurnover || 0},
-          ${finRatios?.quickRatio || 0}, ${finRatios?.solvencyRatio || 0}, ${finRatios?.cashRatio || 0},
-          ${finRatios?.priceToEarningsGrowthRatio || 0}, ${finRatios?.forwardPriceToEarningsGrowthRatio || 0},
-          ${finRatios?.priceToFreeCashFlowRatio || 0}, ${finRatios?.priceToOperatingCashFlowRatio || 0},
-          ${finRatios?.debtToAssetsRatio || 0},
-          ${finRatios?.debtToCapitalRatio || 0}, ${finRatios?.longTermDebtToCapitalRatio || 0},
-          ${finRatios?.financialLeverageRatio || 0},
-          ${finRatios?.workingCapitalTurnoverRatio || 0}, ${finRatios?.operatingCashFlowRatio || 0},
-          ${finRatios?.operatingCashFlowSalesRatio || 0},
-          ${finRatios?.freeCashFlowOperatingCashFlowRatio || 0}, ${finRatios?.debtServiceCoverageRatio || 0},
-          ${finRatios?.interestCoverageRatio || 0},
-          ${finRatios?.shortTermOperatingCashFlowCoverageRatio || 0}, ${finRatios?.operatingCashFlowCoverageRatio || 0},
-          ${finRatios?.capitalExpenditureCoverageRatio || 0}, ${finRatios?.dividendPaidAndCapexCoverageRatio || 0},
-          ${finRatios?.dividendYieldPercentage || 0}, ${finRatios?.interestDebtPerShare || 0}, ${finRatios?.cashPerShare || 0},
-          ${finRatios?.bookValuePerShare || 0}, ${finRatios?.tangibleBookValuePerShare || 0},
-          ${finRatios?.shareholdersEquityPerShare || 0},
-          ${finRatios?.operatingCashFlowPerShare || 0}, ${finRatios?.capexPerShare || 0},
-          ${finRatios?.netIncomePerEBT || 0}, ${finRatios?.ebtPerEbit || 0},
-          ${finRatios?.priceToFairValue || 0}, ${finRatios?.debtToMarketCap || 0},
-          ${finRatios?.effectiveTaxRate || 0}, ${finRatios?.enterpriseValueMultiple || 0},
-          NOW()
-        )
-        ON CONFLICT (symbol) DO UPDATE SET
-          pe_ratio = EXCLUDED.pe_ratio, pb_ratio = EXCLUDED.pb_ratio, price_to_sales_ratio = EXCLUDED.price_to_sales_ratio,
-          debt_to_equity = EXCLUDED.debt_to_equity, current_ratio = EXCLUDED.current_ratio, roe = EXCLUDED.roe, roic = EXCLUDED.roic,
-          dividend_yield = EXCLUDED.dividend_yield, payout_ratio = EXCLUDED.payout_ratio, free_cash_flow_per_share = EXCLUDED.free_cash_flow_per_share,
-          revenue_per_share = EXCLUDED.revenue_per_share, net_income_per_share = EXCLUDED.net_income_per_share,
-          earnings_yield = EXCLUDED.earnings_yield, ev_to_sales = EXCLUDED.ev_to_sales, enterprise_value = EXCLUDED.enterprise_value,
-          ev_to_operating_cash_flow = EXCLUDED.ev_to_operating_cash_flow, ev_to_free_cash_flow = EXCLUDED.ev_to_free_cash_flow,
-          ev_to_ebitda = EXCLUDED.ev_to_ebitda, net_debt_to_ebitda = EXCLUDED.net_debt_to_ebitda,
-          income_quality = EXCLUDED.income_quality, graham_number = EXCLUDED.graham_number, graham_net_net = EXCLUDED.graham_net_net,
-          tax_burden = EXCLUDED.tax_burden, interest_burden = EXCLUDED.interest_burden,
-          working_capital = EXCLUDED.working_capital, invested_capital = EXCLUDED.invested_capital,
-          return_on_assets = EXCLUDED.return_on_assets, operating_return_on_assets = EXCLUDED.operating_return_on_assets,
-          return_on_tangible_assets = EXCLUDED.return_on_tangible_assets, return_on_capital_employed = EXCLUDED.return_on_capital_employed,
-          free_cash_flow_yield = EXCLUDED.free_cash_flow_yield,
-          capex_to_operating_cash_flow = EXCLUDED.capex_to_operating_cash_flow, capex_to_depreciation = EXCLUDED.capex_to_depreciation,
-          capex_to_revenue = EXCLUDED.capex_to_revenue, sga_to_revenue = EXCLUDED.sga_to_revenue,
-          rd_to_revenue = EXCLUDED.rd_to_revenue, sbc_to_revenue = EXCLUDED.sbc_to_revenue,
-          intangibles_to_total_assets = EXCLUDED.intangibles_to_total_assets,
-          average_receivables = EXCLUDED.average_receivables, average_payables = EXCLUDED.average_payables, average_inventory = EXCLUDED.average_inventory,
-          days_sales_outstanding = EXCLUDED.days_sales_outstanding, days_payables_outstanding = EXCLUDED.days_payables_outstanding,
-          days_inventory_outstanding = EXCLUDED.days_inventory_outstanding,
-          operating_cycle = EXCLUDED.operating_cycle, cash_conversion_cycle = EXCLUDED.cash_conversion_cycle,
-          free_cash_flow_to_equity = EXCLUDED.free_cash_flow_to_equity, free_cash_flow_to_firm = EXCLUDED.free_cash_flow_to_firm,
-          tangible_asset_value = EXCLUDED.tangible_asset_value, net_current_asset_value = EXCLUDED.net_current_asset_value,
-          gross_profit_margin = EXCLUDED.gross_profit_margin, ebit_margin = EXCLUDED.ebit_margin,
-          ebitda_margin = EXCLUDED.ebitda_margin, operating_profit_margin = EXCLUDED.operating_profit_margin,
-          pretax_profit_margin = EXCLUDED.pretax_profit_margin, continuous_operations_profit_margin = EXCLUDED.continuous_operations_profit_margin,
-          net_profit_margin = EXCLUDED.net_profit_margin, bottom_line_profit_margin = EXCLUDED.bottom_line_profit_margin,
-          receivables_turnover = EXCLUDED.receivables_turnover, payables_turnover = EXCLUDED.payables_turnover,
-          inventory_turnover = EXCLUDED.inventory_turnover, fixed_asset_turnover = EXCLUDED.fixed_asset_turnover, asset_turnover = EXCLUDED.asset_turnover,
-          quick_ratio = EXCLUDED.quick_ratio, solvency_ratio = EXCLUDED.solvency_ratio, cash_ratio = EXCLUDED.cash_ratio,
-          peg_ratio = EXCLUDED.peg_ratio, forward_peg_ratio = EXCLUDED.forward_peg_ratio,
-          price_to_fcf_ratio = EXCLUDED.price_to_fcf_ratio, price_to_ocf_ratio = EXCLUDED.price_to_ocf_ratio,
-          debt_to_assets_ratio = EXCLUDED.debt_to_assets_ratio,
-          debt_to_capital_ratio = EXCLUDED.debt_to_capital_ratio, lt_debt_to_capital_ratio = EXCLUDED.lt_debt_to_capital_ratio,
-          financial_leverage_ratio = EXCLUDED.financial_leverage_ratio,
-          working_capital_turnover_ratio = EXCLUDED.working_capital_turnover_ratio, operating_cash_flow_ratio = EXCLUDED.operating_cash_flow_ratio,
-          operating_cash_flow_sales_ratio = EXCLUDED.operating_cash_flow_sales_ratio,
-          fcf_to_ocf_ratio = EXCLUDED.fcf_to_ocf_ratio, debt_service_coverage_ratio = EXCLUDED.debt_service_coverage_ratio,
-          interest_coverage_ratio = EXCLUDED.interest_coverage_ratio,
-          short_term_ocf_coverage_ratio = EXCLUDED.short_term_ocf_coverage_ratio, ocf_coverage_ratio = EXCLUDED.ocf_coverage_ratio,
-          capex_coverage_ratio = EXCLUDED.capex_coverage_ratio, div_capex_coverage_ratio = EXCLUDED.div_capex_coverage_ratio,
-          dividend_yield_percentage = EXCLUDED.dividend_yield_percentage, interest_debt_per_share = EXCLUDED.interest_debt_per_share,
-          cash_per_share = EXCLUDED.cash_per_share, book_value_per_share = EXCLUDED.book_value_per_share,
-          tangible_book_value_per_share = EXCLUDED.tangible_book_value_per_share, shareholders_equity_per_share = EXCLUDED.shareholders_equity_per_share,
-          operating_cash_flow_per_share = EXCLUDED.operating_cash_flow_per_share, capex_per_share = EXCLUDED.capex_per_share,
-          net_income_per_ebt = EXCLUDED.net_income_per_ebt, ebt_per_ebit = EXCLUDED.ebt_per_ebit,
-          price_to_fair_value = EXCLUDED.price_to_fair_value, debt_to_market_cap = EXCLUDED.debt_to_market_cap,
-          effective_tax_rate = EXCLUDED.effective_tax_rate, enterprise_value_multiple = EXCLUDED.enterprise_value_multiple,
+        UPDATE stocks SET
+          price = ${quote?.price || null},
+          volume = ${quote?.volume || null},
+          avg_volume = ${quote?.avgVolume || null},
+          market_cap = ${quote?.marketCap || null},
+
+          price_to_earnings_ratio = ${finRatios?.priceToEarningsRatio || quote?.pe || null},
+          price_to_earnings_growth_ratio = ${finRatios?.priceToEarningsGrowthRatio || null},
+          price_to_book_ratio = ${finRatios?.priceToBookRatio || null},
+          price_to_sales_ratio = ${finRatios?.priceToSalesRatio || null},
+          price_to_free_cash_flow_ratio = ${finRatios?.priceToFreeCashFlowRatio || null},
+          price_to_operating_cash_flow_ratio = ${finRatios?.priceToOperatingCashFlowRatio || null},
+          price_to_fair_value = ${finRatios?.priceToFairValue || null},
+          enterprise_value_multiple = ${finRatios?.enterpriseValueMultiple || null},
+
+          gross_profit_margin = ${finRatios?.grossProfitMargin || null},
+          ebit_margin = ${finRatios?.ebitMargin || null},
+          ebitda_margin = ${finRatios?.ebitdaMargin || null},
+          operating_profit_margin = ${finRatios?.operatingProfitMargin || null},
+          pretax_profit_margin = ${finRatios?.pretaxProfitMargin || null},
+          net_profit_margin = ${finRatios?.netProfitMargin || null},
+          effective_tax_rate = ${finRatios?.effectiveTaxRate || null},
+
+          return_on_assets = ${metrics?.returnOnAssets || null},
+          return_on_equity = ${metrics?.returnOnEquity || null},
+          return_on_invested_capital = ${metrics?.returnOnInvestedCapital || null},
+          return_on_capital_employed = ${metrics?.returnOnCapitalEmployed || null},
+          earnings_yield = ${metrics?.earningsYield || null},
+          free_cash_flow_yield = ${metrics?.freeCashFlowYield || null},
+
+          current_ratio = ${metrics?.currentRatio || null},
+          quick_ratio = ${finRatios?.quickRatio || null},
+          cash_ratio = ${finRatios?.cashRatio || null},
+
+          debt_to_equity_ratio = ${finRatios?.debtToEquityRatio || null},
+          debt_to_assets_ratio = ${finRatios?.debtToAssetsRatio || null},
+          debt_to_capital_ratio = ${finRatios?.debtToCapitalRatio || null},
+          financial_leverage_ratio = ${finRatios?.financialLeverageRatio || null},
+          debt_to_market_cap = ${finRatios?.debtToMarketCap || null},
+          interest_coverage_ratio = ${finRatios?.interestCoverageRatio || null},
+
+          dividend_yield = ${finRatios?.dividendYield || null},
+          dividend_yield_percentage = ${finRatios?.dividendYieldPercentage || null},
+          dividend_payout_ratio = ${finRatios?.dividendPayoutRatio || null},
+
+          revenue_per_share = ${finRatios?.revenuePerShare || null},
+          net_income_per_share = ${finRatios?.netIncomePerShare || null},
+          book_value_per_share = ${finRatios?.bookValuePerShare || null},
+          tangible_book_value_per_share = ${finRatios?.tangibleBookValuePerShare || null},
+          operating_cash_flow_per_share = ${finRatios?.operatingCashFlowPerShare || null},
+          free_cash_flow_per_share = ${finRatios?.freeCashFlowPerShare || null},
+          cash_per_share = ${finRatios?.cashPerShare || null},
+
+          asset_turnover = ${finRatios?.assetTurnover || null},
+          inventory_turnover = ${finRatios?.inventoryTurnover || null},
+          receivables_turnover = ${finRatios?.receivablesTurnover || null},
+          days_of_sales_outstanding = ${finRatios?.daysOfSalesOutstanding || null},
+          days_of_inventory_outstanding = ${finRatios?.daysOfInventoryOutstanding || null},
+          days_of_payables_outstanding = ${finRatios?.daysOfPayablesOutstanding || null},
+          cash_conversion_cycle = ${finRatios?.cashConversionCycle || null},
+
+          enterprise_value = ${metrics?.enterpriseValue || null},
+          ev_to_sales = ${metrics?.evToSales || null},
+          ev_to_ebitda = ${metrics?.evToEBITDA || null},
+          ev_to_operating_cash_flow = ${metrics?.evToOperatingCashFlow || null},
+          ev_to_free_cash_flow = ${metrics?.evToFreeCashFlow || null},
+          net_debt_to_ebitda = ${metrics?.netDebtToEBITDA || null},
+
+          capex_to_revenue = ${metrics?.capexToRevenue || null},
+          operating_cash_flow_sales_ratio = ${finRatios?.operatingCashFlowSalesRatio || null},
+          free_cash_flow_operating_cash_flow_ratio = ${finRatios?.freeCashFlowOperatingCashFlowRatio || null},
+          income_quality = ${metrics?.incomeQuality || null},
+
+          graham_number = ${metrics?.grahamNumber || null},
+          working_capital = ${metrics?.workingCapital || null},
+          invested_capital = ${metrics?.investedCapital || null},
+          tangible_asset_value = ${metrics?.tangibleAssetValue || null},
+          research_and_development_to_revenue = ${metrics?.researchAndDevelopementToRevenue || null},
+          stock_based_compensation_to_revenue = ${metrics?.stockBasedCompensationToRevenue || null},
+
           updated_at = NOW()
-      `;
-
-      // Profiles table — derive growth stats
-      // Quarterly: period is "Q1","Q2","Q3","Q4" in /stable/ API (NOT "Q")
-      const sortedQ = [...quarterlyGrowth]
-        .filter((g) => g.period.startsWith("Q"))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      let revQ = 0;
-      for (const g of sortedQ) { if (g.revenueGrowth > 0) revQ++; else break; }
-      let niQ = 0;
-      for (const g of sortedQ) { if (g.netIncomeGrowth > 0) niQ++; else break; }
-
-      // Annual: dividend growth years + recent annual growth rate
-      const sortedA = [...annualGrowth]
-        .filter((g) => g.period === "FY")
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      let divYrs = 0;
-      for (const g of sortedA) { if (g.dividendsperShareGrowth > 0) divYrs++; else break; }
-      const recentAnnual = sortedA[0];
-
-      await sql`
-        INSERT INTO profiles (symbol, revenue_growth, net_income_growth, earnings_growth, revenue_growth_quarters, net_income_growth_quarters, dividend_growth_years, profit_margin, historical_returns, updated_at)
-        VALUES (${sym}, ${recentAnnual?.revenueGrowth || 0}, ${recentAnnual?.netIncomeGrowth || 0}, ${recentAnnual?.netIncomeGrowth || 0}, ${revQ}, ${niQ}, ${divYrs}, ${income[0]?.netIncomeRatio || 0}, ${'{}'}, NOW())
-        ON CONFLICT (symbol) DO UPDATE SET
-          revenue_growth = EXCLUDED.revenue_growth, net_income_growth = EXCLUDED.net_income_growth,
-          earnings_growth = EXCLUDED.earnings_growth, revenue_growth_quarters = EXCLUDED.revenue_growth_quarters,
-          net_income_growth_quarters = EXCLUDED.net_income_growth_quarters, dividend_growth_years = EXCLUDED.dividend_growth_years,
-          profit_margin = EXCLUDED.profit_margin, updated_at = NOW()
+        WHERE symbol = ${sym}
       `;
 
       enriched++;
@@ -517,7 +468,7 @@ async function enrichTopStocks() {
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: Record metadata
+// Step 4: Record metadata
 // ---------------------------------------------------------------------------
 
 async function recordMeta() {
@@ -530,15 +481,15 @@ async function recordMeta() {
   `;
 
   const countResult = await sql`SELECT count(*) as cnt FROM stocks`;
-  const quotesResult = await sql`SELECT count(*) as cnt FROM quotes`;
-  const ratiosResult = await sql`SELECT count(*) as cnt FROM ratios`;
-  const profilesResult = await sql`SELECT count(*) as cnt FROM profiles`;
+  const peCount = await sql`SELECT count(*) as cnt FROM stocks WHERE price_to_earnings_ratio IS NOT NULL`;
+  const roeCount = await sql`SELECT count(*) as cnt FROM stocks WHERE return_on_equity IS NOT NULL`;
+  const divCount = await sql`SELECT count(*) as cnt FROM stocks WHERE dividend_yield IS NOT NULL`;
 
   console.log("\nPopulation complete:");
-  console.log(`  stocks:   ${countResult[0].cnt}`);
-  console.log(`  quotes:   ${quotesResult[0].cnt}`);
-  console.log(`  ratios:   ${ratiosResult[0].cnt}`);
-  console.log(`  profiles: ${profilesResult[0].cnt}`);
+  console.log(`  stocks:       ${countResult[0].cnt}`);
+  console.log(`  with PE:      ${peCount[0].cnt}`);
+  console.log(`  with ROE:     ${roeCount[0].cnt}`);
+  console.log(`  with div yld: ${divCount[0].cnt}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -546,11 +497,12 @@ async function recordMeta() {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("=== Stock Database Population ===\n");
+  console.log("=== Stock Database Population (Unified Table) ===\n");
   const start = Date.now();
 
+  await ensureTables();
   await populateStocks();
-  await enrichTopStocks();
+  await enrichAllStocks();
   await recordMeta();
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);

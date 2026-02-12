@@ -5,8 +5,7 @@
  * debt instruments, and other non-operating-company entries that slipped
  * through earlier population runs.
  *
- * CASCADE foreign keys on quotes/ratios/profiles mean child rows are
- * automatically deleted when a stock row is removed.
+ * Works with the unified single `stocks` table — no orphan cleanup needed.
  *
  * Usage:
  *   npx tsx scripts/cleanup-non-companies.ts
@@ -29,33 +28,23 @@ const sql = neon(DATABASE_URL);
 // Non-company name patterns (PostgreSQL POSIX regex, case-insensitive)
 // ---------------------------------------------------------------------------
 
-// These match company_name values that are clearly NOT operating companies.
-// Uses \y for word boundaries (PostgreSQL POSIX syntax).
 const NAME_PATTERNS = [
-  // ETFs, ETNs, exchange-traded products
   `\\y(ETF|ETN)\\y`,
   `Exchange.Traded`,
-  // Funds — standalone "Fund" or "Funds" catches all fund types
   `\\yFunds?\\y`,
   `\\y(Money Market)\\y`,
   `Closed.End`,
-  // SPACs & shell companies
   `\\y(Acquisition Corp|Blank Check|SPAC|Special Purpose)\\y`,
-  // Trust securities (statutory trusts, capital trusts — NOT operating companies like "Northern Trust")
   `\\y(Statutory Trust|Capital Trust|Investment Trust)\\y`,
-  `Trust [IVX]+\\y`,           // "Trust I", "Trust II", "Trust III", etc.
-  // Depositary instruments
+  `Trust [IVX]+\\y`,
   `Depositary (Shares?|Receipt)`,
-  // Preferred / debt securities
   `Preferred (Shares?|Stock|Securities)`,
-  `\\d+\\.?\\d*% `,             // "6.50% Trust..." or "5.75% Notes..." — debt instruments
+  `\\d+\\.?\\d*% `,
   `Fixed.Income`,
-  // Rights, warrants (these aren't common stocks)
-  `\\yRights\\y$`,              // ends with "Rights"
-  `\\yWarrants?\\y$`,           // ends with "Warrant" or "Warrants"
+  `\\yRights\\y$`,
+  `\\yWarrants?\\y$`,
 ];
 
-// Combine into one regex with OR
 const COMBINED_PATTERN = NAME_PATTERNS.join("|");
 
 async function main() {
@@ -65,28 +54,25 @@ async function main() {
   const beforeCount = await sql`SELECT count(*) as cnt FROM stocks`;
   console.log(`Stocks before cleanup: ${beforeCount[0].cnt}`);
 
-  // 1. Find and report entries flagged as ETF
+  // Report matches per category
   const etfRows = await sql`SELECT symbol, company_name FROM stocks WHERE is_etf = true ORDER BY symbol`;
   if (etfRows.length > 0) {
     console.log(`\n[ETF flag] ${etfRows.length} entries:`);
     for (const r of etfRows) console.log(`  ${r.symbol}  ${r.company_name}`);
   }
 
-  // 2. Find and report entries with empty/null sector
   const noSectorRows = await sql`SELECT symbol, company_name FROM stocks WHERE sector IS NULL OR TRIM(sector) = '' ORDER BY symbol`;
   if (noSectorRows.length > 0) {
     console.log(`\n[No sector] ${noSectorRows.length} entries:`);
     for (const r of noSectorRows) console.log(`  ${r.symbol}  ${r.company_name}`);
   }
 
-  // 3. Find and report entries with dot in symbol or symbol > 5 chars
   const badSymbolRows = await sql`SELECT symbol, company_name FROM stocks WHERE symbol LIKE '%.%' OR LENGTH(symbol) > 5 ORDER BY symbol`;
   if (badSymbolRows.length > 0) {
     console.log(`\n[Bad symbol] ${badSymbolRows.length} entries:`);
     for (const r of badSymbolRows) console.log(`  ${r.symbol}  ${r.company_name}`);
   }
 
-  // 4. Find and report entries matching non-company name patterns
   const nameRows = await sql`
     SELECT symbol, company_name FROM stocks
     WHERE company_name ~* ${COMBINED_PATTERN}
@@ -97,13 +83,6 @@ async function main() {
     for (const r of nameRows) console.log(`  ${r.symbol}  ${r.company_name}`);
   }
 
-  // 5. Find and report 5-letter tickers ending in X under Asset Management (mutual fund tickers)
-  const mfTickerRows = await sql`SELECT symbol, company_name FROM stocks WHERE LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management' ORDER BY symbol`;
-  if (mfTickerRows.length > 0) {
-    console.log(`\n[MF ticker] ${mfTickerRows.length} entries:`);
-    for (const r of mfTickerRows) console.log(`  ${r.symbol}  ${r.company_name}`);
-  }
-
   // Total unique symbols to delete
   const toDelete = await sql`
     SELECT count(*) as cnt FROM stocks
@@ -112,7 +91,6 @@ async function main() {
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
        OR company_name ~* ${COMBINED_PATTERN}
-       OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management')
   `;
   const deleteCount = Number(toDelete[0].cnt);
 
@@ -123,7 +101,7 @@ async function main() {
 
   console.log(`\n--- Deleting ${deleteCount} non-company entries ---`);
 
-  // Delete (CASCADE handles child tables)
+  // Delete from unified stocks table (no CASCADE needed)
   const deleted = await sql`
     DELETE FROM stocks
     WHERE is_etf = true
@@ -131,19 +109,10 @@ async function main() {
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
        OR company_name ~* ${COMBINED_PATTERN}
-       OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management')
     RETURNING symbol
   `;
 
-  console.log(`Deleted ${deleted.length} stocks (+ cascaded quotes/ratios/profiles)`);
-
-  // Clean up any orphaned child rows just in case
-  const orphanQ = await sql`DELETE FROM quotes   WHERE symbol NOT IN (SELECT symbol FROM stocks) RETURNING symbol`;
-  const orphanR = await sql`DELETE FROM ratios   WHERE symbol NOT IN (SELECT symbol FROM stocks) RETURNING symbol`;
-  const orphanP = await sql`DELETE FROM profiles WHERE symbol NOT IN (SELECT symbol FROM stocks) RETURNING symbol`;
-  if (orphanQ.length + orphanR.length + orphanP.length > 0) {
-    console.log(`Cleaned up orphans: ${orphanQ.length} quotes, ${orphanR.length} ratios, ${orphanP.length} profiles`);
-  }
+  console.log(`Deleted ${deleted.length} stocks`);
 
   // Count after
   const afterCount = await sql`SELECT count(*) as cnt FROM stocks`;

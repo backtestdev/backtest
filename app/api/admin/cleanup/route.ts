@@ -3,7 +3,8 @@
  *
  * POST /api/admin/cleanup — deletes funds, indexes, SPACs, trusts, etc.
  *
- * Protected by x-admin-secret header (same as refresh-stocks).
+ * Protected by x-admin-secret header (same as refresh-data).
+ * Works with the unified single `stocks` table — no orphan cleanup needed.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -54,9 +55,8 @@ export async function POST(request: NextRequest) {
     const noSectorCount = await sql`SELECT count(*) as cnt FROM stocks WHERE sector IS NULL OR TRIM(sector) = ''`;
     const badSymbolCount = await sql`SELECT count(*) as cnt FROM stocks WHERE symbol LIKE '%.%' OR LENGTH(symbol) > 5`;
     const namePatternCount = await sql`SELECT count(*) as cnt FROM stocks WHERE company_name ~* ${NON_COMPANY_PATTERN}`;
-    const mutualFundTickerCount = await sql`SELECT count(*) as cnt FROM stocks WHERE LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management'`;
 
-    // Delete all matching (CASCADE handles quotes/ratios/profiles)
+    // Delete all matching (single table, no CASCADE needed)
     const deleted = await sql`
       DELETE FROM stocks
       WHERE is_etf = true
@@ -64,14 +64,8 @@ export async function POST(request: NextRequest) {
          OR symbol LIKE '%.%'
          OR LENGTH(symbol) > 5
          OR company_name ~* ${NON_COMPANY_PATTERN}
-         OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND sector = 'Asset Management')
       RETURNING symbol, company_name
     `;
-
-    // Clean up orphaned child rows
-    await sql`DELETE FROM quotes   WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
-    await sql`DELETE FROM ratios   WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
-    await sql`DELETE FROM profiles WHERE symbol NOT IN (SELECT symbol FROM stocks)`;
 
     // Count after
     const afterRows = await sql`SELECT count(*) as cnt FROM stocks`;
@@ -90,7 +84,6 @@ export async function POST(request: NextRequest) {
         noSector: Number(noSectorCount[0].cnt),
         badSymbol: Number(badSymbolCount[0].cnt),
         namePattern: Number(namePatternCount[0].cnt),
-        mutualFundTicker: Number(mutualFundTickerCount[0].cnt),
       },
       deletedSymbols: deleted.map((r) => ({ symbol: r.symbol, name: r.company_name })),
     });
