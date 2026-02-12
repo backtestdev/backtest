@@ -79,7 +79,19 @@ interface ScreenerResult {
 }
 
 // Name patterns that indicate funds, trusts, SPACs, etc. — NOT operating companies
-const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$/i;
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due/i;
+
+/**
+ * 5-letter tickers ending in X under Asset Management are almost always
+ * closed-end funds or similar non-operating-company vehicles.
+ */
+function isAssetManagementFund(s: ScreenerResult): boolean {
+  return (
+    s.symbol.length === 5 &&
+    s.symbol.endsWith("X") &&
+    (s.sector === "Asset Management" || s.industry === "Asset Management")
+  );
+}
 
 // ── Field mapping helpers ──────────────────────────────────────────
 
@@ -263,7 +275,8 @@ export async function POST(request: NextRequest) {
         !s.isFund &&
         s.sector &&
         s.sector.trim() !== "" &&
-        !EXCLUDE_NAME_PATTERNS.test(s.companyName)
+        !EXCLUDE_NAME_PATTERNS.test(s.companyName) &&
+        !isAssetManagementFund(s)
     );
     log.push(`Screener: ${screenerResults.length} total → ${filtered.length} filtered companies`);
 

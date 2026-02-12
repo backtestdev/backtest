@@ -29,6 +29,12 @@ const NON_COMPANY_PATTERN = [
   'Fixed.Income',
   '\\yRights$',
   '\\yWarrants?$',
+  '\\yUnits?$',
+  '\\ySenior Notes?\\y',
+  'Notes Due',
+  '\\ySubordinated\\y',
+  '\\yDebentures?\\y',
+  'L\\.P\\.?$',
 ].join('|');
 
 export async function POST(request: NextRequest) {
@@ -52,18 +58,22 @@ export async function POST(request: NextRequest) {
 
     // Find matches per category (for reporting)
     const etfCount = await sql`SELECT count(*) as cnt FROM stocks WHERE is_etf = true`;
+    const fundCount = await sql`SELECT count(*) as cnt FROM stocks WHERE is_fund = true`;
     const noSectorCount = await sql`SELECT count(*) as cnt FROM stocks WHERE sector IS NULL OR TRIM(sector) = ''`;
     const badSymbolCount = await sql`SELECT count(*) as cnt FROM stocks WHERE symbol LIKE '%.%' OR LENGTH(symbol) > 5`;
     const namePatternCount = await sql`SELECT count(*) as cnt FROM stocks WHERE company_name ~* ${NON_COMPANY_PATTERN}`;
+    const assetMgmtCount = await sql`SELECT count(*) as cnt FROM stocks WHERE LENGTH(symbol) = 5 AND symbol LIKE '%X' AND (sector = 'Asset Management' OR industry = 'Asset Management')`;
 
     // Delete all matching (single table, no CASCADE needed)
     const deleted = await sql`
       DELETE FROM stocks
       WHERE is_etf = true
+         OR is_fund = true
          OR sector IS NULL OR TRIM(sector) = ''
          OR symbol LIKE '%.%'
          OR LENGTH(symbol) > 5
          OR company_name ~* ${NON_COMPANY_PATTERN}
+         OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND (sector = 'Asset Management' OR industry = 'Asset Management'))
       RETURNING symbol, company_name
     `;
 
@@ -81,9 +91,11 @@ export async function POST(request: NextRequest) {
       deleted: deleted.length,
       breakdown: {
         etf: Number(etfCount[0].cnt),
+        fund: Number(fundCount[0].cnt),
         noSector: Number(noSectorCount[0].cnt),
         badSymbol: Number(badSymbolCount[0].cnt),
         namePattern: Number(namePatternCount[0].cnt),
+        assetMgmtFund: Number(assetMgmtCount[0].cnt),
       },
       deletedSymbols: deleted.map((r) => ({ symbol: r.symbol, name: r.company_name })),
     });
