@@ -10,21 +10,24 @@
 ```
 backtest/
 ├── app/api/
-│   ├── backtest/route.ts            # POST: parse strategy + run backtest
-│   ├── leaderboard/route.ts         # GET/POST: leaderboard CRUD
-│   ├── db/init/route.ts             # POST: initialize all DB tables
-│   └── admin/refresh-stocks/route.ts # POST: refresh stock DB from FMP API
+│   ├── backtest/route.ts              # POST: parse strategy + run backtest
+│   ├── leaderboard/route.ts           # GET/POST: leaderboard CRUD
+│   ├── db/init/route.ts               # POST: initialize all DB tables
+│   ├── admin/refresh-data/route.ts    # POST: bulk refresh (3 API calls total)
+│   ├── admin/refresh-stocks/route.ts  # GET/POST: rotating per-stock enrichment
+│   └── admin/cleanup/route.ts         # POST: purge non-company entries
 ├── lib/
-│   ├── fmpService.ts                # Stock universe (reads from PostgreSQL)
-│   ├── stockData.ts                 # Filtering, returns calculation, fallback data
-│   ├── backtestEngine.ts            # Core backtest logic
-│   ├── naturalLanguageParser.ts     # NLP → structured strategy params
-│   ├── db.ts                        # Neon PostgreSQL connection
-│   └── types.ts                     # Shared TypeScript interfaces
+│   ├── fmpService.ts                  # Stock universe (reads from unified stocks table)
+│   ├── stockData.ts                   # Filtering, returns calculation, fallback data
+│   ├── backtestEngine.ts              # Core backtest logic
+│   ├── naturalLanguageParser.ts       # NLP → structured strategy params
+│   ├── db.ts                          # Neon PostgreSQL connection + schema
+│   └── types.ts                       # Shared TypeScript interfaces
 ├── scripts/
-│   └── populate-stocks.ts           # One-time FMP → PostgreSQL population
-├── components/                      # React UI components
-├── data/                            # Fallback JSON data
+│   ├── populate-stocks.ts             # One-time FMP → PostgreSQL population
+│   └── cleanup-non-companies.ts       # Purge non-company entries
+├── components/                        # React UI components
+├── data/                              # Fallback JSON data
 └── CLAUDE.md
 ```
 
@@ -52,14 +55,17 @@ npm run build        # Production build
 
 ### Stock Database Initialization
 
-The app reads stock data from PostgreSQL (Neon) instead of making live FMP API calls.
+The app reads stock data from PostgreSQL (Neon) using a single unified `stocks` table.
 One-time setup to populate the database:
 
 ```bash
 # 1. Initialize tables (run once, or after schema changes)
 curl -X POST http://localhost:3000/api/db/init
 
-# 2. Populate stock data from FMP API (~5 min, requires both env vars)
+# 2a. RECOMMENDED: Bulk refresh via 3 API calls (screener + ratios-ttm-bulk + key-metrics-ttm-bulk)
+curl -X POST http://localhost:3000/api/admin/refresh-data
+
+# 2b. ALTERNATIVE: Per-stock enrichment via CLI script (slower but more granular)
 npx tsx scripts/populate-stocks.ts
 ```
 
@@ -69,29 +75,38 @@ npx tsx scripts/populate-stocks.ts
 
 ### Refreshing Stock Data
 
-Two options to update the pre-built database:
+Three options to update the stock database:
 
-1. **Admin endpoint** (rate-limited to 1/hour):
+1. **Bulk refresh endpoint** (3 API calls total — fastest):
+   ```bash
+   curl -X POST http://localhost:3000/api/admin/refresh-data \
+     -H "x-admin-secret: $ADMIN_SECRET"
+   ```
+
+2. **Per-stock enrichment** (rotating batches, good for cron):
    ```bash
    curl -X POST http://localhost:3000/api/admin/refresh-stocks \
      -H "x-admin-secret: $ADMIN_SECRET"
    ```
 
-2. **CLI script** (no rate limit):
+3. **CLI script** (no rate limit, enriches all stocks):
    ```bash
    npx tsx scripts/populate-stocks.ts
    ```
 
-### Database Schema (stock tables)
+### Database Schema
+
+All stock data lives in ONE unified table. No JOINs needed.
 
 | Table | Purpose | Primary Key |
 |-------|---------|-------------|
-| `stocks` | Identity & screener data (symbol, sector, market cap) | `symbol` |
-| `quotes` | Price, P/E, volume, 52-week range | `symbol` |
-| `ratios` | Fundamental metrics (P/B, ROE, D/E, etc.) | `symbol` |
-| `profiles` | Growth rates, profit margin, historical returns | `symbol` |
-| `stock_meta` | Metadata (last refresh timestamp) | `key` |
+| `stocks` | **Unified** — all identity, valuation, profitability, leverage, per-share, efficiency, EV, cash flow metrics in one row per stock | `id` (SERIAL), `symbol` (UNIQUE) |
+| `stock_prices` | Historical daily close prices (for charts) | `id`, UNIQUE(`symbol`, `date`) |
+| `stock_meta` | Metadata (last refresh timestamp, enrich offset) | `key` |
 | `leaderboard` | Saved strategy results | `id` |
+
+The `stocks` table has ~100 metric columns (PE, PB, ROE, dividend yield, etc.).
+NULLs are fine — a stock missing PE still appears in queries that don't filter on PE.
 
 ## Testing
 
