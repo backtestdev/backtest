@@ -185,7 +185,7 @@ interface FinancialRatios {
 }
 
 // Name patterns that indicate funds, trusts, SPACs, etc.
-const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$/i;
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due/i;
 
 // ---------------------------------------------------------------------------
 // Step 1: Ensure unified stocks table exists
@@ -332,7 +332,8 @@ async function populateStocks(): Promise<string[]> {
       !s.isFund &&
       s.sector &&
       s.sector.trim() !== "" &&
-      !EXCLUDE_NAME_PATTERNS.test(s.companyName)
+      !EXCLUDE_NAME_PATTERNS.test(s.companyName) &&
+      !(s.symbol.length === 5 && s.symbol.endsWith("X") && (s.sector === "Asset Management" || s.industry === "Asset Management"))
   );
   console.log(`  ${results.length} screener results → ${filtered.length} common stocks`);
 

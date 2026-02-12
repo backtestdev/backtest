@@ -186,7 +186,7 @@ interface FinancialRatios {
 }
 
 // Name patterns that indicate funds, trusts, SPACs, debt instruments, etc.
-const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$/i;
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due/i;
 
 // ── Shared refresh logic ───────────────────────────────────────────
 
@@ -213,7 +213,8 @@ async function runRefresh(
       !s.isFund &&
       s.sector &&
       s.sector.trim() !== "" &&
-      !EXCLUDE_NAME_PATTERNS.test(s.companyName)
+      !EXCLUDE_NAME_PATTERNS.test(s.companyName) &&
+      !(s.symbol.length === 5 && s.symbol.endsWith("X") && (s.sector === "Asset Management" || s.industry === "Asset Management"))
   );
   console.log(`[refresh] ${results.length} screener → ${filtered.length} common stocks`);
 
@@ -383,15 +384,23 @@ async function runRefresh(
     'Fixed.Income',
     '\\yRights$',
     '\\yWarrants?$',
+    '\\yUnits?$',
+    '\\ySenior Notes?\\y',
+    'Notes Due',
+    '\\ySubordinated\\y',
+    '\\yDebentures?\\y',
+    'L\\.P\\.?$',
   ].join('|');
 
   const purged = await sql`
     DELETE FROM stocks
     WHERE is_etf = true
+       OR is_fund = true
        OR sector IS NULL OR TRIM(sector) = ''
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
        OR company_name ~* ${NON_COMPANY_PATTERN_PG}
+       OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND (sector = 'Asset Management' OR industry = 'Asset Management'))
     RETURNING symbol
   `;
   if (purged.length > 0) {

@@ -43,6 +43,12 @@ const NAME_PATTERNS = [
   `Fixed.Income`,
   `\\yRights\\y$`,
   `\\yWarrants?\\y$`,
+  `\\yUnits?$`,
+  `\\ySenior Notes?\\y`,
+  `Notes Due`,
+  `\\ySubordinated\\y`,
+  `\\yDebentures?\\y`,
+  `L\\.P\\.?$`,
 ];
 
 const COMBINED_PATTERN = NAME_PATTERNS.join("|");
@@ -67,10 +73,22 @@ async function main() {
     for (const r of noSectorRows) console.log(`  ${r.symbol}  ${r.company_name}`);
   }
 
+  const fundRows = await sql`SELECT symbol, company_name FROM stocks WHERE is_fund = true ORDER BY symbol`;
+  if (fundRows.length > 0) {
+    console.log(`\n[Fund flag] ${fundRows.length} entries:`);
+    for (const r of fundRows) console.log(`  ${r.symbol}  ${r.company_name}`);
+  }
+
   const badSymbolRows = await sql`SELECT symbol, company_name FROM stocks WHERE symbol LIKE '%.%' OR LENGTH(symbol) > 5 ORDER BY symbol`;
   if (badSymbolRows.length > 0) {
     console.log(`\n[Bad symbol] ${badSymbolRows.length} entries:`);
     for (const r of badSymbolRows) console.log(`  ${r.symbol}  ${r.company_name}`);
+  }
+
+  const assetMgmtRows = await sql`SELECT symbol, company_name, sector, industry FROM stocks WHERE LENGTH(symbol) = 5 AND symbol LIKE '%X' AND (sector = 'Asset Management' OR industry = 'Asset Management') ORDER BY symbol`;
+  if (assetMgmtRows.length > 0) {
+    console.log(`\n[Asset Mgmt 5-letter X] ${assetMgmtRows.length} entries:`);
+    for (const r of assetMgmtRows) console.log(`  ${r.symbol}  ${r.company_name}  (${r.sector}/${r.industry})`);
   }
 
   const nameRows = await sql`
@@ -87,10 +105,12 @@ async function main() {
   const toDelete = await sql`
     SELECT count(*) as cnt FROM stocks
     WHERE is_etf = true
+       OR is_fund = true
        OR sector IS NULL OR TRIM(sector) = ''
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
        OR company_name ~* ${COMBINED_PATTERN}
+       OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND (sector = 'Asset Management' OR industry = 'Asset Management'))
   `;
   const deleteCount = Number(toDelete[0].cnt);
 
@@ -105,10 +125,12 @@ async function main() {
   const deleted = await sql`
     DELETE FROM stocks
     WHERE is_etf = true
+       OR is_fund = true
        OR sector IS NULL OR TRIM(sector) = ''
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
        OR company_name ~* ${COMBINED_PATTERN}
+       OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND (sector = 'Asset Management' OR industry = 'Asset Management'))
     RETURNING symbol
   `;
 
