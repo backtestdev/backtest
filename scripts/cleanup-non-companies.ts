@@ -73,12 +73,6 @@ async function main() {
     for (const r of noSectorRows) console.log(`  ${r.symbol}  ${r.company_name}`);
   }
 
-  const fundRows = await sql`SELECT symbol, company_name FROM stocks WHERE is_fund = true ORDER BY symbol`;
-  if (fundRows.length > 0) {
-    console.log(`\n[Fund flag] ${fundRows.length} entries:`);
-    for (const r of fundRows) console.log(`  ${r.symbol}  ${r.company_name}`);
-  }
-
   const badSymbolRows = await sql`SELECT symbol, company_name FROM stocks WHERE symbol LIKE '%.%' OR LENGTH(symbol) > 5 ORDER BY symbol`;
   if (badSymbolRows.length > 0) {
     console.log(`\n[Bad symbol] ${badSymbolRows.length} entries:`);
@@ -105,7 +99,6 @@ async function main() {
   const toDelete = await sql`
     SELECT count(*) as cnt FROM stocks
     WHERE is_etf = true
-       OR is_fund = true
        OR sector IS NULL OR TRIM(sector) = ''
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
@@ -125,7 +118,6 @@ async function main() {
   const deleted = await sql`
     DELETE FROM stocks
     WHERE is_etf = true
-       OR is_fund = true
        OR sector IS NULL OR TRIM(sector) = ''
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5

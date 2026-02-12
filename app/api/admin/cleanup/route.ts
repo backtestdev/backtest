@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
 
     // Find matches per category (for reporting)
     const etfCount = await sql`SELECT count(*) as cnt FROM stocks WHERE is_etf = true`;
-    const fundCount = await sql`SELECT count(*) as cnt FROM stocks WHERE is_fund = true`;
     const noSectorCount = await sql`SELECT count(*) as cnt FROM stocks WHERE sector IS NULL OR TRIM(sector) = ''`;
     const badSymbolCount = await sql`SELECT count(*) as cnt FROM stocks WHERE symbol LIKE '%.%' OR LENGTH(symbol) > 5`;
     const namePatternCount = await sql`SELECT count(*) as cnt FROM stocks WHERE company_name ~* ${NON_COMPANY_PATTERN}`;
@@ -68,7 +67,6 @@ export async function POST(request: NextRequest) {
     const deleted = await sql`
       DELETE FROM stocks
       WHERE is_etf = true
-         OR is_fund = true
          OR sector IS NULL OR TRIM(sector) = ''
          OR symbol LIKE '%.%'
          OR LENGTH(symbol) > 5
@@ -91,7 +89,6 @@ export async function POST(request: NextRequest) {
       deleted: deleted.length,
       breakdown: {
         etf: Number(etfCount[0].cnt),
-        fund: Number(fundCount[0].cnt),
         noSector: Number(noSectorCount[0].cnt),
         badSymbol: Number(badSymbolCount[0].cnt),
         namePattern: Number(namePatternCount[0].cnt),
