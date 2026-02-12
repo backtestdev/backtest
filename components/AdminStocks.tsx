@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 interface StockStatus {
   configured: boolean;
   lastPopulate?: string;
+  lastRefresh?: string;
   enrichOffset?: number;
   stockCount?: number;
   error?: string;
@@ -18,6 +19,15 @@ interface RefreshResult {
   enrichFailed?: number;
   nextOffset?: number;
   message?: string;
+  error?: string;
+  details?: string;
+}
+
+interface BulkRefreshResult {
+  success?: boolean;
+  verification?: { total: number; has_pe: number; has_roe: number; has_div_yield: number };
+  aapl?: Record<string, unknown> | null;
+  log?: string[];
   error?: string;
   details?: string;
 }
@@ -37,7 +47,9 @@ export default function AdminStocks() {
   const [status, setStatus] = useState<StockStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [result, setResult] = useState<RefreshResult | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkRefreshResult | null>(null);
   const [cleanupResult, setCleanupResult] = useState<CleanupResult | null>(null);
   const [cleaning, setCleaning] = useState(false);
   const [secret, setSecret] = useState("");
@@ -79,6 +91,30 @@ export default function AdminStocks() {
       setResult({ error: "Network error — could not reach server" });
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleBulkRefresh = async () => {
+    setBulkRefreshing(true);
+    setBulkResult(null);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (secret.trim()) {
+        headers["x-admin-secret"] = secret.trim();
+      }
+      const res = await fetch("/api/admin/refresh-data", {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json();
+      setBulkResult(data);
+      if (data.success) {
+        fetchStatus();
+      }
+    } catch {
+      setBulkResult({ error: "Network error — could not reach server" });
+    } finally {
+      setBulkRefreshing(false);
     }
   };
 
@@ -160,7 +196,15 @@ export default function AdminStocks() {
                 <dd className="text-gray-900 font-medium">{status?.stockCount?.toLocaleString() ?? "—"}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-500">Last refresh</dt>
+                <dt className="text-gray-500">Last bulk refresh</dt>
+                <dd className="text-gray-900 font-medium">
+                  {status?.lastRefresh
+                    ? new Date(status.lastRefresh).toLocaleString()
+                    : "Never"}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Last per-stock refresh</dt>
                 <dd className="text-gray-900 font-medium">
                   {status?.lastPopulate
                     ? new Date(status.lastPopulate).toLocaleString()
@@ -175,29 +219,129 @@ export default function AdminStocks() {
           )}
         </div>
 
-        {/* Refresh controls */}
+        {/* Admin secret — shared across all actions */}
         <div className="mt-6 bg-white rounded-2xl border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Refresh Stock Data</h2>
+          <label className="block text-xs text-gray-500 mb-1">Admin secret (leave blank if not configured)</label>
+          <input
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder="Optional"
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors"
+          />
+        </div>
+
+        {/* Bulk refresh controls (recommended) */}
+        <div className="mt-6 bg-white rounded-2xl border border-blue-200 p-6">
+          <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wide">Bulk Refresh (Recommended)</h2>
           <p className="text-xs text-gray-400 mt-1">
-            Pulls the latest stock screener data from FMP and enriches a batch of 150 stocks with detailed metrics.
-            Run multiple times to cover all stocks.
+            Refreshes the entire database using only 3 FMP API calls: stock screener + ratios TTM bulk + key metrics TTM bulk.
+            Creates a new table, populates it, then atomically swaps. Takes ~30 seconds.
           </p>
 
-          <div className="mt-4">
-            <label className="block text-xs text-gray-500 mb-1">Admin secret (leave blank if not configured)</label>
-            <input
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="Optional"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors"
-            />
+          <button
+            onClick={handleBulkRefresh}
+            disabled={bulkRefreshing || refreshing}
+            className="mt-4 w-full px-4 py-3 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {bulkRefreshing ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Bulk refreshing... (~30 seconds)
+              </span>
+            ) : (
+              "Bulk Refresh (3 API calls)"
+            )}
+          </button>
+        </div>
+
+        {/* Bulk refresh result */}
+        {bulkResult && (
+          <div className={`mt-4 rounded-2xl border p-6 ${
+            bulkResult.success
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-red-50 border-red-200"
+          }`}>
+            {bulkResult.success ? (
+              <div className="text-sm">
+                <p className="font-medium text-emerald-800">Bulk refresh complete</p>
+                {bulkResult.verification && (
+                  <dl className="mt-3 space-y-1 text-emerald-700">
+                    <div className="flex justify-between">
+                      <dt>Total stocks</dt>
+                      <dd className="font-medium">{bulkResult.verification.total.toLocaleString()}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt>With PE ratio</dt>
+                      <dd className="font-medium">{bulkResult.verification.has_pe.toLocaleString()}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt>With ROE</dt>
+                      <dd className="font-medium">{bulkResult.verification.has_roe.toLocaleString()}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt>With dividend yield</dt>
+                      <dd className="font-medium">{bulkResult.verification.has_div_yield.toLocaleString()}</dd>
+                    </div>
+                  </dl>
+                )}
+                {bulkResult.aapl && (
+                  <div className="mt-3 p-3 bg-emerald-100 rounded-lg">
+                    <p className="font-medium text-emerald-800 text-xs">AAPL verification:</p>
+                    <p className="text-emerald-700 text-xs mt-1">
+                      PE: {String(bulkResult.aapl.price_to_earnings_ratio ?? "—")} |
+                      PB: {String(bulkResult.aapl.price_to_book_ratio ?? "—")} |
+                      ROE: {String(bulkResult.aapl.return_on_equity ?? "—")} |
+                      Sector: {String(bulkResult.aapl.sector ?? "—")}
+                    </p>
+                  </div>
+                )}
+                {bulkResult.log && bulkResult.log.length > 0 && (
+                  <details className="mt-3">
+                    <summary className="text-emerald-600 cursor-pointer text-xs">Log ({bulkResult.log.length} entries)</summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-emerald-700 space-y-0.5 font-mono">
+                      {bulkResult.log.map((line, i) => (
+                        <div key={i}>{line}</div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm">
+                <p className="font-medium text-red-800">Bulk refresh failed</p>
+                <p className="text-red-700 mt-1">{bulkResult.error}</p>
+                {bulkResult.details && <p className="text-red-600 text-xs mt-2">{bulkResult.details}</p>}
+                {bulkResult.log && bulkResult.log.length > 0 && (
+                  <details className="mt-3">
+                    <summary className="text-red-600 cursor-pointer text-xs">Log ({bulkResult.log.length} entries)</summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-red-700 space-y-0.5 font-mono">
+                      {bulkResult.log.map((line, i) => (
+                        <div key={i}>{line}</div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Per-stock refresh controls */}
+        <div className="mt-6 bg-white rounded-2xl border border-gray-200 p-6">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Per-Stock Refresh</h2>
+          <p className="text-xs text-gray-400 mt-1">
+            Pulls the latest stock screener data from FMP and enriches a batch of 150 stocks with detailed metrics.
+            Slower but more granular. Run multiple times to cover all stocks.
+          </p>
 
           <button
             onClick={handleRefresh}
-            disabled={refreshing}
-            className="mt-4 w-full px-4 py-3 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={refreshing || bulkRefreshing}
+            className="mt-4 w-full px-4 py-3 text-sm font-medium bg-gray-700 text-white rounded-xl hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {refreshing ? (
               <span className="flex items-center justify-center gap-2">
@@ -208,7 +352,7 @@ export default function AdminStocks() {
                 Refreshing... (this takes a few minutes)
               </span>
             ) : (
-              "Refresh Stocks"
+              "Refresh Stocks (per-stock)"
             )}
           </button>
         </div>
