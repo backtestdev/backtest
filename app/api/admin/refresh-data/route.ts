@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
     // ── Step 2a: Fetch stock screener ────────────────────────────
     log.push("Fetching stock screener...");
     const screenerResults = await fetchFMP<ScreenerResult[]>(
-      "/stock-screener?country=US&isEtf=false&isActivelyTrading=true&limit=10000"
+      "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=5000"
     );
 
     if (!screenerResults || screenerResults.length === 0) {

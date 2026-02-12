@@ -395,7 +395,6 @@ async function runRefresh(
   const purged = await sql`
     DELETE FROM stocks
     WHERE is_etf = true
-       OR is_fund = true
        OR sector IS NULL OR TRIM(sector) = ''
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
