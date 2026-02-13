@@ -25,10 +25,16 @@ function formatDollar(value: number): string {
   return `$${value}`;
 }
 
+// Strip " YTD" from axis labels — keep just the year number
+function formatAxisYear(value: string): string {
+  return value.replace(" YTD", "");
+}
+
 export default function ResultsChart({ data, period }: ResultsChartProps) {
   if (!data || data.length === 0) return null;
 
   const isSinglePoint = data.length === 1;
+  const tickFontSize = data.length > 18 ? 10 : data.length > 12 ? 11 : 12;
 
   return (
     <div className="w-full bg-white rounded-2xl border border-gray-100 p-6 mt-6">
@@ -45,6 +51,7 @@ export default function ResultsChart({ data, period }: ResultsChartProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis
                 dataKey="date"
+                tickFormatter={formatAxisYear}
                 tick={{ fontSize: 12, fill: "#9ca3af" }}
                 axisLine={{ stroke: "#e5e7eb" }}
                 tickLine={false}
@@ -82,7 +89,8 @@ export default function ResultsChart({ data, period }: ResultsChartProps) {
               <XAxis
                 dataKey="date"
                 interval={0}
-                tick={{ fontSize: data.length > 15 ? 11 : 12, fill: "#9ca3af" }}
+                tickFormatter={formatAxisYear}
+                tick={{ fontSize: tickFontSize, fill: "#9ca3af" }}
                 axisLine={{ stroke: "#e5e7eb" }}
                 tickLine={false}
               />
