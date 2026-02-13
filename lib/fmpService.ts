@@ -153,10 +153,15 @@ async function queryStocksFromDb(): Promise<StockData[]> {
         research_and_development_to_revenue,
         stock_based_compensation_to_revenue,
 
+        -- Quote data
+        year_high,
+        year_low,
+
         -- Trend data
         consecutive_dividend_growth_years,
         consecutive_revenue_growth_years,
         consecutive_net_income_growth_years,
+        consecutive_eps_growth_years,
         revenue_growth_3yr_avg,
         net_income_growth_3yr_avg
 
@@ -243,11 +248,16 @@ function toStockData(row: Record<string, unknown>): StockData {
     // Market
     market_cap: marketCapBillions,
     beta: num(row.beta),
-    week52_high_pct: 0, // Not stored in unified table
+    week52_high_pct: num(row.year_high) > 0 ? price / num(row.year_high) : 0,
 
     // Share metrics
     shares_outstanding: 0,
     shares_change_pct: 0,
+
+    // Growth trend metrics
+    consecutive_revenue_growth_years: num(row.consecutive_revenue_growth_years),
+    consecutive_earnings_growth_years: num(row.consecutive_net_income_growth_years),
+    consecutive_eps_growth_years: num(row.consecutive_eps_growth_years),
 
     // Historical returns — not in the unified table yet, empty for now
     historical_returns: {},

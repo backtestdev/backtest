@@ -10,9 +10,12 @@ const METRIC_LABELS: Record<string, string> = {
   forward_pe: "Forward P/E",
   dividend_yield: "Dividend Yield",
   dividend_growth_years: "Dividend Growth Years",
-  revenue_growth: "Revenue Growth",
-  revenue_growth_quarters: "Revenue Growth Quarters",
-  earnings_growth: "Earnings Growth",
+  revenue_growth: "Revenue Growth (3yr Avg)",
+  revenue_growth_quarters: "Consec. Revenue Growth (Yrs)",
+  earnings_growth: "Earnings Growth (3yr Avg)",
+  consecutive_revenue_growth_years: "Consec. Revenue Growth (Yrs)",
+  consecutive_earnings_growth_years: "Consec. Earnings Growth (Yrs)",
+  consecutive_eps_growth_years: "Consec. EPS Growth (Yrs)",
   profit_margin: "Profit Margin",
   market_cap: "Market Cap ($B)",
   price_to_book: "Price to Book (P/B)",
@@ -158,6 +161,7 @@ const PERCENTAGE_METRICS = new Set([
   "dividend_yield_percentage", "effective_tax_rate",
   "operating_cash_flow_sales_ratio", "fcf_to_ocf_ratio",
   "net_income_per_ebt", "ebt_per_ebit", "debt_to_market_cap",
+  "week52_high_pct",
 ]);
 
 function formatMetricValue(name: string, value: number): string {

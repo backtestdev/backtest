@@ -102,6 +102,10 @@ const METRIC_ALIASES: Record<string, string[]> = {
   debt_to_market_cap: ["debt to market cap"],
   effective_tax_rate: ["effective tax rate", "tax rate"],
   enterprise_value_multiple: ["ev multiple", "enterprise value multiple"],
+  // Growth trend metrics
+  consecutive_revenue_growth_years: ["consecutive revenue growth years", "years of revenue growth", "revenue growth years"],
+  consecutive_earnings_growth_years: ["consecutive earnings growth years", "years of earnings growth", "earnings growth years", "consecutive net income growth"],
+  consecutive_eps_growth_years: ["consecutive eps growth years", "years of eps growth", "eps growth years"],
 };
 
 // Build reverse lookup: alias -> canonical metric name
@@ -196,6 +200,9 @@ Available metrics:
 - book_value_per_share, tangible_book_value_per_share, cash_per_share
 - operating_cash_flow_per_share, capex_per_share, revenue_per_share, net_income_per_share
 - price_to_fair_value, debt_to_market_cap, effective_tax_rate, enterprise_value_multiple
+- consecutive_revenue_growth_years (integer: 0, 1, 2, 3... years of consecutive revenue growth)
+- consecutive_earnings_growth_years (integer: years of consecutive net income growth)
+- consecutive_eps_growth_years (integer: years of consecutive EPS growth)
 
 Available operators: ">", "<", ">=", "<=", "==", "between"
 
@@ -229,6 +236,11 @@ If something is ambiguous, make reasonable assumptions. For example:
 - "low debt" → debt_to_equity < 0.5
 - "high ROE" → roe > 0.15
 - "profitable" → profit_margin > 0
+- "near 52-week high" or "within 5% of 52-week high" → week52_high_pct >= 0.95
+- "down 40% from highs" → week52_high_pct <= 0.60
+- "positive cash flow" or "positive free cash flow" → free_cash_flow_per_share > 0
+- "consistent earnings growth" or "2+ years earnings growth" → consecutive_earnings_growth_years >= 2
+- "turnaround" → profit_margin > 0, earnings_growth > 0
 
 IMPORTANT: Return ONLY the JSON object, no markdown formatting or explanation.`;
 
@@ -576,9 +588,64 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     filters.push({ metric: "profit_margin", operator: ">", value: 0 });
   }
 
-  // 52-week high
-  if (lower.includes("52-week high") || lower.includes("52 week high")) {
+  // 52-week high — near highs
+  const near52HighMatch = lower.match(/within\s*(\d+)\s*%?\s*(?:of\s*)?(?:52[\s-]*week\s*high|52w\s*high)/);
+  if (near52HighMatch) {
+    filters.push({ metric: "week52_high_pct", operator: ">=", value: 1 - parseFloat(near52HighMatch[1]) / 100 });
+  } else if (lower.includes("52-week high") || lower.includes("52 week high") || lower.includes("new high")) {
     filters.push({ metric: "week52_high_pct", operator: ">=", value: 0.95 });
+  }
+
+  // Down X% from highs (fallen angels / contrarian)
+  const downFromHighMatch = lower.match(/down\s*(\d+)\s*%?\+?\s*(?:from\s*)?(?:52[\s-]*week\s*)?high/);
+  if (downFromHighMatch) {
+    filters.push({ metric: "week52_high_pct", operator: "<=", value: 1 - parseFloat(downFromHighMatch[1]) / 100 });
+  }
+
+  // Free cash flow yield
+  const fcfYieldMatch = lower.match(/(?:free\s*)?cash\s*flow\s*yield\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (fcfYieldMatch) {
+    filters.push({ metric: "free_cash_flow_yield", operator: ">", value: parseFloat(fcfYieldMatch[1]) / 100 });
+  }
+
+  // ROIC patterns
+  const roicMatch = lower.match(/roic\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (roicMatch) {
+    filters.push({ metric: "roic", operator: ">", value: parseFloat(roicMatch[1]) / 100 });
+  }
+
+  // EV/EBITDA patterns
+  const evEbitdaMatch = lower.match(/ev\s*\/?\s*ebitda\s*(?:under|below|less than|<)\s*(\d+(?:\.\d+)?)/);
+  if (evEbitdaMatch) {
+    filters.push({ metric: "ev_to_ebitda", operator: "<", value: parseFloat(evEbitdaMatch[1]) });
+  }
+
+  // Consecutive growth years
+  const consGrowthMatch = lower.match(/(\d+)\+?\s*years?\s*(?:of\s*)?(?:consecutive\s*)?(?:earnings|net income|income)\s*growth/);
+  if (consGrowthMatch) {
+    filters.push({ metric: "consecutive_earnings_growth_years", operator: ">=", value: parseFloat(consGrowthMatch[1]) });
+  }
+  const consRevGrowthMatch = lower.match(/(\d+)\+?\s*years?\s*(?:of\s*)?(?:consecutive\s*)?revenue\s*growth/);
+  if (consRevGrowthMatch) {
+    filters.push({ metric: "consecutive_revenue_growth_years", operator: ">=", value: parseFloat(consRevGrowthMatch[1]) });
+  }
+
+  // Positive free cash flow
+  if (lower.includes("positive free cash flow") || lower.includes("positive fcf")) {
+    filters.push({ metric: "free_cash_flow_per_share", operator: ">", value: 0 });
+  }
+  if (lower.includes("positive cash flow") && !lower.includes("free cash flow")) {
+    filters.push({ metric: "free_cash_flow_per_share", operator: ">", value: 0 });
+  }
+
+  // Turnaround patterns
+  if (lower.includes("turnaround")) {
+    if (!marginMatch && !filters.some(f => f.metric === "profit_margin")) {
+      filters.push({ metric: "profit_margin", operator: ">", value: 0 });
+    }
+    if (!filters.some(f => f.metric === "earnings_growth")) {
+      filters.push({ metric: "earnings_growth", operator: ">", value: 0 });
+    }
   }
 
   // Value stocks composite
