@@ -28,6 +28,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const isTickerMode = !!(result.parsedParams?.tickers && result.parsedParams.tickers.length > 0);
   const [stocksExpanded, setStocksExpanded] = useState(false);
 
   const handleSave = async () => {
@@ -86,11 +87,17 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
       <details className="mb-6 group">
         <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
-          <span>Equal-weight, annual rebalance · May include survivorship bias</span>
+          <span>
+            {isTickerMode ? "AI-selected tickers" : "Static screen"} · Equal-weight, annual rebalance · Survivorship bias possible
+          </span>
           <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
         </summary>
         <div className="mt-2 text-xs text-gray-500 leading-relaxed pl-5.5 space-y-1">
-          <p>Results show how stocks <em>currently</em> matching your criteria performed historically — not a point-in-time simulation. Survivorship bias may be present.</p>
+          {isTickerMode ? (
+            <p>Stocks were selected by AI based on your query — not by metric filters. Re-running the same query may return slightly different tickers.</p>
+          ) : (
+            <p>Results show how stocks <em>currently</em> matching your criteria performed historically. Stocks are screened against today&apos;s metrics, not the metrics at the time — this is not a point-in-time simulation.</p>
+          )}
           <p>Each year, returns are equal-weighted across all matching stocks trading that year. IPOs join from their first full year.</p>
         </div>
       </details>

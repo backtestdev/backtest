@@ -4,7 +4,7 @@ import path from "path";
 import { LeaderboardEntry } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 import { auth } from "@clerk/nextjs/server";
-import { getDb, generateParametersHash } from "@/lib/db";
+import { getDb, generateParametersHash, generateQueryHash } from "@/lib/db";
 import { moderateText } from "@/lib/moderation";
 
 const LEADERBOARD_PATH = path.join(process.cwd(), "data", "leaderboard.json");
@@ -35,7 +35,7 @@ async function readLeaderboardDb(): Promise<LeaderboardEntry[]> {
     const rows = await sql`
       SELECT id, name, description, return1yr, return5yr, return10yr, return20yr,
              matched_stocks as "matchedStocks", created_at as "createdAt", user_id,
-             parameters_json, parameters_hash
+             parameters_json, parameters_hash, query_hash, created_by
       FROM leaderboard
       ORDER BY return10yr DESC
       LIMIT ${MAX_ENTRIES}
@@ -51,8 +51,10 @@ async function readLeaderboardDb(): Promise<LeaderboardEntry[]> {
       matchedStocks: Number(row.matchedStocks),
       createdAt: row.createdAt,
       user_id: row.user_id,
+      created_by: row.created_by,
       parameters_json: row.parameters_json,
       parameters_hash: row.parameters_hash,
+      query_hash: row.query_hash,
     }));
   } catch (error) {
     console.error("DB read failed, falling back to file:", error);
@@ -60,16 +62,17 @@ async function readLeaderboardDb(): Promise<LeaderboardEntry[]> {
   }
 }
 
-async function checkDuplicateDb(parametersHash: string): Promise<LeaderboardEntry | null> {
+async function checkDuplicateDb(
+  hashValue: string,
+  column: "parameters_hash" | "query_hash" = "parameters_hash"
+): Promise<LeaderboardEntry | null> {
   const sql = getDb();
   if (!sql) return null;
 
   try {
-    const rows = await sql`
-      SELECT id, name, description FROM leaderboard
-      WHERE parameters_hash = ${parametersHash}
-      LIMIT 1
-    `;
+    const rows = column === "query_hash"
+      ? await sql`SELECT id, name, description FROM leaderboard WHERE query_hash = ${hashValue} LIMIT 1`
+      : await sql`SELECT id, name, description FROM leaderboard WHERE parameters_hash = ${hashValue} LIMIT 1`;
     if (rows.length > 0) {
       return rows[0] as unknown as LeaderboardEntry;
     }
@@ -92,11 +95,12 @@ async function writeLeaderboardDb(entry: LeaderboardEntry): Promise<void> {
 
   await sql`
     INSERT INTO leaderboard (id, name, description, return1yr, return5yr, return10yr, return20yr,
-                             matched_stocks, created_at, user_id, parameters_json, parameters_hash)
+                             matched_stocks, created_at, user_id, parameters_json, parameters_hash,
+                             query_hash, created_by)
     VALUES (${entry.id}, ${entry.name}, ${entry.description}, ${entry.return1yr}, ${entry.return5yr},
             ${entry.return10yr}, ${entry.return20yr}, ${entry.matchedStocks}, ${entry.createdAt},
             ${entry.user_id ?? null}, ${JSON.stringify(entry.parameters_json) ?? null},
-            ${entry.parameters_hash ?? null})
+            ${entry.parameters_hash ?? null}, ${entry.query_hash ?? null}, ${entry.created_by ?? null})
   `;
 }
 
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks, parameters_json } = body;
+    const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks, parameters_json, created_by } = body;
 
     console.log("[Leaderboard POST] Received:", { name, description, userId, parameters_json: !!parameters_json });
 
@@ -155,19 +159,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: descCheck.error }, { status: 400 });
     }
 
-    // Generate parameters hash for duplicate detection
+    // Generate hashes for duplicate detection
     const parametersHash = parameters_json ? generateParametersHash(parameters_json) : null;
+    const queryHash = description ? generateQueryHash(description) : null;
 
-    // Check for duplicates
-    if (parametersHash) {
+    // Check for duplicates — parameters_hash catches identical parsed outputs,
+    // query_hash catches same-query ticker-mode strategies where AI returns
+    // different ticker lists each run (e.g., "meme stocks")
+    const isTickerMode = parameters_json?.tickers && parameters_json.tickers.length > 0;
+
+    {
       const sql = getDb();
       let existingDup: LeaderboardEntry | null = null;
 
       if (sql) {
-        existingDup = await checkDuplicateDb(parametersHash);
+        // For ticker-mode, check query_hash first (catches "meme stocks" dupes)
+        if (isTickerMode && queryHash) {
+          existingDup = await checkDuplicateDb(queryHash, "query_hash");
+        }
+        // Then check parameters_hash (catches identical metric filter sets)
+        if (!existingDup && parametersHash) {
+          existingDup = await checkDuplicateDb(parametersHash, "parameters_hash");
+        }
       } else {
         const entries = await readLeaderboardFile();
-        existingDup = checkDuplicateFile(entries, parametersHash);
+        if (isTickerMode && queryHash) {
+          existingDup = entries.find((e) => e.query_hash === queryHash) ?? null;
+        }
+        if (!existingDup && parametersHash) {
+          existingDup = checkDuplicateFile(entries, parametersHash);
+        }
       }
 
       if (existingDup) {
@@ -190,8 +211,10 @@ export async function POST(request: NextRequest) {
       matchedStocks: matchedStocks ?? 0,
       createdAt: new Date().toISOString(),
       user_id: userId,
+      created_by: created_by ?? undefined,
       parameters_json: parameters_json ?? undefined,
       parameters_hash: parametersHash ?? undefined,
+      query_hash: queryHash ?? undefined,
     };
 
     await writeLeaderboardDb(newEntry);
