@@ -146,6 +146,10 @@ export default function StockScreener() {
   const [page, setPage] = useState(1);
   const [sectors, setSectors] = useState<string[]>([]);
 
+  // Market cap filter
+  const [minCap, setMinCap] = useState(0);
+  const [maxCap, setMaxCap] = useState(0);
+
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Stock[]>([]);
@@ -163,6 +167,8 @@ export default function StockScreener() {
         dir: sortDir,
         page: String(page),
         ...(sector && { sector }),
+        ...(minCap > 0 && { minCap: String(minCap) }),
+        ...(maxCap > 0 && { maxCap: String(maxCap) }),
       });
       const res = await fetch(`/api/screener?${params}`);
       const json = await res.json();
@@ -178,7 +184,7 @@ export default function StockScreener() {
     } finally {
       setLoading(false);
     }
-  }, [sortField, sortDir, sector, page]);
+  }, [sortField, sortDir, sector, page, minCap, maxCap]);
 
   useEffect(() => {
     fetchData();
@@ -230,7 +236,23 @@ export default function StockScreener() {
     setSelectedStock(stock);
     setSearchQuery("");
     setShowDropdown(false);
+    // Smooth scroll to top so the profile card is visible
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const setCapFilter = (min: number, max: number) => {
+    // Toggle off if already active
+    if (minCap === min && maxCap === max) {
+      setMinCap(0);
+      setMaxCap(0);
+    } else {
+      setMinCap(min);
+      setMaxCap(max);
+    }
+    setPage(1);
+  };
+
+  const isCapActive = (min: number, max: number) => minCap === min && maxCap === max;
 
   const SortHeader = ({ field, label, className = "" }: { field: SortField; label: string; className?: string }) => (
     <button
@@ -320,8 +342,53 @@ export default function StockScreener() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+
+          <span className="text-xs text-gray-300">|</span>
+
+          {/* Market cap range presets */}
+          {([
+            { label: "Small", min: 0.3, max: 2, title: "$300M – $2B" },
+            { label: "Mid", min: 2, max: 10, title: "$2B – $10B" },
+            { label: "Large", min: 10, max: 200, title: "$10B – $200B" },
+            { label: "Mega", min: 200, max: 0, title: "$200B+" },
+          ] as const).map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => setCapFilter(preset.min, preset.max)}
+              title={preset.title}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
+                isCapActive(preset.min, preset.max)
+                  ? "bg-blue-50 border-blue-200 text-blue-700 font-medium"
+                  : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+
+          <span className="text-xs text-gray-300">|</span>
+
+          {/* Quick min-cap filters */}
+          {([
+            { label: ">$10B", min: 10, title: "Market cap above $10B" },
+            { label: ">$100B", min: 100, title: "Market cap above $100B" },
+          ] as const).map((quick) => (
+            <button
+              key={quick.label}
+              onClick={() => setCapFilter(quick.min, 0)}
+              title={quick.title}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
+                isCapActive(quick.min, 0)
+                  ? "bg-blue-50 border-blue-200 text-blue-700 font-medium"
+                  : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+            >
+              {quick.label}
+            </button>
+          ))}
+
           {data && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 ml-auto">
               {data.totalCount.toLocaleString()} stocks
             </span>
           )}
