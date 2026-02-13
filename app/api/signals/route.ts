@@ -40,6 +40,8 @@ const ANALYZABLE_METRICS: { column: string; label: string }[] = [
   { column: "debt_to_equity", label: "Debt / Equity" },
   { column: "current_ratio", label: "Current Ratio" },
   { column: "interest_coverage_ratio", label: "Interest Coverage" },
+  // Earnings consistency
+  { column: "consecutive_earnings_growth", label: "Consecutive Earnings Growth (Yrs)" },
   // Cash Flow
   { column: "free_cash_flow_yield", label: "FCF Yield" },
   { column: "free_cash_flow_per_share", label: "FCF / Share" },
@@ -78,7 +80,8 @@ export async function GET() {
              s.debt_to_equity_ratio AS debt_to_equity,
              s.current_ratio, s.interest_coverage_ratio,
              s.free_cash_flow_yield, s.free_cash_flow_per_share,
-             s.market_cap, s.beta
+             s.market_cap, s.beta,
+             s.consecutive_net_income_growth_years AS consecutive_earnings_growth
       FROM stocks s
       WHERE s.market_cap IS NOT NULL AND s.market_cap > 0.1
     `;

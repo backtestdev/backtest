@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface Stock {
   symbol: string;
@@ -10,10 +10,16 @@ interface Stock {
   peRatio: number | null;
   roe: number | null;
   revenueGrowth: number | null;
+  earningsGrowth: number | null;
+  earningsYield: number | null;
   profitMargin: number | null;
   dividendYield: number | null;
   debtToEquity: number | null;
   beta: number | null;
+  evToEbitda: number | null;
+  freeCashFlowYield: number | null;
+  consecutiveEarningsGrowth: number;
+  currentRatio: number | null;
   backtestScore: number;
 }
 
@@ -25,7 +31,7 @@ interface ScreenerData {
   sectors: string[];
 }
 
-type SortField = "backtest_score" | "market_cap" | "pe_ratio" | "roe" | "revenue_growth" | "dividend_yield";
+type SortField = "backtest_score" | "market_cap" | "pe_ratio" | "roe" | "earnings_yield" | "earnings_growth" | "revenue_growth" | "dividend_yield";
 
 function formatMarketCap(b: number): string {
   if (b >= 1000) return `$${(b / 1000).toFixed(1)}T`;
@@ -34,12 +40,12 @@ function formatMarketCap(b: number): string {
 }
 
 function formatPct(v: number | null): string {
-  if (v === null) return "—";
+  if (v === null) return "\u2014";
   return `${(v * 100).toFixed(1)}%`;
 }
 
 function formatNum(v: number | null, decimals = 1): string {
-  if (v === null) return "—";
+  if (v === null) return "\u2014";
   return v.toFixed(decimals);
 }
 
@@ -59,6 +65,77 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
+// ── Metric helpers for profile card ──
+const PROFILE_METRICS: { key: keyof Stock; label: string; format: (v: number | null) => string; tooltip: string }[] = [
+  { key: "earningsYield", label: "Earnings Yield", format: formatPct, tooltip: "Net income / market cap. Higher means more profit per dollar invested." },
+  { key: "peRatio", label: "P/E", format: (v) => formatNum(v), tooltip: "Price / Earnings. Lower may indicate better value." },
+  { key: "earningsGrowth", label: "Earnings Gr.", format: formatPct, tooltip: "Year-over-year growth in net income." },
+  { key: "consecutiveEarningsGrowth", label: "Earn. Streak", format: (v) => v !== null ? `${v}yr` : "\u2014", tooltip: "Consecutive years of net income growth." },
+  { key: "roe", label: "ROE", format: formatPct, tooltip: "Return on equity. Profit generated per dollar of shareholder equity." },
+  { key: "profitMargin", label: "Margin", format: formatPct, tooltip: "Net profit margin. Percentage of revenue kept as profit." },
+  { key: "freeCashFlowYield", label: "FCF Yield", format: formatPct, tooltip: "Free cash flow / market cap. Cash generation relative to price." },
+  { key: "revenueGrowth", label: "Rev. Gr.", format: formatPct, tooltip: "Year-over-year revenue growth rate." },
+  { key: "evToEbitda", label: "EV/EBITDA", format: (v) => formatNum(v), tooltip: "Enterprise value / EBITDA. Lower may indicate better value." },
+  { key: "debtToEquity", label: "D/E", format: (v) => formatNum(v), tooltip: "Debt to equity ratio. Lower means less leveraged." },
+  { key: "dividendYield", label: "Div. Yield", format: formatPct, tooltip: "Annual dividend / share price." },
+  { key: "beta", label: "Beta", format: (v) => formatNum(v, 2), tooltip: "Volatility relative to the market. 1.0 = market average." },
+];
+
+function StockProfileCard({ stock, onClose }: { stock: Stock; onClose: () => void }) {
+  return (
+    <div className="mb-4 bg-white rounded-2xl border border-blue-100 p-5 animate-in fade-in duration-200">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold text-gray-900">{stock.symbol}</h3>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
+          </div>
+          <p className="text-sm text-gray-400">{stock.name}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-xs text-gray-400">Score</p>
+            <ScoreBar score={stock.backtestScore} />
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-400">MCap</p>
+            <p className="text-sm font-semibold text-gray-700">{formatMarketCap(stock.marketCap)}</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-300 hover:text-gray-500 transition-colors" title="Close">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+        {PROFILE_METRICS.map((m) => (
+          <div key={m.key} className="group relative">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider">{m.label}</p>
+            <p className="text-sm font-semibold text-gray-800">{m.format(stock[m.key] as number | null)}</p>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 w-48 px-2 py-1 text-[10px] text-white bg-gray-800 rounded-md shadow-lg pointer-events-none">
+              {m.tooltip}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Header tooltips ──
+const HEADER_TOOLTIPS: Record<string, string> = {
+  backtest_score: "Composite 1\u2013100 score based on earnings yield, growth, consistency, value, quality, and leverage factors.",
+  market_cap: "Market capitalization \u2014 total value of all outstanding shares.",
+  pe_ratio: "Price / Earnings \u2014 share price divided by earnings per share. Lower may indicate better value.",
+  roe: "Return on Equity \u2014 net income divided by shareholder equity. Measures profit efficiency.",
+  earnings_yield: "Earnings Yield \u2014 net income / market cap. Higher means more profit per dollar of market value.",
+  earnings_growth: "Earnings Growth \u2014 year-over-year growth in net income.",
+  revenue_growth: "Revenue Growth \u2014 year-over-year growth in total revenue.",
+  dividend_yield: "Dividend Yield \u2014 annual dividend payment as a percentage of share price.",
+  de: "Debt to Equity \u2014 total debt divided by shareholder equity. Lower means less leverage.",
+};
+
 export default function StockScreener() {
   const [data, setData] = useState<ScreenerData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,6 +145,14 @@ export default function StockScreener() {
   const [sector, setSector] = useState("");
   const [page, setPage] = useState(1);
   const [sectors, setSectors] = useState<string[]>([]);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Stock[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -99,6 +184,38 @@ export default function StockScreener() {
     fetchData();
   }, [fetchData]);
 
+  // Search with debounce
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/screener?search=${encodeURIComponent(searchQuery.trim())}`);
+        const json = await res.json();
+        if (json.stocks) {
+          setSearchResults(json.stocks);
+          setShowDropdown(true);
+        }
+      } catch { /* ignore */ }
+    }, 250);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -109,15 +226,25 @@ export default function StockScreener() {
     setPage(1);
   };
 
+  const selectStock = (stock: Stock) => {
+    setSelectedStock(stock);
+    setSearchQuery("");
+    setShowDropdown(false);
+  };
+
   const SortHeader = ({ field, label, className = "" }: { field: SortField; label: string; className?: string }) => (
     <button
       onClick={() => handleSort(field)}
-      className={`font-medium text-xs uppercase tracking-wider transition-colors ${
+      className={`group/hdr relative font-medium text-xs uppercase tracking-wider transition-colors ${
         sortField === field ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
       } ${className}`}
+      title={HEADER_TOOLTIPS[field]}
     >
       {label}
       {sortField === field && (sortDir === "desc" ? " \u2193" : " \u2191")}
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
+        {HEADER_TOOLTIPS[field]}
+      </div>
     </button>
   );
 
@@ -129,11 +256,60 @@ export default function StockScreener() {
         {/* Header */}
         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Stock Screener</h1>
         <p className="mt-2 text-gray-400">
-          Every stock scored 1–100 based on value, quality, growth, and momentum factors.
+          Every stock scored 1&ndash;100 based on earnings power, growth consistency, value, and quality factors.
         </p>
 
+        {/* Search bar */}
+        <div ref={searchRef} className="relative mt-6">
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by ticker or company name..."
+              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
+            />
+          </div>
+          {/* Search dropdown */}
+          {showDropdown && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 overflow-hidden">
+              {searchResults.map((stock) => (
+                <button
+                  key={stock.symbol}
+                  onClick={() => selectStock(stock)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
+                    <span className="text-xs text-gray-400 ml-2 truncate">{stock.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <span className="text-xs text-gray-400">{stock.sector}</span>
+                    <ScoreBar score={stock.backtestScore} />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {showDropdown && searchQuery.trim() && searchResults.length === 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 px-4 py-3 text-sm text-gray-400">
+              No stocks found for &ldquo;{searchQuery}&rdquo;
+            </div>
+          )}
+        </div>
+
+        {/* Profile card */}
+        {selectedStock && (
+          <div className="mt-4">
+            <StockProfileCard stock={selectedStock} onClose={() => setSelectedStock(null)} />
+          </div>
+        )}
+
         {/* Filters */}
-        <div className="mt-6 mb-4 flex flex-wrap items-center gap-3">
+        <div className="mt-4 mb-4 flex flex-wrap items-center gap-3">
           <select
             value={sector}
             onChange={(e) => { setSector(e.target.value); setPage(1); }}
@@ -172,22 +348,25 @@ export default function StockScreener() {
               <SortHeader field="backtest_score" label="Score" />
             </div>
             <div className="col-span-1 text-right">
-              <SortHeader field="market_cap" label="Cap" className="text-right" />
+              <SortHeader field="market_cap" label="MCap" className="text-right" />
+            </div>
+            <div className="col-span-1 text-right">
+              <SortHeader field="earnings_yield" label="E. Yield" className="text-right" />
             </div>
             <div className="col-span-1 text-right">
               <SortHeader field="pe_ratio" label="P/E" className="text-right" />
             </div>
-            <div className="col-span-1 text-right">
+            <div className="col-span-1 text-right hidden md:block">
+              <SortHeader field="earnings_growth" label="Earn Gr" className="text-right" />
+            </div>
+            <div className="col-span-1 text-right hidden md:block">
               <SortHeader field="roe" label="ROE" className="text-right" />
             </div>
-            <div className="col-span-1 text-right hidden md:block">
-              <SortHeader field="revenue_growth" label="Rev Gr" className="text-right" />
-            </div>
-            <div className="col-span-1 text-right hidden md:block">
-              <SortHeader field="dividend_yield" label="Yield" className="text-right" />
-            </div>
-            <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:block">
+            <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:block group/hdr relative cursor-help" title={HEADER_TOOLTIPS.de}>
               D/E
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
+                {HEADER_TOOLTIPS.de}
+              </div>
             </div>
             <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
               Sector
@@ -204,10 +383,11 @@ export default function StockScreener() {
           )}
 
           {/* Rows */}
-          {!loading && data?.stocks.map((stock) => (
-            <div
+          {!loading && data?.stocks?.map((stock) => (
+            <button
               key={stock.symbol}
-              className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-0 items-center hover:bg-gray-50 transition-colors"
+              onClick={() => selectStock(stock)}
+              className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-0 items-center hover:bg-blue-50/40 transition-colors text-left cursor-pointer"
             >
               <div className="col-span-3 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">{stock.symbol}</p>
@@ -220,16 +400,16 @@ export default function StockScreener() {
                 {formatMarketCap(stock.marketCap)}
               </div>
               <div className="col-span-1 text-right text-sm text-gray-600">
-                {formatNum(stock.peRatio)}
+                {formatPct(stock.earningsYield)}
               </div>
               <div className="col-span-1 text-right text-sm text-gray-600">
+                {formatNum(stock.peRatio)}
+              </div>
+              <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
+                {formatPct(stock.earningsGrowth)}
+              </div>
+              <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
                 {formatPct(stock.roe)}
-              </div>
-              <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
-                {formatPct(stock.revenueGrowth)}
-              </div>
-              <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
-                {formatPct(stock.dividendYield)}
               </div>
               <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
                 {formatNum(stock.debtToEquity)}
@@ -239,7 +419,7 @@ export default function StockScreener() {
                   {stock.sector}
                 </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -278,8 +458,8 @@ export default function StockScreener() {
             </svg>
           </summary>
           <div className="mt-2 text-xs text-gray-500 leading-relaxed pl-5.5 space-y-1">
-            <p>Each stock is ranked on 12 factors across value (P/E, P/B, EV/EBITDA), quality (ROE, ROIC, margins), growth (revenue, earnings), cash flow (FCF yield), leverage (D/E), dividends, and momentum.</p>
-            <p>Percentile ranks are weighted and combined into a composite score from 1 (weakest) to 100 (strongest). The score reflects today&apos;s metrics — it&apos;s a static snapshot, not a forward prediction.</p>
+            <p>Each stock is ranked on 11 factors with heavy emphasis on <strong>earnings yield</strong> (net profit / market cap), <strong>earnings growth</strong>, and <strong>earnings consistency</strong> (consecutive years of growing net income). Additional factors include P/E, EV/EBITDA, ROE, ROIC, profit margin, revenue growth, FCF yield, and leverage (D/E).</p>
+            <p>Percentile ranks are weighted and combined into a composite score from 1 (weakest) to 100 (strongest). The score reflects today&apos;s metrics &mdash; it&apos;s a static snapshot, not a forward prediction.</p>
           </div>
         </details>
       </div>
