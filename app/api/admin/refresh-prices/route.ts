@@ -102,22 +102,34 @@ export async function POST(request: NextRequest) {
     // Store results in database
     log.push("Writing annual returns to database...");
 
-    // Clear existing data and insert new
+    // Clear existing data and insert new (batched for performance)
     await sql`DELETE FROM stock_annual_returns`;
 
-    let insertedRows = 0;
-    const entries = Array.from(returns.entries());
-    for (const [symbol, annualReturns] of entries) {
+    // Flatten all rows into a single array for batched inserts
+    const allRows: { symbol: string; year: number; annualReturn: number; yearEndClose: number | null }[] = [];
+    for (const [symbol, annualReturns] of Array.from(returns.entries())) {
       for (const ret of annualReturns) {
-        await sql`
-          INSERT INTO stock_annual_returns (symbol, year, annual_return, year_end_close)
-          VALUES (${symbol}, ${ret.year}, ${ret.annualReturn}, ${ret.yearEndClose})
-          ON CONFLICT (symbol, year) DO UPDATE SET
-            annual_return = EXCLUDED.annual_return,
-            year_end_close = EXCLUDED.year_end_close
-        `;
-        insertedRows++;
+        allRows.push({ symbol, year: ret.year, annualReturn: ret.annualReturn, yearEndClose: ret.yearEndClose });
       }
+    }
+
+    let insertedRows = 0;
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < allRows.length; i += BATCH_SIZE) {
+      const batch = allRows.slice(i, i + BATCH_SIZE);
+      const placeholders = batch.map((_, idx) => {
+        const b = idx * 4;
+        return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4})`;
+      }).join(", ");
+      const params = batch.flatMap(r => [r.symbol, r.year, r.annualReturn, r.yearEndClose]);
+      const query = `INSERT INTO stock_annual_returns (symbol, year, annual_return, year_end_close)
+         VALUES ${placeholders}
+         ON CONFLICT (symbol, year) DO UPDATE SET
+           annual_return = EXCLUDED.annual_return,
+           year_end_close = EXCLUDED.year_end_close`;
+      // neon() supports sql(string, params[]) at runtime; cast to satisfy TS
+      await (sql as unknown as (q: string, p: unknown[]) => Promise<unknown[]>)(query, params);
+      insertedRows += batch.length;
     }
 
     log.push(`Inserted ${insertedRows} annual return records for ${returns.size} symbols`);
