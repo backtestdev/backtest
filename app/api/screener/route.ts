@@ -46,9 +46,9 @@ const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: 
   { column: "free_cash_flow_yield", weight: 5, capLow: -0.2, capHigh: 0.3 },
   // Leverage (lower debt is better)
   { column: "debt_to_equity", weight: -5, capLow: 0, capHigh: 5 },
-  // Beta — lower volatility stocks historically outperform (low-vol anomaly)
-  // Strongest spread factor in signal explorer; deserves meaningful weight
-  { column: "beta", weight: -8, capLow: 0, capHigh: 3 },
+  // Beta — higher beta stocks show stronger raw returns in signal explorer data.
+  // Strongest spread factor; weight aligns with empirical quintile results.
+  { column: "beta", weight: 8, capLow: 0, capHigh: 3 },
   // Size confidence — log(market cap in $B). Larger companies have more
   // reliable metrics; prevents micro/small-cap noise from dominating.
   // log10($1B)=0, log10($10B)=1, log10($100B)=2, log10($1T)=3
