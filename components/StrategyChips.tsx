@@ -5,57 +5,44 @@ interface StrategyChipsProps {
   onCreateOwn: () => void;
 }
 
-const FEATURED_STRATEGIES = [
-  {
-    label: "Dividend Value",
-    description: "High-yield, low-valuation stocks with manageable debt",
-    query:
-      "Dividend yield over 3% with P/E under 15, payout ratio under 70%, and debt-to-equity under 1",
-  },
-  {
-    label: "Quality Growth",
-    description: "Profitable compounders with strong returns on equity",
-    query:
-      "Quality compounders: ROE over 15%, debt-to-equity under 0.5, consistent earnings growth",
-  },
-  {
-    label: "Small Cap Momentum",
-    description: "High-growth small caps in the technology sector",
-    query:
-      "Tech stocks under $10B market cap with revenue growth over 25%",
-  },
+const EXAMPLE_STRATEGIES = [
+  // Basic Value & Dividend
+  { label: "Dividend Value", query: "Dividend yield over 3% with P/E under 15, payout ratio under 70%, and debt-to-equity under 1" },
+  { label: "Deep Value", query: "Deep value: P/E under 10, P/B under 1.5, positive free cash flow" },
+  { label: "High Yield Low Payout", query: "High dividend yield over 4% with payout ratio under 60%" },
+  // Growth & Momentum
+  { label: "Small Cap Growth Tech", query: "Tech stocks under $10B market cap with revenue growth over 25%" },
+  { label: "Revenue Growth Leaders", query: "Companies with 20%+ revenue growth and improving profit margins" },
+  { label: "52-Week High Momentum", query: "Stocks within 5% of 52-week highs with earnings growth over 15%" },
+  // Quality & GARP
+  { label: "Quality Compounders", query: "Quality compounders: ROE over 15%, debt-to-equity under 0.5, consistent earnings growth" },
+  { label: "GARP Strategy", query: "GARP: P/E under 20, earnings growth over 15%, ROE above 12%" },
+  // Contrarian & Special Situations
+  { label: "Fallen Angels", query: "Fallen angels: Stocks down 40%+ from 52-week highs with positive free cash flow and profit margin above 5%" },
+  { label: "Cash-Rich Compounders", query: "Cash-rich compounders: Free cash flow yield over 8% with ROE above 15% and debt-to-equity under 0.5" },
+  { label: "Overlooked Quality", query: "Overlooked quality: Mid-cap $2B-$20B market cap with ROIC over 15% and EV/EBITDA under 12" },
 ];
 
 export default function StrategyChips({ onSelect, onCreateOwn }: StrategyChipsProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {FEATURED_STRATEGIES.map((strategy) => (
+    <div className="flex flex-wrap gap-2 justify-center">
+      {EXAMPLE_STRATEGIES.map((strategy) => (
         <button
           key={strategy.label}
           onClick={() => onSelect(strategy.query)}
-          className="group text-left px-4 py-3.5 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all duration-150 cursor-pointer"
+          className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100 hover:text-gray-900 hover:border-gray-300 transition-all duration-150 cursor-pointer"
         >
-          <p className="text-sm font-semibold text-gray-800 group-hover:text-blue-600 transition-colors">
-            {strategy.label}
-          </p>
-          <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-            {strategy.description}
-          </p>
+          {strategy.label}
         </button>
       ))}
       <button
         onClick={onCreateOwn}
-        className="group text-left px-4 py-3.5 border-2 border-dashed border-gray-200 rounded-xl hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-150 cursor-pointer"
+        className="px-4 py-2 text-sm font-medium text-gray-400 border-2 border-dashed border-gray-200 rounded-full hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all duration-150 cursor-pointer flex items-center gap-1.5"
       >
-        <p className="text-sm font-semibold text-gray-400 group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Create your own
-        </p>
-        <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-          Describe any strategy in plain English
-        </p>
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+        Create your own
       </button>
     </div>
   );
