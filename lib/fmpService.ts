@@ -163,7 +163,10 @@ async function queryStocksFromDb(): Promise<StockData[]> {
         consecutive_net_income_growth_years,
         consecutive_eps_growth_years,
         revenue_growth_3yr_avg,
-        net_income_growth_3yr_avg
+        net_income_growth_3yr_avg,
+        revenue_growth_yoy,
+        earnings_growth_yoy,
+        eps_growth_yoy
 
       FROM stocks
       WHERE is_actively_trading = true
@@ -225,11 +228,11 @@ function toStockData(row: Record<string, unknown>): StockData {
     dividend_growth_years: num(row.consecutive_dividend_growth_years),
     payout_ratio: num(row.dividend_payout_ratio),
 
-    // Growth
-    revenue_growth: num(row.revenue_growth_3yr_avg),
+    // Growth — YoY = most recent year vs prior year (what advisors expect)
+    revenue_growth: num(row.revenue_growth_yoy) || num(row.revenue_growth_3yr_avg),
     revenue_growth_quarters: num(row.consecutive_revenue_growth_years),
     net_income_growth_quarters: num(row.consecutive_net_income_growth_years),
-    earnings_growth: num(row.net_income_growth_3yr_avg),
+    earnings_growth: num(row.earnings_growth_yoy) || num(row.net_income_growth_3yr_avg),
 
     // Profitability
     profit_margin: num(row.net_profit_margin),
@@ -255,6 +258,9 @@ function toStockData(row: Record<string, unknown>): StockData {
     shares_change_pct: 0,
 
     // Growth trend metrics
+    revenue_growth_3yr_avg: num(row.revenue_growth_3yr_avg),
+    earnings_growth_3yr_avg: num(row.net_income_growth_3yr_avg),
+    eps_growth_yoy: num(row.eps_growth_yoy),
     consecutive_revenue_growth_years: num(row.consecutive_revenue_growth_years),
     consecutive_earnings_growth_years: num(row.consecutive_net_income_growth_years),
     consecutive_eps_growth_years: num(row.consecutive_eps_growth_years),

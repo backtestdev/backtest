@@ -139,6 +139,9 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       revenue_growth_5yr_avg DECIMAL(16,8),
       net_income_growth_3yr_avg DECIMAL(16,8),
       net_income_growth_5yr_avg DECIMAL(16,8),
+      revenue_growth_yoy DECIMAL(16,8),
+      earnings_growth_yoy DECIMAL(16,8),
+      eps_growth_yoy DECIMAL(16,8),
       revenue_growth_positive_3yr_count INT DEFAULT 0,
       net_income_growth_positive_3yr_count INT DEFAULT 0,
 
@@ -307,6 +310,9 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       revenue_growth_5yr_avg DECIMAL(16,8),
       net_income_growth_3yr_avg DECIMAL(16,8),
       net_income_growth_5yr_avg DECIMAL(16,8),
+      revenue_growth_yoy DECIMAL(16,8),
+      earnings_growth_yoy DECIMAL(16,8),
+      eps_growth_yoy DECIMAL(16,8),
       revenue_growth_positive_3yr_count INT DEFAULT 0,
       net_income_growth_positive_3yr_count INT DEFAULT 0,
 
