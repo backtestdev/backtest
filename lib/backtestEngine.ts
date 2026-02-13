@@ -25,7 +25,10 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
     }
   }
 
-  const matchedStocks = filterStocks(params.filters, stockDatabase);
+  // Use ticker-based selection when GPT returns specific tickers (non-metric queries)
+  const matchedStocks = params.tickers && params.tickers.length > 0
+    ? stockDatabase.filter(s => params.tickers!.includes(s.ticker))
+    : filterStocks(params.filters, stockDatabase);
 
   // Log filtering results
   console.log(`[Backtest] Filtered to ${matchedStocks.length} stocks matching all criteria`);

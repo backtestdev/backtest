@@ -3,6 +3,7 @@ export type ParsingMethod = "ai" | "fallback" | "failed";
 export interface StrategyParameters {
   description: string;
   filters: StockFilter[];
+  tickers?: string[];  // Direct ticker selection for non-metric queries
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   maxStocks?: number;
@@ -28,6 +29,7 @@ export interface StructuredParameters {
   market_cap: { min: number | null; max: number | null };
   sectors: { include: string[]; exclude: string[] };
   time_horizon: string;
+  tickers?: string[];  // Direct ticker selection for non-metric queries
 }
 
 export interface DebugInfo {

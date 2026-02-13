@@ -1,4 +1,5 @@
 import { neon, NeonQueryFunction } from "@neondatabase/serverless";
+import { createHash } from "crypto";
 
 export function getDb() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -389,11 +390,5 @@ export async function ensureLeaderboardTable(sql: NeonQueryFunction<false, false
 
 export function generateParametersHash(params: unknown): string {
   const sortedJson = JSON.stringify(params, Object.keys(params as Record<string, unknown>).sort());
-  let hash = 0;
-  for (let i = 0; i < sortedJson.length; i++) {
-    const char = sortedJson.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
+  return createHash("sha256").update(sortedJson).digest("hex").slice(0, 16);
 }

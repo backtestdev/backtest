@@ -10,8 +10,10 @@ export async function POST(request: NextRequest) {
 
     // If structured params provided (from inspector edit), convert to filters
     if (structuredParams) {
-      const filters = structuredParamsToFilters(structuredParams as StructuredParameters);
-      const params = { description: strategy || "Manual adjustment", filters };
+      const sp = structuredParams as StructuredParameters;
+      const filters = structuredParamsToFilters(sp);
+      const tickers = sp.tickers && sp.tickers.length > 0 ? sp.tickers : undefined;
+      const params = { description: strategy || "Manual adjustment", filters, tickers };
       const result = await runBacktest(params);
 
       if (result.matchedStockCount === 0) {
