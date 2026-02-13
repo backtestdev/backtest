@@ -356,7 +356,7 @@ export async function POST(request: NextRequest) {
     for (const s of filtered) {
       await sql`
         INSERT INTO stocks_new (symbol, company_name, market_cap, sector, industry, price, beta, volume, exchange, country, is_etf, is_fund, is_actively_trading, last_dividend, updated_at)
-        VALUES (${s.symbol}, ${s.companyName}, ${s.marketCap}, ${s.sector}, ${s.industry}, ${s.price || null}, ${s.beta || null}, ${s.volume || null}, ${s.exchange}, ${s.country || 'US'}, ${s.isEtf || false}, ${s.isFund || false}, ${s.isActivelyTrading}, ${s.lastAnnualDividend || null}, NOW())
+        Values (${s.symbol}, ${s.companyName}, ${Math.round(s.marketCap)}, ${s.sector}, ${s.industry}, ${s.price || null}, ${s.beta || null}, ${s.volume || null}, ${s.exchange}, ${s.country || 'US'}, ${s.isEtf || false}, ${s.isFund || false}, ${s.isActivelyTrading}, ${s.lastAnnualDividend || null}, NOW())
         ON CONFLICT (symbol) DO UPDATE SET
           company_name = EXCLUDED.company_name, market_cap = EXCLUDED.market_cap,
           sector = EXCLUDED.sector, industry = EXCLUDED.industry, price = EXCLUDED.price,

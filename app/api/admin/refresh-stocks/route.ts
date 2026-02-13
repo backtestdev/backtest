@@ -327,7 +327,7 @@ async function runRefresh(
   for (const s of filtered) {
     await sql`
       INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, market_cap, beta, last_dividend, price, volume, is_etf, is_fund, is_actively_trading, updated_at)
-      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.marketCap}, ${toNum(s.beta)}, ${toNum(s.lastAnnualDividend)}, ${toNum(s.price)}, ${toNum(s.volume)}, ${s.isEtf}, ${s.isFund || false}, ${s.isActivelyTrading}, NOW())
+      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${Math.round(s.marketCap)}, ${toNum(s.beta)}, ${toNum(s.lastAnnualDividend)}, ${toNum(s.price)}, ${toNum(s.volume)}, ${s.isEtf}, ${s.isFund || false}, ${s.isActivelyTrading}, NOW())
       ON CONFLICT (symbol) DO UPDATE SET
         company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
         country = EXCLUDED.country, exchange = EXCLUDED.exchange,
