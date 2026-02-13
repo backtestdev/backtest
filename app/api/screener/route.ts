@@ -46,6 +46,10 @@ const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: 
   { column: "free_cash_flow_yield", weight: 5, capLow: -0.2, capHigh: 0.3 },
   // Leverage (lower debt is better)
   { column: "debt_to_equity", weight: -5, capLow: 0, capHigh: 5 },
+  // Size confidence — log(market cap in $B). Larger companies have more
+  // reliable metrics; prevents micro/small-cap noise from dominating.
+  // log10($1B)=0, log10($10B)=1, log10($100B)=2, log10($1T)=3
+  { column: "log_market_cap", weight: 8, capLow: -0.5, capHigh: 3.0 },
 ];
 
 function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, number> {
@@ -133,7 +137,16 @@ export async function GET(request: NextRequest) {
       WHERE market_cap IS NOT NULL AND market_cap > 0.1
     `;
 
-    const scoreMap = computeBacktestScore(allStocks as unknown as Record<string, unknown>[]);
+    // Enrich with computed log_market_cap for size-confidence scoring
+    const enriched = allStocks.map((stock) => {
+      const mcapBillions = (Number(stock.market_cap) || 0) / 1_000_000_000;
+      return {
+        ...(stock as unknown as Record<string, unknown>),
+        log_market_cap: mcapBillions > 0 ? Math.log10(mcapBillions) : -1,
+      };
+    });
+
+    const scoreMap = computeBacktestScore(enriched);
 
     // Build result with all fields
     let filtered = allStocks.map((stock) => ({

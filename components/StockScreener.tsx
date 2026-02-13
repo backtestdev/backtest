@@ -458,7 +458,7 @@ export default function StockScreener() {
             </svg>
           </summary>
           <div className="mt-2 text-xs text-gray-500 leading-relaxed pl-5.5 space-y-1">
-            <p>Each stock is ranked on 11 factors with heavy emphasis on <strong>earnings yield</strong> (net profit / market cap), <strong>earnings growth</strong>, and <strong>earnings consistency</strong> (consecutive years of growing net income). Additional factors include P/E, EV/EBITDA, ROE, ROIC, profit margin, revenue growth, FCF yield, and leverage (D/E).</p>
+            <p>Each stock is ranked on 12 factors with heavy emphasis on <strong>earnings yield</strong> (net profit / market cap), <strong>earnings consistency</strong> (consecutive years of growing net income), and <strong>earnings growth</strong>. Additional factors include P/E, EV/EBITDA, ROE, ROIC, profit margin, revenue growth, FCF yield, leverage (D/E), and a <strong>size confidence</strong> adjustment (log market cap) that adds healthy skepticism for smaller, less-proven companies.</p>
             <p>Percentile ranks are weighted and combined into a composite score from 1 (weakest) to 100 (strongest). The score reflects today&apos;s metrics &mdash; it&apos;s a static snapshot, not a forward prediction.</p>
           </div>
         </details>
