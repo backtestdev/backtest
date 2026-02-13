@@ -102,6 +102,13 @@ const METRIC_ALIASES: Record<string, string[]> = {
   debt_to_market_cap: ["debt to market cap"],
   effective_tax_rate: ["effective tax rate", "tax rate"],
   enterprise_value_multiple: ["ev multiple", "enterprise value multiple"],
+  // Growth trend metrics
+  consecutive_revenue_growth_years: ["consecutive revenue growth years", "years of revenue growth", "revenue growth years"],
+  consecutive_earnings_growth_years: ["consecutive earnings growth years", "years of earnings growth", "earnings growth years", "consecutive net income growth"],
+  consecutive_eps_growth_years: ["consecutive eps growth years", "years of eps growth", "eps growth years"],
+  revenue_growth_3yr_avg: ["revenue growth 3yr", "3 year revenue growth", "3yr revenue growth", "average revenue growth"],
+  earnings_growth_3yr_avg: ["earnings growth 3yr", "3 year earnings growth", "3yr earnings growth", "average earnings growth"],
+  eps_growth_yoy: ["eps growth yoy", "eps growth year over year", "year over year eps"],
 };
 
 // Build reverse lookup: alias -> canonical metric name
@@ -163,9 +170,12 @@ Available metrics:
 - forward_pe (Forward P/E ratio)
 - dividend_yield (as decimal, e.g. 0.04 for 4%)
 - dividend_growth_years (consecutive years of dividend growth)
-- revenue_growth (annual revenue growth rate as decimal, e.g. 0.20 for 20%)
-- revenue_growth_quarters (consecutive quarters of revenue growth)
-- earnings_growth (annual earnings growth rate as decimal)
+- revenue_growth (year-over-year revenue growth rate as decimal, e.g. 0.20 for 20%. This is most recent year vs prior year)
+- revenue_growth_3yr_avg (3-year average annual revenue growth rate as decimal)
+- revenue_growth_quarters (consecutive years of revenue growth — despite the name this is years, not quarters)
+- earnings_growth (year-over-year earnings/net income growth rate as decimal)
+- earnings_growth_3yr_avg (3-year average annual earnings growth rate as decimal)
+- eps_growth_yoy (year-over-year EPS growth as decimal)
 - profit_margin (as decimal, e.g. 0.15 for 15%)
 - market_cap (CRITICAL: value must be in BILLIONS. Examples: "$10B" or "10 billion" = 10, "$200B" = 200, "$300M" = 0.3, "$2 trillion" = 2000, "under $10B" = use operator "<" with value 10)
 - price_to_book
@@ -196,6 +206,9 @@ Available metrics:
 - book_value_per_share, tangible_book_value_per_share, cash_per_share
 - operating_cash_flow_per_share, capex_per_share, revenue_per_share, net_income_per_share
 - price_to_fair_value, debt_to_market_cap, effective_tax_rate, enterprise_value_multiple
+- consecutive_revenue_growth_years (integer: 0, 1, 2, 3... years of consecutive revenue growth)
+- consecutive_earnings_growth_years (integer: years of consecutive net income growth)
+- consecutive_eps_growth_years (integer: years of consecutive EPS growth)
 
 Available operators: ">", "<", ">=", "<=", "==", "between"
 
@@ -229,6 +242,11 @@ If something is ambiguous, make reasonable assumptions. For example:
 - "low debt" → debt_to_equity < 0.5
 - "high ROE" → roe > 0.15
 - "profitable" → profit_margin > 0
+- "near 52-week high" or "within 5% of 52-week high" → week52_high_pct >= 0.95
+- "down 40% from highs" → week52_high_pct <= 0.60
+- "positive cash flow" or "positive free cash flow" → free_cash_flow_per_share > 0
+- "consistent earnings growth" or "2+ years earnings growth" → consecutive_earnings_growth_years >= 2
+- "turnaround" → profit_margin > 0, earnings_growth > 0
 
 IMPORTANT: Return ONLY the JSON object, no markdown formatting or explanation.`;
 
@@ -576,9 +594,64 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     filters.push({ metric: "profit_margin", operator: ">", value: 0 });
   }
 
-  // 52-week high
-  if (lower.includes("52-week high") || lower.includes("52 week high")) {
+  // 52-week high — near highs
+  const near52HighMatch = lower.match(/within\s*(\d+)\s*%?\s*(?:of\s*)?(?:52[\s-]*week\s*high|52w\s*high)/);
+  if (near52HighMatch) {
+    filters.push({ metric: "week52_high_pct", operator: ">=", value: 1 - parseFloat(near52HighMatch[1]) / 100 });
+  } else if (lower.includes("52-week high") || lower.includes("52 week high") || lower.includes("new high")) {
     filters.push({ metric: "week52_high_pct", operator: ">=", value: 0.95 });
+  }
+
+  // Down X% from highs (fallen angels / contrarian)
+  const downFromHighMatch = lower.match(/down\s*(\d+)\s*%?\+?\s*(?:from\s*)?(?:52[\s-]*week\s*)?high/);
+  if (downFromHighMatch) {
+    filters.push({ metric: "week52_high_pct", operator: "<=", value: 1 - parseFloat(downFromHighMatch[1]) / 100 });
+  }
+
+  // Free cash flow yield
+  const fcfYieldMatch = lower.match(/(?:free\s*)?cash\s*flow\s*yield\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (fcfYieldMatch) {
+    filters.push({ metric: "free_cash_flow_yield", operator: ">", value: parseFloat(fcfYieldMatch[1]) / 100 });
+  }
+
+  // ROIC patterns
+  const roicMatch = lower.match(/roic\s*(?:over|above|greater than|>)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (roicMatch) {
+    filters.push({ metric: "roic", operator: ">", value: parseFloat(roicMatch[1]) / 100 });
+  }
+
+  // EV/EBITDA patterns
+  const evEbitdaMatch = lower.match(/ev\s*\/?\s*ebitda\s*(?:under|below|less than|<)\s*(\d+(?:\.\d+)?)/);
+  if (evEbitdaMatch) {
+    filters.push({ metric: "ev_to_ebitda", operator: "<", value: parseFloat(evEbitdaMatch[1]) });
+  }
+
+  // Consecutive growth years
+  const consGrowthMatch = lower.match(/(\d+)\+?\s*years?\s*(?:of\s*)?(?:consecutive\s*)?(?:earnings|net income|income)\s*growth/);
+  if (consGrowthMatch) {
+    filters.push({ metric: "consecutive_earnings_growth_years", operator: ">=", value: parseFloat(consGrowthMatch[1]) });
+  }
+  const consRevGrowthMatch = lower.match(/(\d+)\+?\s*years?\s*(?:of\s*)?(?:consecutive\s*)?revenue\s*growth/);
+  if (consRevGrowthMatch) {
+    filters.push({ metric: "consecutive_revenue_growth_years", operator: ">=", value: parseFloat(consRevGrowthMatch[1]) });
+  }
+
+  // Positive free cash flow
+  if (lower.includes("positive free cash flow") || lower.includes("positive fcf")) {
+    filters.push({ metric: "free_cash_flow_per_share", operator: ">", value: 0 });
+  }
+  if (lower.includes("positive cash flow") && !lower.includes("free cash flow")) {
+    filters.push({ metric: "free_cash_flow_per_share", operator: ">", value: 0 });
+  }
+
+  // Turnaround patterns
+  if (lower.includes("turnaround")) {
+    if (!marginMatch && !filters.some(f => f.metric === "profit_margin")) {
+      filters.push({ metric: "profit_margin", operator: ">", value: 0 });
+    }
+    if (!filters.some(f => f.metric === "earnings_growth")) {
+      filters.push({ metric: "earnings_growth", operator: ">", value: 0 });
+    }
   }
 
   // Value stocks composite
@@ -592,11 +665,91 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     filters.push({ metric: "revenue_growth", operator: ">", value: 0.15 });
   }
 
-  // Sector patterns
-  if (lower.includes("tech")) {
+  // ── Common wealth advisor composite patterns ──
+
+  // Below book value / trading below book
+  if ((lower.includes("below book") || lower.includes("under book")) && !pbMatch) {
+    filters.push({ metric: "price_to_book", operator: "<", value: 1 });
+  }
+
+  // Blue chip
+  if (lower.includes("blue chip") || lower.includes("blue-chip")) {
+    if (!mcapBMatch && !mcapOverMatch && !filters.some(f => f.metric === "market_cap")) {
+      filters.push({ metric: "market_cap", operator: ">", value: 50 });
+    }
+    if (!divMatch && !filters.some(f => f.metric === "dividend_yield")) {
+      filters.push({ metric: "dividend_yield", operator: ">", value: 0.01 });
+    }
+  }
+
+  // Defensive stocks
+  if (lower.includes("defensive")) {
+    if (!betaMatch && !filters.some(f => f.metric === "beta")) {
+      filters.push({ metric: "beta", operator: "<", value: 0.8 });
+    }
+    if (!divMatch && !filters.some(f => f.metric === "dividend_yield")) {
+      filters.push({ metric: "dividend_yield", operator: ">", value: 0.02 });
+    }
+  }
+
+  // Income stocks
+  if ((lower.includes("income stock") || lower.includes("income play")) && !divMatch) {
+    filters.push({ metric: "dividend_yield", operator: ">", value: 0.03 });
+  }
+
+  // Cash cow
+  if (lower.includes("cash cow")) {
+    if (!fcfYieldMatch && !filters.some(f => f.metric === "free_cash_flow_yield")) {
+      filters.push({ metric: "free_cash_flow_yield", operator: ">", value: 0.05 });
+    }
+    if (!marginMatch && !filters.some(f => f.metric === "profit_margin")) {
+      filters.push({ metric: "profit_margin", operator: ">", value: 0.10 });
+    }
+  }
+
+  // Strong balance sheet
+  if (lower.includes("strong balance sheet")) {
+    if (!deMatch && !filters.some(f => f.metric === "debt_to_equity")) {
+      filters.push({ metric: "debt_to_equity", operator: "<", value: 0.5 });
+    }
+    if (!crMatch && !filters.some(f => f.metric === "current_ratio")) {
+      filters.push({ metric: "current_ratio", operator: ">", value: 1.5 });
+    }
+  }
+
+  // Undervalued
+  if (lower.includes("undervalued") || lower.includes("under valued")) {
+    if (!peMatch && !peOverMatch && !filters.some(f => f.metric === "pe_ratio")) {
+      filters.push({ metric: "pe_ratio", operator: "<", value: 15 });
+    }
+    if (!filters.some(f => f.metric === "price_to_fair_value")) {
+      filters.push({ metric: "price_to_fair_value", operator: "<", value: 1 });
+    }
+  }
+
+  // High quality / quality stocks
+  if (lower.includes("quality") || lower.includes("high quality")) {
+    if (!roeMatch && !filters.some(f => f.metric === "roe")) {
+      filters.push({ metric: "roe", operator: ">", value: 0.15 });
+    }
+    if (!deMatch && !filters.some(f => f.metric === "debt_to_equity")) {
+      filters.push({ metric: "debt_to_equity", operator: "<", value: 1 });
+    }
+  }
+
+  // Improving / widening margins
+  if ((lower.includes("improving margin") || lower.includes("widening margin") || lower.includes("expanding margin")) && !marginMatch) {
+    filters.push({ metric: "profit_margin", operator: ">", value: 0 });
+    if (!filters.some(f => f.metric === "earnings_growth")) {
+      filters.push({ metric: "earnings_growth", operator: ">", value: 0 });
+    }
+  }
+
+  // ── Sector patterns ──
+  if (lower.includes("tech") && !lower.includes("biotech")) {
     filters.push({ metric: "sector", operator: "==", value: 1 });
   }
-  if (lower.includes("healthcare") || lower.includes("health care") || lower.includes("pharma")) {
+  if (lower.includes("healthcare") || lower.includes("health care") || lower.includes("pharma") || lower.includes("biotech")) {
     filters.push({ metric: "sector", operator: "==", value: 2 });
   }
   if (lower.includes("financial") || lower.includes("banking") || lower.includes("bank")) {
@@ -607,6 +760,15 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
   }
   if (lower.includes("consumer")) {
     filters.push({ metric: "sector", operator: "==", value: 5 });
+  }
+  if (lower.includes("industrial")) {
+    filters.push({ metric: "sector", operator: "==", value: 6 });
+  }
+  if (lower.includes("real estate") || lower.includes("reit")) {
+    filters.push({ metric: "sector", operator: "==", value: 8 });
+  }
+  if (lower.includes("utilit")) {
+    filters.push({ metric: "sector", operator: "==", value: 9 });
   }
 
   // If no filters matched, add a generic growth filter

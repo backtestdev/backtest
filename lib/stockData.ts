@@ -47,6 +47,14 @@ export interface StockData {
   shares_outstanding: number;
   shares_change_pct: number;
 
+  // Growth trend metrics
+  revenue_growth_3yr_avg?: number;
+  earnings_growth_3yr_avg?: number;
+  eps_growth_yoy?: number;
+  consecutive_revenue_growth_years?: number;
+  consecutive_earnings_growth_years?: number;
+  consecutive_eps_growth_years?: number;
+
   // Other
   ipo_date?: string;
 

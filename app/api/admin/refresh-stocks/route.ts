@@ -179,6 +179,16 @@ interface IncomeStatementEntry {
   epsDiluted: number;
 }
 
+interface Quote {
+  symbol: string;
+  price: number;
+  yearHigh: number;
+  yearLow: number;
+  marketCap: number;
+  volume: number;
+  avgVolume: number;
+}
+
 // Name patterns that indicate funds, trusts, SPACs, debt instruments, etc.
 const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due/i;
 
@@ -199,6 +209,9 @@ interface GrowthData {
   consecutiveEpsGrowthYears: number;
   revenueGrowth3yrAvg: number | null;
   netIncomeGrowth3yrAvg: number | null;
+  revenueGrowthYoy: number | null;
+  earningsGrowthYoy: number | null;
+  epsGrowthYoy: number | null;
 }
 
 function computeGrowthData(entries: IncomeStatementEntry[] | null): GrowthData | null {
@@ -250,6 +263,18 @@ function computeGrowthData(entries: IncomeStatementEntry[] | null): GrowthData |
     return rates.length > 0 ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
   }
 
+  // YoY growth: most recent year vs prior year
+  function yoyGrowth(curr: number | null, prev: number | null): number | null {
+    if (curr == null || prev == null || prev === 0) return null;
+    return (curr - prev) / Math.abs(prev);
+  }
+
+  const revYoy = sorted.length >= 2 ? yoyGrowth(sorted[0].revenue, sorted[1].revenue) : null;
+  const niYoy = sorted.length >= 2 ? yoyGrowth(sorted[0].netIncome, sorted[1].netIncome) : null;
+  const epsYoy = sorted.length >= 2
+    ? yoyGrowth(sorted[0].epsDiluted ?? sorted[0].eps, sorted[1].epsDiluted ?? sorted[1].eps)
+    : null;
+
   return {
     revenueHistory: Object.keys(revHist).length > 0 ? JSON.stringify(revHist) : null,
     netIncomeHistory: Object.keys(niHist).length > 0 ? JSON.stringify(niHist) : null,
@@ -259,6 +284,9 @@ function computeGrowthData(entries: IncomeStatementEntry[] | null): GrowthData |
     consecutiveEpsGrowthYears: consEpsGrowth,
     revenueGrowth3yrAvg: avgGrowth(e => toNum(e.revenue)),
     netIncomeGrowth3yrAvg: avgGrowth(e => toNum(e.netIncome)),
+    revenueGrowthYoy: revYoy,
+    earningsGrowthYoy: niYoy,
+    epsGrowthYoy: epsYoy,
   };
 }
 
@@ -332,17 +360,19 @@ async function runRefresh(
     const chunk = batch.slice(i, i + CONCURRENCY);
     const results2 = await Promise.allSettled(
       chunk.map(async (sym) => {
-        const [ratiosData, metricsData, incomeData] = await Promise.all([
+        const [ratiosData, metricsData, incomeData, quoteData] = await Promise.all([
           fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`),
           fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`),
           fetchFMP<IncomeStatementEntry[]>(`/income-statement?symbol=${sym}&period=annual&limit=5`),
+          fetchFMP<Quote[]>(`/quote?symbol=${sym}`),
         ]);
 
         const finRatios = ratiosData?.[0] ?? null;
         const metrics = metricsData?.[0] ?? null;
         const growth = computeGrowthData(incomeData);
+        const quote = quoteData?.[0] ?? null;
 
-        if (!finRatios && !metrics && !growth) {
+        if (!finRatios && !metrics && !growth && !quote) {
           noDataCount++;
           return;
         }
@@ -350,6 +380,11 @@ async function runRefresh(
         // Update all metrics directly in the unified stocks table
         await sql`
           UPDATE stocks SET
+            -- Quote data
+            year_high = COALESCE(${toNum(quote?.yearHigh)}, year_high),
+            year_low = COALESCE(${toNum(quote?.yearLow)}, year_low),
+            avg_volume = COALESCE(${toNum(quote?.avgVolume)}, avg_volume),
+
             -- Valuation
             price_to_earnings_ratio = COALESCE(${toNum(finRatios?.priceToEarningsRatio)}, price_to_earnings_ratio),
             price_to_earnings_growth_ratio = COALESCE(${toNum(finRatios?.priceToEarningsGrowthRatio)}, price_to_earnings_growth_ratio),
@@ -444,6 +479,9 @@ async function runRefresh(
             consecutive_eps_growth_years = COALESCE(${growth?.consecutiveEpsGrowthYears ?? null}, consecutive_eps_growth_years),
             revenue_growth_3yr_avg = COALESCE(${growth?.revenueGrowth3yrAvg ?? null}, revenue_growth_3yr_avg),
             net_income_growth_3yr_avg = COALESCE(${growth?.netIncomeGrowth3yrAvg ?? null}, net_income_growth_3yr_avg),
+            revenue_growth_yoy = COALESCE(${growth?.revenueGrowthYoy ?? null}, revenue_growth_yoy),
+            earnings_growth_yoy = COALESCE(${growth?.earningsGrowthYoy ?? null}, earnings_growth_yoy),
+            eps_growth_yoy = COALESCE(${growth?.epsGrowthYoy ?? null}, eps_growth_yoy),
 
             updated_at = NOW()
           WHERE symbol = ${sym}

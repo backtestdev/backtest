@@ -17,7 +17,7 @@ const EXAMPLE_STRATEGIES = [
   // Growth & Momentum
   {
     label: "Small Cap Growth Tech",
-    query: "Small cap tech under $10B with revenue growth over 25% annually",
+    query: "Tech stocks under $10B market cap with revenue growth over 25%",
   },
   {
     label: "Revenue Growth Leaders",
@@ -25,12 +25,12 @@ const EXAMPLE_STRATEGIES = [
   },
   {
     label: "52-Week High Momentum",
-    query: "Stocks hitting new 52-week highs with strong earnings growth",
+    query: "Stocks within 5% of 52-week highs with earnings growth over 15%",
   },
   // Quality & GARP
   {
     label: "Quality Compounders",
-    query: "Quality compounders: ROE over 15%, debt-to-equity under 0.5, consistent earnings",
+    query: "Quality compounders: ROE over 15%, debt-to-equity under 0.5, consistent earnings growth",
   },
   {
     label: "GARP Strategy",
@@ -39,19 +39,19 @@ const EXAMPLE_STRATEGIES = [
   // Contrarian & Special Situations
   {
     label: "Fallen Angels",
-    query: "Fallen angels: Stocks down 40%+ from highs with positive cash flow and insider buying",
+    query: "Fallen angels: Stocks down 40%+ from 52-week highs with positive free cash flow and profit margin above 5%",
   },
   {
     label: "Turnaround Candidates",
-    query: "Turnaround candidates: Improving profit margins after 2+ quarters of losses",
+    query: "Turnaround candidates: Positive profit margins with 2+ years of consecutive earnings growth and P/E under 15",
   },
   {
-    label: "Buyback Champions",
-    query: "Share buyback programs: Companies reducing shares outstanding by 5%+ annually",
+    label: "Cash-Rich Compounders",
+    query: "Cash-rich compounders: Free cash flow yield over 8% with ROE above 15% and debt-to-equity under 0.5",
   },
   {
-    label: "Spin-offs & New IPOs",
-    query: "Spin-offs and recent IPOs under $5B market cap with institutional ownership under 50%",
+    label: "Overlooked Quality",
+    query: "Overlooked quality: Mid-cap $2B-$20B market cap with ROIC over 15% and EV/EBITDA under 12",
   },
 ];
 

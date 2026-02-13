@@ -10,9 +10,15 @@ const METRIC_LABELS: Record<string, string> = {
   forward_pe: "Forward P/E",
   dividend_yield: "Dividend Yield",
   dividend_growth_years: "Dividend Growth Years",
-  revenue_growth: "Revenue Growth",
-  revenue_growth_quarters: "Revenue Growth Quarters",
-  earnings_growth: "Earnings Growth",
+  revenue_growth: "Revenue Growth (YoY)",
+  earnings_growth: "Earnings Growth (YoY)",
+  eps_growth_yoy: "EPS Growth (YoY)",
+  revenue_growth_3yr_avg: "Revenue Growth (3yr Avg)",
+  earnings_growth_3yr_avg: "Earnings Growth (3yr Avg)",
+  revenue_growth_quarters: "Consec. Revenue Growth (Yrs)",
+  consecutive_revenue_growth_years: "Consec. Revenue Growth (Yrs)",
+  consecutive_earnings_growth_years: "Consec. Earnings Growth (Yrs)",
+  consecutive_eps_growth_years: "Consec. EPS Growth (Yrs)",
   profit_margin: "Profit Margin",
   market_cap: "Market Cap ($B)",
   price_to_book: "Price to Book (P/B)",
@@ -147,6 +153,7 @@ const SECTOR_REVERSE: Record<number, string> = {
 
 const PERCENTAGE_METRICS = new Set([
   "dividend_yield", "revenue_growth", "earnings_growth",
+  "revenue_growth_3yr_avg", "earnings_growth_3yr_avg", "eps_growth_yoy",
   "profit_margin", "roe", "roic", "payout_ratio",
   "return_on_assets", "operating_return_on_assets", "return_on_tangible_assets",
   "return_on_capital_employed", "earnings_yield", "free_cash_flow_yield",
@@ -158,6 +165,7 @@ const PERCENTAGE_METRICS = new Set([
   "dividend_yield_percentage", "effective_tax_rate",
   "operating_cash_flow_sales_ratio", "fcf_to_ocf_ratio",
   "net_income_per_ebt", "ebt_per_ebit", "debt_to_market_cap",
+  "week52_high_pct",
 ]);
 
 function formatMetricValue(name: string, value: number): string {
