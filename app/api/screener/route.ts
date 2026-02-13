@@ -46,6 +46,9 @@ const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: 
   { column: "free_cash_flow_yield", weight: 5, capLow: -0.2, capHigh: 0.3 },
   // Leverage (lower debt is better)
   { column: "debt_to_equity", weight: -5, capLow: 0, capHigh: 5 },
+  // Beta — higher beta stocks show stronger raw returns in signal explorer data.
+  // Strongest spread factor; weight aligns with empirical quintile results.
+  { column: "beta", weight: 8, capLow: 0, capHigh: 3 },
   // Size confidence — log(market cap in $B). Larger companies have more
   // reliable metrics; prevents micro/small-cap noise from dominating.
   // log10($1B)=0, log10($10B)=1, log10($100B)=2, log10($1T)=3
@@ -90,6 +93,21 @@ function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, nu
 
   for (const [symbol, raw] of rawScores) {
     scores.set(symbol, Math.round(((raw - minRaw) / range) * 99) + 1);
+  }
+
+  // Hard penalty for sub-$5B market cap stocks (after normalization).
+  // Linear ramp: $0 → -15pts, $5B → 0pts. Stacks with the log_market_cap
+  // factor which is a softer gradient; this is a true penalty.
+  for (const stock of stocks) {
+    const mcapB = Number(stock.market_cap || 0) / 1_000_000_000;
+    if (mcapB < 5) {
+      const sym = stock.symbol as string;
+      const current = scores.get(sym);
+      if (current !== undefined) {
+        const penalty = Math.round(((5 - mcapB) / 5) * 15);
+        scores.set(sym, Math.max(1, current - penalty));
+      }
+    }
   }
 
   return scores;
