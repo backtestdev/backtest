@@ -379,14 +379,18 @@ export async function parseStrategy(
       ],
       // gpt-5-mini is a reasoning model: no temperature/top_p support.
       // Use reasoning_effort to control cost/latency vs quality.
+      // max_completion_tokens covers BOTH reasoning + output tokens.
+      // Ticker selection mode needs more headroom than simple filters.
       reasoning_effort: "low",
-      max_completion_tokens: 500,
+      max_completion_tokens: 4096,
     });
 
     const content = response.choices[0]?.message?.content;
+    const finishReason = response.choices[0]?.finish_reason;
     if (!content) {
-      const reason = "OpenAI returned empty response - using rule-based parser";
+      const reason = `OpenAI returned empty response (finish_reason: ${finishReason}) - using rule-based parser`;
       console.error(`[Parser] ERROR: ${reason}`);
+      console.error(`[Parser] Full response:`, JSON.stringify(response.choices[0]));
       return fallbackParse(userInput, reason);
     }
 
