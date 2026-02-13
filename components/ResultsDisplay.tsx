@@ -52,7 +52,20 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   const filteredChartData = (() => {
     if (!selectedPeriod || !result.chartData.length) return result.chartData;
     const years = PERIOD_YEARS[selectedPeriod] ?? 20;
-    return result.chartData.slice(-years);
+    const sliced = result.chartData.slice(-years);
+    if (sliced.length === 0) return sliced;
+
+    // Normalize so $10k is invested at the start of the selected period
+    const startIdx = result.chartData.length - years;
+    const prevEntry = startIdx > 0 ? result.chartData[startIdx - 1] : null;
+    const baseStrategy = prevEntry ? prevEntry.strategy : 10000;
+    const baseBenchmark = prevEntry ? prevEntry.benchmark : 10000;
+
+    return sliced.map(d => ({
+      ...d,
+      strategy: Math.round((d.strategy / baseStrategy) * 10000),
+      benchmark: Math.round((d.benchmark / baseBenchmark) * 10000),
+    }));
   })();
 
   return (
@@ -130,7 +143,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
       )}
 
       {/* Chart */}
-      <ResultsChart data={filteredChartData} />
+      <ResultsChart data={filteredChartData} period={selectedPeriod} />
 
       {/* Strategy Inspector */}
       {result.parsedParams && (

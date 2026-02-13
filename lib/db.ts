@@ -27,11 +27,11 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       sector VARCHAR(100),
       industry VARCHAR(100),
       country VARCHAR(50) DEFAULT 'US',
-      market_cap BIGINT,
+      market_cap NUMERIC,
       price DECIMAL(12,4),
       beta DECIMAL(8,4),
-      volume BIGINT,
-      avg_volume BIGINT,
+      volume NUMERIC,
+      avg_volume NUMERIC,
       last_dividend DECIMAL(8,4),
       ipo_date DATE,
       year_high DECIMAL(12,4),
@@ -106,7 +106,7 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       cash_conversion_cycle DECIMAL(16,8),
 
       -- ENTERPRISE VALUE
-      enterprise_value BIGINT,
+      enterprise_value NUMERIC,
       ev_to_sales DECIMAL(16,8),
       ev_to_ebitda DECIMAL(16,8),
       ev_to_operating_cash_flow DECIMAL(16,8),
@@ -121,9 +121,9 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
 
       -- OTHER
       graham_number DECIMAL(16,8),
-      working_capital BIGINT,
-      invested_capital BIGINT,
-      tangible_asset_value BIGINT,
+      working_capital NUMERIC,
+      invested_capital NUMERIC,
+      tangible_asset_value NUMERIC,
       research_and_development_to_revenue DECIMAL(16,8),
       stock_based_compensation_to_revenue DECIMAL(16,8),
 
@@ -159,6 +159,21 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
   await sql`CREATE INDEX IF NOT EXISTS idx_stocks_div_yield ON stocks(dividend_yield)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_stocks_roe ON stocks(return_on_equity)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_stocks_price ON stocks(price)`;
+
+  // Migrate any existing BIGINT columns to NUMERIC (handles decimal values from FMP)
+  await sql`
+    DO $$
+    BEGIN
+      ALTER TABLE stocks ALTER COLUMN market_cap TYPE NUMERIC USING market_cap::NUMERIC;
+      ALTER TABLE stocks ALTER COLUMN volume TYPE NUMERIC USING volume::NUMERIC;
+      ALTER TABLE stocks ALTER COLUMN avg_volume TYPE NUMERIC USING avg_volume::NUMERIC;
+      ALTER TABLE stocks ALTER COLUMN enterprise_value TYPE NUMERIC USING enterprise_value::NUMERIC;
+      ALTER TABLE stocks ALTER COLUMN working_capital TYPE NUMERIC USING working_capital::NUMERIC;
+      ALTER TABLE stocks ALTER COLUMN invested_capital TYPE NUMERIC USING invested_capital::NUMERIC;
+      ALTER TABLE stocks ALTER COLUMN tangible_asset_value TYPE NUMERIC USING tangible_asset_value::NUMERIC;
+    EXCEPTION WHEN others THEN NULL;
+    END $$
+  `;
 
   // Historical prices table (for charts)
   await sql`
@@ -210,11 +225,11 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       sector VARCHAR(100),
       industry VARCHAR(100),
       country VARCHAR(50) DEFAULT 'US',
-      market_cap BIGINT,
+      market_cap NUMERIC,
       price DECIMAL(12,4),
       beta DECIMAL(8,4),
-      volume BIGINT,
-      avg_volume BIGINT,
+      volume NUMERIC,
+      avg_volume NUMERIC,
       last_dividend DECIMAL(8,4),
       ipo_date DATE,
       year_high DECIMAL(12,4),
@@ -289,7 +304,7 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       cash_conversion_cycle DECIMAL(16,8),
 
       -- ENTERPRISE VALUE
-      enterprise_value BIGINT,
+      enterprise_value NUMERIC,
       ev_to_sales DECIMAL(16,8),
       ev_to_ebitda DECIMAL(16,8),
       ev_to_operating_cash_flow DECIMAL(16,8),
@@ -304,9 +319,9 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
 
       -- OTHER
       graham_number DECIMAL(16,8),
-      working_capital BIGINT,
-      invested_capital BIGINT,
-      tangible_asset_value BIGINT,
+      working_capital NUMERIC,
+      invested_capital NUMERIC,
+      tangible_asset_value NUMERIC,
       research_and_development_to_revenue DECIMAL(16,8),
       stock_based_compensation_to_revenue DECIMAL(16,8),
 
