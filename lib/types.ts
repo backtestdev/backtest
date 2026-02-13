@@ -79,6 +79,8 @@ export interface LeaderboardEntry {
   matchedStocks: number;
   createdAt: string;
   user_id?: string;
+  created_by?: string;
   parameters_json?: StructuredParameters;
   parameters_hash?: string;
+  query_hash?: string;
 }

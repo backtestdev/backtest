@@ -75,10 +75,10 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         {/* Header */}
         <div className="grid grid-cols-12 gap-2 px-6 py-3 border-b border-gray-100 items-center">
-          <div className="col-span-4 text-xs font-medium text-gray-400 uppercase tracking-wider">
+          <div className="col-span-6 md:col-span-5 text-xs font-medium text-gray-400 uppercase tracking-wider">
             Strategy
           </div>
-          <div className="col-span-2 text-right">
+          <div className="col-span-2 text-right hidden md:block">
             <SortHeader field="return20yr" label="20yr" />
           </div>
           <div className="col-span-2 text-right">
@@ -87,7 +87,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
           <div className="col-span-2 text-right">
             <SortHeader field="return5yr" label="5yr" />
           </div>
-          <div className="col-span-2 text-right">
+          <div className="col-span-2 md:col-span-1 text-right">
             <SortHeader field="return1yr" label="1yr" />
           </div>
         </div>
@@ -99,22 +99,22 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
             onClick={() => onSelectStrategy(entry.description)}
             className="w-full grid grid-cols-12 gap-2 px-6 py-4 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0 items-center"
           >
-            <div className="col-span-4">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-gray-300 w-5">
+            <div className="col-span-6 md:col-span-5">
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-medium text-gray-300 w-5 mt-0.5 flex-shrink-0">
                   {index + 1}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">
+                  <p className="text-sm font-semibold text-gray-900">
                     {entry.name}
                   </p>
-                  <p className="text-xs text-gray-400 mt-0.5 truncate">
+                  <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">
                     {entry.description}
                   </p>
                 </div>
               </div>
             </div>
-            <div className="col-span-2 text-right">
+            <div className="col-span-2 text-right hidden md:block">
               <span
                 className={`text-sm font-semibold ${
                   (entry.return20yr ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"
@@ -144,7 +144,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
                 {entry.return5yr.toFixed(1)}%
               </span>
             </div>
-            <div className="col-span-2 text-right">
+            <div className="col-span-2 md:col-span-1 text-right">
               <span
                 className={`text-sm font-semibold ${
                   entry.return1yr >= 0 ? "text-emerald-600" : "text-red-500"

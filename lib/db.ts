@@ -367,7 +367,9 @@ export async function ensureLeaderboardTable(sql: NeonQueryFunction<false, false
       created_at TEXT NOT NULL,
       user_id TEXT,
       parameters_json JSONB,
-      parameters_hash TEXT
+      parameters_hash TEXT,
+      query_hash TEXT,
+      created_by TEXT
     )
   `;
 
@@ -380,15 +382,35 @@ export async function ensureLeaderboardTable(sql: NeonQueryFunction<false, false
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leaderboard' AND column_name='parameters_hash') THEN
         ALTER TABLE leaderboard ADD COLUMN parameters_hash TEXT;
       END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leaderboard' AND column_name='query_hash') THEN
+        ALTER TABLE leaderboard ADD COLUMN query_hash TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leaderboard' AND column_name='created_by') THEN
+        ALTER TABLE leaderboard ADD COLUMN created_by TEXT;
+      END IF;
     END $$
   `;
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_leaderboard_params_hash ON leaderboard (parameters_hash)
   `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_leaderboard_query_hash ON leaderboard (query_hash)
+  `;
 }
 
 export function generateParametersHash(params: unknown): string {
   const sortedJson = JSON.stringify(params, Object.keys(params as Record<string, unknown>).sort());
   return createHash("sha256").update(sortedJson).digest("hex").slice(0, 16);
+}
+
+/**
+ * Hash the user's original query text (normalized) for dedup of
+ * non-deterministic strategies like ticker-mode ("meme stocks").
+ * Two runs of the same prompt should produce the same query_hash
+ * even if the AI returns different ticker lists.
+ */
+export function generateQueryHash(query: string): string {
+  const normalized = query.toLowerCase().trim().replace(/\s+/g, " ");
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
 }
