@@ -103,8 +103,8 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
     };
   });
 
-  // Get chart data for the longest available period (20yr)
-  const { chartData } = calculateReturns(matchedStocks, 20);
+  // Get chart data for the longest available period (20yr), including current year YTD
+  const { chartData } = calculateReturns(matchedStocks, 20, { includeYtd: true });
 
   return {
     strategyName: params.description,

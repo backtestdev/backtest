@@ -364,26 +364,28 @@ export function getStockTickers(stocks: StockData[]): string[] {
 
 export function calculateReturns(
   stocks: StockData[],
-  years: number
+  years: number,
+  options?: { includeYtd?: boolean }
 ): { strategyReturn: number; benchmarkReturn: number; chartData: { date: string; strategy: number; benchmark: number }[] } {
   if (stocks.length === 0) {
     return { strategyReturn: 0, benchmarkReturn: 0, chartData: [] };
   }
 
   const spyReturns = getSpyReturns();
-  const currentYear = new Date().getFullYear() - 1; // Use last completed year
-  const startYear = currentYear - years + 1;
+  const lastCompletedYear = new Date().getFullYear() - 1;
+  const currentYear = new Date().getFullYear();
+  const startYear = lastCompletedYear - years + 1;
   const chartData: { date: string; strategy: number; benchmark: number }[] = [];
 
   let strategyValue = 10000;
   let benchmarkValue = 10000;
 
-  for (let year = startYear; year <= currentYear; year++) {
+  for (let year = startYear; year <= lastCompletedYear; year++) {
     const yearStr = year.toString();
 
     // Strategy: equal-weight portfolio of matching stocks
-    // Use available stocks for this year (stocks that have data)
-    const availableStocks = stocks.filter((s) => s.historical_returns[yearStr] !== undefined && s.historical_returns[yearStr] !== 0);
+    // Each year, average return of all stocks that have data → implicit annual rebalancing
+    const availableStocks = stocks.filter((s) => s.historical_returns[yearStr] !== undefined);
     if (availableStocks.length > 0) {
       const avgReturn = availableStocks.reduce((sum, s) => sum + s.historical_returns[yearStr], 0) / availableStocks.length;
       strategyValue *= (1 + avgReturn);
@@ -398,6 +400,29 @@ export function calculateReturns(
       strategy: Math.round(strategyValue),
       benchmark: Math.round(benchmarkValue),
     });
+  }
+
+  // Optionally append current year YTD if data exists
+  if (options?.includeYtd) {
+    const ytdStr = currentYear.toString();
+    const ytdStocks = stocks.filter((s) => s.historical_returns[ytdStr] !== undefined);
+    const spyYtd = spyReturns[ytdStr];
+    if (ytdStocks.length > 0 || spyYtd !== undefined) {
+      let ytdStrategy = strategyValue;
+      let ytdBenchmark = benchmarkValue;
+      if (ytdStocks.length > 0) {
+        const avgReturn = ytdStocks.reduce((sum, s) => sum + s.historical_returns[ytdStr], 0) / ytdStocks.length;
+        ytdStrategy *= (1 + avgReturn);
+      }
+      if (spyYtd !== undefined) {
+        ytdBenchmark *= (1 + spyYtd);
+      }
+      chartData.push({
+        date: `${ytdStr} YTD`,
+        strategy: Math.round(ytdStrategy),
+        benchmark: Math.round(ytdBenchmark),
+      });
+    }
   }
 
   const strategyReturn = ((strategyValue - 10000) / 10000) * 100;
