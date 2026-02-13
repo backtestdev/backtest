@@ -52,7 +52,9 @@ const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: 
   // Size confidence — log(market cap in $B). Larger companies have more
   // reliable metrics; prevents micro/small-cap noise from dominating.
   // log10($1B)=0, log10($10B)=1, log10($100B)=2, log10($1T)=3
-  { column: "log_market_cap", weight: 12, capLow: -0.5, capHigh: 3.0 },
+  { column: "log_market_cap", weight: 8, capLow: -0.5, capHigh: 3.0 },
+  // Revenue consistency — how many of last 3 years had positive revenue growth (0-3)
+  { column: "revenue_growth_positive_3yr_count", weight: 8, capLow: 0, capHigh: 3 },
 ];
 
 function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, number> {
@@ -93,54 +95,6 @@ function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, nu
 
   for (const [symbol, raw] of rawScores) {
     scores.set(symbol, Math.round(((raw - minRaw) / range) * 99) + 1);
-  }
-
-  // Hard penalty for sub-$5B market cap stocks (after normalization).
-  // Linear ramp: $0 → -15pts, $5B → 0pts. Stacks with the log_market_cap
-  // factor which is a softer gradient; this is a true penalty.
-  for (const stock of stocks) {
-    const mcapB = Number(stock.market_cap || 0) / 1_000_000_000;
-    if (mcapB < 5) {
-      const sym = stock.symbol as string;
-      const current = scores.get(sym);
-      if (current !== undefined) {
-        const penalty = Math.round(((5 - mcapB) / 5) * 15);
-        scores.set(sym, Math.max(1, current - penalty));
-      }
-    }
-  }
-
-  // Hard penalty for weak/declining revenue (after normalization).
-  // Tier 1: YoY growth < 3% but non-negative → mild penalty (up to -5 pts)
-  // Tier 2: YoY growth negative (decline) → bigger penalty (-10 pts)
-  // Tier 3: Multiple declining years out of last 3 → stacking penalty
-  //         2/3 positive = -5, 1/3 = -10, 0/3 = -15
-  for (const stock of stocks) {
-    const sym = stock.symbol as string;
-    const current = scores.get(sym);
-    if (current === undefined) continue;
-
-    const yoyGrowth = Number(stock.revenue_growth ?? 0);
-    let penalty = 0;
-
-    if (yoyGrowth < 0) {
-      // Revenue decline: -10 flat (big red flag)
-      penalty = 10;
-    } else if (yoyGrowth < 0.03) {
-      // Stagnation (0% to 3%): linear ramp, 0% → -5, 3% → 0
-      penalty = Math.round(((0.03 - yoyGrowth) / 0.03) * 5);
-    }
-
-    // Multi-year decline: penalize based on how many of last 3 years declined
-    const positiveYears = Number(stock.revenue_growth_positive_3yr_count ?? 3);
-    if (positiveYears < 3) {
-      const decliningYears = 3 - positiveYears; // 1, 2, or 3
-      penalty += decliningYears * 5; // -5, -10, or -15
-    }
-
-    if (penalty > 0) {
-      scores.set(sym, Math.max(1, current - penalty));
-    }
   }
 
   return scores;
