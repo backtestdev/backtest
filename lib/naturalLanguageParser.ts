@@ -160,10 +160,24 @@ Return a JSON object with this exact structure:
       "valueEnd": <number or null>
     }
   ],
+  "tickers": null,
   "sortBy": "<optional metric to sort by>",
   "sortOrder": "asc" or "desc",
   "maxStocks": <optional number limit>
 }
+
+TICKER SELECTION MODE: If the user's query is subjective, qualitative, or cannot be expressed
+as metric-based filters (e.g., "stocks with funny names", "companies named after animals",
+"companies with one-word names", "meme stocks", "stocks Elon Musk likes"), return an empty
+filters array and instead populate "tickers" with 10-30 US stock ticker symbols from your
+knowledge that match the criteria. Example:
+{
+  "description": "Companies with funny or unusual names",
+  "filters": [],
+  "tickers": ["LULU", "FIZZ", "YUM", "CAKE", "PLAY", "FANG", "GOOG", "MOO"]
+}
+Always prefer metric-based filters when the query maps to financial metrics. Only use tickers
+for genuinely subjective or non-quantitative queries that cannot map to any financial metric.
 
 Available metrics:
 - pe_ratio (Price-to-Earnings ratio)
@@ -256,6 +270,11 @@ export function filtersToStructuredParams(params: StrategyParameters): Structure
     sectors: { include: [], exclude: [] },
     time_horizon: "20_years",
   };
+
+  // Pass through direct ticker selection
+  if (params.tickers && params.tickers.length > 0) {
+    structured.tickers = params.tickers;
+  }
 
   for (const filter of params.filters) {
     if (filter.metric === "market_cap") {
@@ -379,6 +398,17 @@ export async function parseStrategy(
       console.error(`[Parser] ERROR: JSON parsing failed:`, jsonError);
       console.error(`[Parser] OpenAI response was:`, content);
       return fallbackParse(userInput, reason);
+    }
+
+    // Check if GPT used ticker selection mode (non-metric query)
+    if (parsed.tickers && Array.isArray(parsed.tickers) && parsed.tickers.length > 0) {
+      parsed.filters = parsed.filters || [];
+      parsed.parsingMethod = "ai";
+      parsed.warnings = parsed.warnings || [];
+      // Normalize tickers to uppercase
+      parsed.tickers = parsed.tickers.map(t => t.toUpperCase().trim());
+      console.log(`[Parser] Ticker selection mode: ${parsed.tickers.length} tickers for "${parsed.description}"`);
+      return parsed;
     }
 
     // Validate that we got filters
