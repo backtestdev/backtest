@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 interface QuintileResult {
   metric: string;
@@ -50,7 +52,7 @@ const ANALYZABLE_METRICS: { column: string; label: string }[] = [
   { column: "beta", label: "Beta" },
 ];
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const sql = getDb();
   if (!sql) {
     return NextResponse.json(
@@ -58,6 +60,12 @@ export async function GET() {
       { status: 503 }
     );
   }
+
+  // Time period: 5, 10, or 20 years. Default 10.
+  const { searchParams } = new URL(request.url);
+  const periodParam = Number(searchParams.get("period")) || 10;
+  const period = [5, 10, 20].includes(periodParam) ? periodParam : 10;
+  const minYear = CURRENT_YEAR - period;
 
   try {
     // Get all stocks with their annual returns in one query
@@ -88,7 +96,7 @@ export async function GET() {
 
     const returnRows = await sql`
       SELECT symbol, year, annual_return FROM stock_annual_returns
-      WHERE year >= 2005 AND year <= 2025
+      WHERE year >= ${minYear} AND year < ${CURRENT_YEAR}
     `;
 
     // Build returns lookup: symbol -> { year -> return }
@@ -176,6 +184,7 @@ export async function GET() {
       signals: results,
       stockCount: stockRows.length,
       yearsAnalyzed: yearsOfData,
+      period,
       methodology: "static",
     });
   } catch (error) {

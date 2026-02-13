@@ -22,8 +22,11 @@ interface SignalData {
   signals: Signal[];
   stockCount: number;
   yearsAnalyzed: number;
+  period: number;
   methodology: string;
 }
+
+const PERIODS = [5, 10, 20] as const;
 
 export default function SignalExplorer() {
   const [data, setData] = useState<SignalData | null>(null);
@@ -32,14 +35,17 @@ export default function SignalExplorer() {
   const [expandedSignal, setExpandedSignal] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMetrics, setSelectedMetrics] = useState<Set<string>>(new Set());
+  const [period, setPeriod] = useState<number>(10);
 
   useEffect(() => {
     async function fetchSignals() {
+      setLoading(true);
       try {
-        const res = await fetch("/api/signals");
+        const res = await fetch(`/api/signals?period=${period}`);
         if (!res.ok) throw new Error("Failed to fetch");
         const json = await res.json();
         setData(json);
+        setError(null);
       } catch {
         setError("Failed to load signal data. Make sure the database is populated.");
       } finally {
@@ -47,7 +53,7 @@ export default function SignalExplorer() {
       }
     }
     fetchSignals();
-  }, []);
+  }, [period]);
 
   // Filter signals: remove < 2% spread and apply search
   const filteredSignals = useMemo(() => {
@@ -144,6 +150,24 @@ export default function SignalExplorer() {
           Which metrics predict stock outperformance? We split {data.stockCount.toLocaleString()} stocks
           into quintiles by each metric and compare their average annual returns over {data.yearsAnalyzed} years.
         </p>
+
+        {/* Time period selector */}
+        <div className="mt-4 flex items-center gap-2">
+          <span className="text-xs text-gray-400 mr-1">Period:</span>
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
+                period === p
+                  ? "bg-gray-900 text-white border-gray-900"
+                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              {p}Y
+            </button>
+          ))}
+        </div>
 
         {/* Methodology note */}
         <div className="mt-4 mb-6 flex items-start gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 max-w-2xl">
