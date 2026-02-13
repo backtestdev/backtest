@@ -83,23 +83,17 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
       </div>
 
       {/* Methodology disclaimer */}
-      <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl px-6 py-4">
-        <div className="flex gap-3">
-          <span className="text-amber-500 text-lg flex-shrink-0">&#9888;</span>
-          <div className="text-sm text-amber-800 space-y-2">
-            <p>
-              This analysis shows how stocks <strong>currently</strong> matching your criteria have performed historically.
-              It does not simulate buying/selling as stocks entered/exited the criteria (point-in-time backtesting).
-              Results may include survivorship bias.
-            </p>
-            <p>
-              <strong>Portfolio method:</strong> Equal-weight, rebalanced annually. Each year, returns are averaged across
-              all matching stocks that were trading that year. When a stock IPOs mid-history, it joins the
-              portfolio from its first full year onward.
-            </p>
-          </div>
+      <details className="mb-6 group">
+        <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+          <span>Equal-weight, annual rebalance · May include survivorship bias</span>
+          <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+        </summary>
+        <div className="mt-2 text-xs text-gray-500 leading-relaxed pl-5.5 space-y-1">
+          <p>Results show how stocks <em>currently</em> matching your criteria performed historically — not a point-in-time simulation. Survivorship bias may be present.</p>
+          <p>Each year, returns are equal-weighted across all matching stocks trading that year. IPOs join from their first full year.</p>
         </div>
-      </div>
+      </details>
 
       {/* Time horizon cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
