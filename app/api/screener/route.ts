@@ -29,7 +29,6 @@ const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: 
 
 function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, number> {
   const scores = new Map<string, number>();
-  const totalWeight = SCORE_FACTORS.reduce((sum, f) => sum + Math.abs(f.weight), 0);
 
   // For each factor, compute percentile rank across all stocks
   for (const factor of SCORE_FACTORS) {
