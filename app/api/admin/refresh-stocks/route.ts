@@ -2,10 +2,11 @@
  * Admin endpoint to refresh the stock database from FMP API.
  *
  * GET  /api/admin/refresh-stocks — Vercel Cron handler (rotates batches)
- * POST /api/admin/refresh-stocks — Manual trigger (enriches top 150)
+ * POST /api/admin/refresh-stocks — Manual trigger (enriches next batch)
  *
- * NOTE: This endpoint uses per-stock enrichment (6 FMP API calls per stock).
- * For bulk refresh (3 total API calls), use POST /api/admin/refresh-data instead.
+ * Per-stock enrichment uses 3 FMP API calls per stock:
+ *   /ratios + /key-metrics + /income-statement (annual)
+ * These are called in parallel per stock with slot-based rate limiting.
  *
  * This endpoint works with the unified single `stocks` table.
  * All metrics are stored directly in the stocks table — no separate
@@ -13,10 +14,11 @@
  *
  * Vercel cron sends GET with Authorization: Bearer <CRON_SECRET>.
  * Each cron run: refreshes ALL screener data + enriches the NEXT batch
- * of 150 stocks. Tracks offset in stock_meta so over ~10 days every
+ * of 120 stocks. Tracks offset in stock_meta so over ~10 days every
  * stock gets fully enriched.
  *
- * FMP Starter plan: 300 req/min. We throttle to ~200 req/min.
+ * Rate limiting: slot-based queue ensures exactly 4 req/sec (240 req/min),
+ * safely under the 300 req/min starter plan limit even with concurrency.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -27,7 +29,7 @@ import { ensureStockTables } from "@/lib/db";
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes
 
-const ENRICH_BATCH_SIZE = 150;
+const ENRICH_BATCH_SIZE = 120;
 
 const FMP_API_KEY =
   process.env.FINANCIAL_MODELING_PREP_API_KEY ||
@@ -35,43 +37,45 @@ const FMP_API_KEY =
   "";
 const FMP_BASE = "https://financialmodelingprep.com/stable";
 
-// ── Rate-limited FMP fetch ───────────────────────────────────────────
-
-let lastFetchTime = 0;
-const MIN_FETCH_INTERVAL_MS = 300; // ~200 req/min, under 300/min limit
-
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ── Slot-based rate limiter ─────────────────────────────────────────
+// Each call atomically claims a time slot. Even with concurrent calls,
+// JS single-threading ensures each gets a unique slot spaced 250ms apart.
+// This guarantees ≤240 req/min regardless of concurrency.
+let nextSlot = 0;
+
 async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
-  const elapsed = Date.now() - lastFetchTime;
-  if (elapsed < MIN_FETCH_INTERVAL_MS) {
-    await sleep(MIN_FETCH_INTERVAL_MS - elapsed);
-  }
-  lastFetchTime = Date.now();
+  const now = Date.now();
+  const mySlot = Math.max(now, nextSlot);
+  nextSlot = mySlot + 250; // 240 req/min
+  const waitMs = mySlot - now;
+  if (waitMs > 0) await sleep(waitMs);
 
   const sep = endpoint.includes("?") ? "&" : "?";
   const url = `${FMP_BASE}${endpoint}${sep}apikey=${FMP_API_KEY}`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (res.status === 429 && retries > 0) {
-      console.warn(`[refresh] 429 on ${endpoint}, retry in 3s...`);
-      await sleep(3000);
+      console.warn(`[refresh-stocks] 429 on ${endpoint}, backing off 10s...`);
+      nextSlot = Date.now() + 10000; // pause all requests for 10s
+      await sleep(10000);
       return fetchFMP<T>(endpoint, retries - 1);
     }
     if (!res.ok) {
-      console.error(`[refresh] FMP ${res.status} for ${endpoint}`);
+      console.error(`[refresh-stocks] FMP ${res.status} for ${endpoint}`);
       return null;
     }
     const data = await res.json();
-    if (data && typeof data === "object" && "Error Message" in data) {
-      console.error(`[refresh] FMP error for ${endpoint}:`, (data as Record<string, string>)["Error Message"]);
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
+      console.error(`[refresh-stocks] FMP error:`, (data as Record<string, string>)["Error Message"]);
       return null;
     }
     return data as T;
   } catch (err) {
-    console.error(`[refresh] FMP fetch failed for ${endpoint}:`, err);
+    console.error(`[refresh-stocks] fetch failed for ${endpoint}:`, err);
     return null;
   }
 }
@@ -96,109 +100,179 @@ interface ScreenerResult {
   isActivelyTrading: boolean;
 }
 
-interface Quote {
-  symbol: string;
-  price: number;
-  changesPercentage: number;
-  dayLow: number;
-  dayHigh: number;
-  yearHigh: number;
-  yearLow: number;
-  marketCap: number;
-  priceAvg50: number;
-  priceAvg200: number;
-  volume: number;
-  avgVolume: number;
-  eps: number;
-  pe: number;
-  sharesOutstanding: number;
-}
-
 interface KeyMetrics {
-  marketCap: number;
-  enterpriseValue: number;
-  evToSales: number;
-  evToOperatingCashFlow: number;
-  evToFreeCashFlow: number;
-  evToEBITDA: number;
-  netDebtToEBITDA: number;
-  currentRatio: number;
-  incomeQuality: number;
-  grahamNumber: number;
-  workingCapital: number;
-  investedCapital: number;
-  returnOnAssets: number;
-  returnOnEquity: number;
-  returnOnInvestedCapital: number;
-  returnOnCapitalEmployed: number;
-  earningsYield: number;
-  freeCashFlowYield: number;
-  capexToRevenue: number;
-  researchAndDevelopementToRevenue: number;
-  stockBasedCompensationToRevenue: number;
-  tangibleAssetValue: number;
+  marketCap?: number;
+  enterpriseValue?: number;
+  evToSales?: number;
+  evToOperatingCashFlow?: number;
+  evToFreeCashFlow?: number;
+  evToEBITDA?: number;
+  netDebtToEBITDA?: number;
+  currentRatio?: number;
+  incomeQuality?: number;
+  grahamNumber?: number;
+  workingCapital?: number;
+  investedCapital?: number;
+  returnOnAssets?: number;
+  returnOnEquity?: number;
+  returnOnInvestedCapital?: number;
+  returnOnCapitalEmployed?: number;
+  earningsYield?: number;
+  freeCashFlowYield?: number;
+  capexToRevenue?: number;
+  researchAndDevelopementToRevenue?: number;
+  stockBasedCompensationToRevenue?: number;
+  tangibleAssetValue?: number;
 }
 
 interface FinancialRatios {
-  grossProfitMargin: number;
-  ebitMargin: number;
-  ebitdaMargin: number;
-  operatingProfitMargin: number;
-  pretaxProfitMargin: number;
-  netProfitMargin: number;
-  effectiveTaxRate: number;
-  priceToEarningsRatio: number;
-  priceToBookRatio: number;
-  priceToSalesRatio: number;
-  priceToFreeCashFlowRatio: number;
-  priceToOperatingCashFlowRatio: number;
-  debtToEquityRatio: number;
-  debtToAssetsRatio: number;
-  debtToCapitalRatio: number;
-  financialLeverageRatio: number;
-  interestCoverageRatio: number;
-  currentRatio: number;
-  quickRatio: number;
-  cashRatio: number;
-  dividendYield: number;
-  dividendYieldPercentage: number;
-  dividendPayoutRatio: number;
-  revenuePerShare: number;
-  netIncomePerShare: number;
-  bookValuePerShare: number;
-  tangibleBookValuePerShare: number;
-  operatingCashFlowPerShare: number;
-  freeCashFlowPerShare: number;
-  cashPerShare: number;
-  assetTurnover: number;
-  inventoryTurnover: number;
-  receivablesTurnover: number;
-  operatingCashFlowSalesRatio: number;
-  freeCashFlowOperatingCashFlowRatio: number;
-  priceToFairValue: number;
-  debtToMarketCap: number;
-  enterpriseValueMultiple: number;
-  priceToEarningsGrowthRatio: number;
-  daysOfSalesOutstanding: number;
-  daysOfInventoryOutstanding: number;
-  daysOfPayablesOutstanding: number;
-  cashConversionCycle: number;
+  grossProfitMargin?: number;
+  ebitMargin?: number;
+  ebitdaMargin?: number;
+  operatingProfitMargin?: number;
+  pretaxProfitMargin?: number;
+  netProfitMargin?: number;
+  effectiveTaxRate?: number;
+  priceToEarningsRatio?: number;
+  priceToBookRatio?: number;
+  priceToSalesRatio?: number;
+  priceToFreeCashFlowRatio?: number;
+  priceToOperatingCashFlowRatio?: number;
+  debtToEquityRatio?: number;
+  debtToAssetsRatio?: number;
+  debtToCapitalRatio?: number;
+  financialLeverageRatio?: number;
+  interestCoverageRatio?: number;
+  currentRatio?: number;
+  quickRatio?: number;
+  cashRatio?: number;
+  dividendYield?: number;
+  dividendYieldPercentage?: number;
+  dividendPayoutRatio?: number;
+  revenuePerShare?: number;
+  netIncomePerShare?: number;
+  bookValuePerShare?: number;
+  tangibleBookValuePerShare?: number;
+  operatingCashFlowPerShare?: number;
+  freeCashFlowPerShare?: number;
+  cashPerShare?: number;
+  assetTurnover?: number;
+  inventoryTurnover?: number;
+  receivablesTurnover?: number;
+  operatingCashFlowSalesRatio?: number;
+  freeCashFlowOperatingCashFlowRatio?: number;
+  priceToFairValue?: number;
+  debtToMarketCap?: number;
+  enterpriseValueMultiple?: number;
+  priceToEarningsGrowthRatio?: number;
+  daysOfSalesOutstanding?: number;
+  daysOfInventoryOutstanding?: number;
+  daysOfPayablesOutstanding?: number;
+  cashConversionCycle?: number;
+}
+
+interface IncomeStatementEntry {
+  date: string;
+  revenue: number;
+  netIncome: number;
+  eps: number;
+  epsDiluted: number;
 }
 
 // Name patterns that indicate funds, trusts, SPACs, debt instruments, etc.
 const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due/i;
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function toNum(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+interface GrowthData {
+  revenueHistory: string | null;
+  netIncomeHistory: string | null;
+  epsHistory: string | null;
+  consecutiveRevenueGrowthYears: number;
+  consecutiveNetIncomeGrowthYears: number;
+  consecutiveEpsGrowthYears: number;
+  revenueGrowth3yrAvg: number | null;
+  netIncomeGrowth3yrAvg: number | null;
+}
+
+function computeGrowthData(entries: IncomeStatementEntry[] | null): GrowthData | null {
+  if (!entries || entries.length < 2) return null;
+
+  const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+
+  const revHist: Record<string, number> = {};
+  const niHist: Record<string, number> = {};
+  const epsHist: Record<string, number> = {};
+
+  for (const e of sorted) {
+    const year = e.date.substring(0, 4);
+    if (e.revenue != null) revHist[year] = e.revenue;
+    if (e.netIncome != null) niHist[year] = e.netIncome;
+    const epsVal = e.epsDiluted ?? e.eps;
+    if (epsVal != null) epsHist[year] = epsVal;
+  }
+
+  let consRevGrowth = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i].revenue > sorted[i + 1].revenue && sorted[i + 1].revenue > 0) consRevGrowth++;
+    else break;
+  }
+
+  let consNiGrowth = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i].netIncome > sorted[i + 1].netIncome && sorted[i + 1].netIncome > 0) consNiGrowth++;
+    else break;
+  }
+
+  let consEpsGrowth = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const curr = sorted[i].epsDiluted ?? sorted[i].eps;
+    const prev = sorted[i + 1].epsDiluted ?? sorted[i + 1].eps;
+    if (curr != null && prev != null && curr > prev && prev > 0) consEpsGrowth++;
+    else break;
+  }
+
+  function avgGrowth(getter: (e: IncomeStatementEntry) => number | null): number | null {
+    const rates: number[] = [];
+    for (let i = 0; i < Math.min(3, sorted.length - 1); i++) {
+      const curr = getter(sorted[i]);
+      const prev = getter(sorted[i + 1]);
+      if (curr != null && prev != null && prev !== 0) {
+        rates.push((curr - prev) / Math.abs(prev));
+      }
+    }
+    return rates.length > 0 ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
+  }
+
+  return {
+    revenueHistory: Object.keys(revHist).length > 0 ? JSON.stringify(revHist) : null,
+    netIncomeHistory: Object.keys(niHist).length > 0 ? JSON.stringify(niHist) : null,
+    epsHistory: Object.keys(epsHist).length > 0 ? JSON.stringify(epsHist) : null,
+    consecutiveRevenueGrowthYears: consRevGrowth,
+    consecutiveNetIncomeGrowthYears: consNiGrowth,
+    consecutiveEpsGrowthYears: consEpsGrowth,
+    revenueGrowth3yrAvg: avgGrowth(e => toNum(e.revenue)),
+    netIncomeGrowth3yrAvg: avgGrowth(e => toNum(e.netIncome)),
+  };
+}
 
 // ── Shared refresh logic ───────────────────────────────────────────
 
 async function runRefresh(
   sql: NeonQueryFunction<false, false>,
   enrichOffset: number
-): Promise<{ stocks: number; enriched: number; enrichFailed: number; nextOffset: number }> {
+): Promise<{ stocks: number; enriched: number; enrichFailed: number; noData: number; nextOffset: number }> {
   await ensureStockTables(sql);
 
   // Step 1: Screener — always refresh ALL stocks basic data
   const results = await fetchFMP<ScreenerResult[]>(
-    "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=3000"
+    "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=5000"
   );
   if (!results || results.length === 0) {
     throw new Error("FMP screener returned no results — check API key and plan");
@@ -216,13 +290,13 @@ async function runRefresh(
       !EXCLUDE_NAME_PATTERNS.test(s.companyName) &&
       !(s.symbol.length === 5 && s.symbol.endsWith("X") && (s.sector === "Asset Management" || s.industry === "Asset Management"))
   );
-  console.log(`[refresh] ${results.length} screener → ${filtered.length} common stocks`);
+  console.log(`[refresh-stocks] ${results.length} screener → ${filtered.length} common stocks`);
 
   // Insert into unified stocks table
   for (const s of filtered) {
     await sql`
       INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, market_cap, beta, last_dividend, price, volume, is_etf, is_fund, is_actively_trading, updated_at)
-      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.marketCap}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.price || 0}, ${s.volume || 0}, ${s.isEtf}, ${s.isFund || false}, ${s.isActivelyTrading}, NOW())
+      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${s.marketCap}, ${toNum(s.beta)}, ${toNum(s.lastAnnualDividend)}, ${toNum(s.price)}, ${toNum(s.volume)}, ${s.isEtf}, ${s.isFund || false}, ${s.isActivelyTrading}, NOW())
       ON CONFLICT (symbol) DO UPDATE SET
         company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
         country = EXCLUDED.country, exchange = EXCLUDED.exchange,
@@ -233,123 +307,159 @@ async function runRefresh(
   }
 
   // Step 2: Enrich a batch of stocks starting at enrichOffset
-  const allRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC`;
+  const allRows = await sql`SELECT symbol FROM stocks ORDER BY market_cap DESC NULLS LAST`;
   const allSymbols = allRows.map((r) => String(r.symbol));
   const totalStocks = allSymbols.length;
 
   const safeOffset = enrichOffset >= totalStocks ? 0 : enrichOffset;
   const batch = allSymbols.slice(safeOffset, safeOffset + ENRICH_BATCH_SIZE);
-  console.log(`[refresh] Enriching batch ${safeOffset}–${safeOffset + batch.length - 1} of ${totalStocks} (${batch.length} stocks)`);
+  console.log(`[refresh-stocks] Enriching batch ${safeOffset}–${safeOffset + batch.length - 1} of ${totalStocks} (${batch.length} stocks)`);
 
   let enriched = 0;
   let enrichFailed = 0;
+  let noDataCount = 0;
 
-  for (const sym of batch) {
-    try {
-      const quote = await fetchFMP<Quote[]>(`/quote?symbol=${sym}`).then((r) => r?.[0] || null);
-      const metrics = await fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
-      const finRatios = await fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`).then((r) => r?.[0] || null);
+  const CONCURRENCY = 2;
+  const TIME_BUDGET_MS = 240_000; // 4 minutes
+  const enrichStart = Date.now();
 
-      // Update all metrics directly in the unified stocks table
-      await sql`
-        UPDATE stocks SET
-          price = ${quote?.price || null},
-          volume = ${quote?.volume || null},
-          avg_volume = ${quote?.avgVolume || null},
-          market_cap = ${quote?.marketCap || null},
+  for (let i = 0; i < batch.length; i += CONCURRENCY) {
+    if (Date.now() - enrichStart > TIME_BUDGET_MS) {
+      console.log(`[refresh-stocks] Time budget reached after enriching ${enriched}/${batch.length}`);
+      break;
+    }
 
-          -- Valuation
-          price_to_earnings_ratio = ${finRatios?.priceToEarningsRatio || quote?.pe || null},
-          price_to_earnings_growth_ratio = ${finRatios?.priceToEarningsGrowthRatio || null},
-          price_to_book_ratio = ${finRatios?.priceToBookRatio || null},
-          price_to_sales_ratio = ${finRatios?.priceToSalesRatio || null},
-          price_to_free_cash_flow_ratio = ${finRatios?.priceToFreeCashFlowRatio || null},
-          price_to_operating_cash_flow_ratio = ${finRatios?.priceToOperatingCashFlowRatio || null},
-          price_to_fair_value = ${finRatios?.priceToFairValue || null},
-          enterprise_value_multiple = ${finRatios?.enterpriseValueMultiple || null},
+    const chunk = batch.slice(i, i + CONCURRENCY);
+    const results2 = await Promise.allSettled(
+      chunk.map(async (sym) => {
+        const [ratiosData, metricsData, incomeData] = await Promise.all([
+          fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`),
+          fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`),
+          fetchFMP<IncomeStatementEntry[]>(`/income-statement?symbol=${sym}&period=annual&limit=5`),
+        ]);
 
-          -- Profitability
-          gross_profit_margin = ${finRatios?.grossProfitMargin || null},
-          ebit_margin = ${finRatios?.ebitMargin || null},
-          ebitda_margin = ${finRatios?.ebitdaMargin || null},
-          operating_profit_margin = ${finRatios?.operatingProfitMargin || null},
-          pretax_profit_margin = ${finRatios?.pretaxProfitMargin || null},
-          net_profit_margin = ${finRatios?.netProfitMargin || null},
-          effective_tax_rate = ${finRatios?.effectiveTaxRate || null},
+        const finRatios = ratiosData?.[0] ?? null;
+        const metrics = metricsData?.[0] ?? null;
+        const growth = computeGrowthData(incomeData);
 
-          -- Returns
-          return_on_assets = ${metrics?.returnOnAssets || null},
-          return_on_equity = ${metrics?.returnOnEquity || null},
-          return_on_invested_capital = ${metrics?.returnOnInvestedCapital || null},
-          return_on_capital_employed = ${metrics?.returnOnCapitalEmployed || null},
-          earnings_yield = ${metrics?.earningsYield || null},
-          free_cash_flow_yield = ${metrics?.freeCashFlowYield || null},
+        if (!finRatios && !metrics && !growth) {
+          noDataCount++;
+          return;
+        }
 
-          -- Liquidity
-          current_ratio = ${metrics?.currentRatio || finRatios?.currentRatio || null},
-          quick_ratio = ${finRatios?.quickRatio || null},
-          cash_ratio = ${finRatios?.cashRatio || null},
+        // Update all metrics directly in the unified stocks table
+        await sql`
+          UPDATE stocks SET
+            -- Valuation
+            price_to_earnings_ratio = COALESCE(${toNum(finRatios?.priceToEarningsRatio)}, price_to_earnings_ratio),
+            price_to_earnings_growth_ratio = COALESCE(${toNum(finRatios?.priceToEarningsGrowthRatio)}, price_to_earnings_growth_ratio),
+            price_to_book_ratio = COALESCE(${toNum(finRatios?.priceToBookRatio)}, price_to_book_ratio),
+            price_to_sales_ratio = COALESCE(${toNum(finRatios?.priceToSalesRatio)}, price_to_sales_ratio),
+            price_to_free_cash_flow_ratio = COALESCE(${toNum(finRatios?.priceToFreeCashFlowRatio)}, price_to_free_cash_flow_ratio),
+            price_to_operating_cash_flow_ratio = COALESCE(${toNum(finRatios?.priceToOperatingCashFlowRatio)}, price_to_operating_cash_flow_ratio),
+            price_to_fair_value = COALESCE(${toNum(finRatios?.priceToFairValue)}, price_to_fair_value),
+            enterprise_value_multiple = COALESCE(${toNum(finRatios?.enterpriseValueMultiple)}, enterprise_value_multiple),
 
-          -- Leverage
-          debt_to_equity_ratio = ${finRatios?.debtToEquityRatio || null},
-          debt_to_assets_ratio = ${finRatios?.debtToAssetsRatio || null},
-          debt_to_capital_ratio = ${finRatios?.debtToCapitalRatio || null},
-          financial_leverage_ratio = ${finRatios?.financialLeverageRatio || null},
-          debt_to_market_cap = ${finRatios?.debtToMarketCap || null},
-          interest_coverage_ratio = ${finRatios?.interestCoverageRatio || null},
+            -- Profitability
+            gross_profit_margin = COALESCE(${toNum(finRatios?.grossProfitMargin)}, gross_profit_margin),
+            ebit_margin = COALESCE(${toNum(finRatios?.ebitMargin)}, ebit_margin),
+            ebitda_margin = COALESCE(${toNum(finRatios?.ebitdaMargin)}, ebitda_margin),
+            operating_profit_margin = COALESCE(${toNum(finRatios?.operatingProfitMargin)}, operating_profit_margin),
+            pretax_profit_margin = COALESCE(${toNum(finRatios?.pretaxProfitMargin)}, pretax_profit_margin),
+            net_profit_margin = COALESCE(${toNum(finRatios?.netProfitMargin)}, net_profit_margin),
+            effective_tax_rate = COALESCE(${toNum(finRatios?.effectiveTaxRate)}, effective_tax_rate),
 
-          -- Dividends
-          dividend_yield = ${finRatios?.dividendYield || null},
-          dividend_yield_percentage = ${finRatios?.dividendYieldPercentage || null},
-          dividend_payout_ratio = ${finRatios?.dividendPayoutRatio || null},
+            -- Returns
+            return_on_assets = COALESCE(${toNum(metrics?.returnOnAssets)}, return_on_assets),
+            return_on_equity = COALESCE(${toNum(metrics?.returnOnEquity)}, return_on_equity),
+            return_on_invested_capital = COALESCE(${toNum(metrics?.returnOnInvestedCapital)}, return_on_invested_capital),
+            return_on_capital_employed = COALESCE(${toNum(metrics?.returnOnCapitalEmployed)}, return_on_capital_employed),
+            earnings_yield = COALESCE(${toNum(metrics?.earningsYield)}, earnings_yield),
+            free_cash_flow_yield = COALESCE(${toNum(metrics?.freeCashFlowYield)}, free_cash_flow_yield),
 
-          -- Per share
-          revenue_per_share = ${finRatios?.revenuePerShare || null},
-          net_income_per_share = ${finRatios?.netIncomePerShare || null},
-          book_value_per_share = ${finRatios?.bookValuePerShare || null},
-          tangible_book_value_per_share = ${finRatios?.tangibleBookValuePerShare || null},
-          operating_cash_flow_per_share = ${finRatios?.operatingCashFlowPerShare || null},
-          free_cash_flow_per_share = ${finRatios?.freeCashFlowPerShare || null},
-          cash_per_share = ${finRatios?.cashPerShare || null},
+            -- Liquidity
+            current_ratio = COALESCE(${toNum(metrics?.currentRatio ?? finRatios?.currentRatio)}, current_ratio),
+            quick_ratio = COALESCE(${toNum(finRatios?.quickRatio)}, quick_ratio),
+            cash_ratio = COALESCE(${toNum(finRatios?.cashRatio)}, cash_ratio),
 
-          -- Efficiency
-          asset_turnover = ${finRatios?.assetTurnover || null},
-          inventory_turnover = ${finRatios?.inventoryTurnover || null},
-          receivables_turnover = ${finRatios?.receivablesTurnover || null},
-          days_of_sales_outstanding = ${finRatios?.daysOfSalesOutstanding || null},
-          days_of_inventory_outstanding = ${finRatios?.daysOfInventoryOutstanding || null},
-          days_of_payables_outstanding = ${finRatios?.daysOfPayablesOutstanding || null},
-          cash_conversion_cycle = ${finRatios?.cashConversionCycle || null},
+            -- Leverage
+            debt_to_equity_ratio = COALESCE(${toNum(finRatios?.debtToEquityRatio)}, debt_to_equity_ratio),
+            debt_to_assets_ratio = COALESCE(${toNum(finRatios?.debtToAssetsRatio)}, debt_to_assets_ratio),
+            debt_to_capital_ratio = COALESCE(${toNum(finRatios?.debtToCapitalRatio)}, debt_to_capital_ratio),
+            financial_leverage_ratio = COALESCE(${toNum(finRatios?.financialLeverageRatio)}, financial_leverage_ratio),
+            debt_to_market_cap = COALESCE(${toNum(finRatios?.debtToMarketCap)}, debt_to_market_cap),
+            interest_coverage_ratio = COALESCE(${toNum(finRatios?.interestCoverageRatio)}, interest_coverage_ratio),
 
-          -- Enterprise Value
-          enterprise_value = ${metrics?.enterpriseValue || null},
-          ev_to_sales = ${metrics?.evToSales || null},
-          ev_to_ebitda = ${metrics?.evToEBITDA || null},
-          ev_to_operating_cash_flow = ${metrics?.evToOperatingCashFlow || null},
-          ev_to_free_cash_flow = ${metrics?.evToFreeCashFlow || null},
-          net_debt_to_ebitda = ${metrics?.netDebtToEBITDA || null},
+            -- Dividends
+            dividend_yield = COALESCE(${toNum(finRatios?.dividendYield)}, dividend_yield),
+            dividend_yield_percentage = COALESCE(${toNum(finRatios?.dividendYieldPercentage)}, dividend_yield_percentage),
+            dividend_payout_ratio = COALESCE(${toNum(finRatios?.dividendPayoutRatio)}, dividend_payout_ratio),
 
-          -- Cash Flow
-          capex_to_revenue = ${metrics?.capexToRevenue || null},
-          operating_cash_flow_sales_ratio = ${finRatios?.operatingCashFlowSalesRatio || null},
-          free_cash_flow_operating_cash_flow_ratio = ${finRatios?.freeCashFlowOperatingCashFlowRatio || null},
-          income_quality = ${metrics?.incomeQuality || null},
+            -- Per share
+            revenue_per_share = COALESCE(${toNum(finRatios?.revenuePerShare)}, revenue_per_share),
+            net_income_per_share = COALESCE(${toNum(finRatios?.netIncomePerShare)}, net_income_per_share),
+            book_value_per_share = COALESCE(${toNum(finRatios?.bookValuePerShare)}, book_value_per_share),
+            tangible_book_value_per_share = COALESCE(${toNum(finRatios?.tangibleBookValuePerShare)}, tangible_book_value_per_share),
+            operating_cash_flow_per_share = COALESCE(${toNum(finRatios?.operatingCashFlowPerShare)}, operating_cash_flow_per_share),
+            free_cash_flow_per_share = COALESCE(${toNum(finRatios?.freeCashFlowPerShare)}, free_cash_flow_per_share),
+            cash_per_share = COALESCE(${toNum(finRatios?.cashPerShare)}, cash_per_share),
 
-          -- Other
-          graham_number = ${metrics?.grahamNumber || null},
-          working_capital = ${metrics?.workingCapital || null},
-          invested_capital = ${metrics?.investedCapital || null},
-          tangible_asset_value = ${metrics?.tangibleAssetValue || null},
-          research_and_development_to_revenue = ${metrics?.researchAndDevelopementToRevenue || null},
-          stock_based_compensation_to_revenue = ${metrics?.stockBasedCompensationToRevenue || null},
+            -- Efficiency
+            asset_turnover = COALESCE(${toNum(finRatios?.assetTurnover)}, asset_turnover),
+            inventory_turnover = COALESCE(${toNum(finRatios?.inventoryTurnover)}, inventory_turnover),
+            receivables_turnover = COALESCE(${toNum(finRatios?.receivablesTurnover)}, receivables_turnover),
+            days_of_sales_outstanding = COALESCE(${toNum(finRatios?.daysOfSalesOutstanding)}, days_of_sales_outstanding),
+            days_of_inventory_outstanding = COALESCE(${toNum(finRatios?.daysOfInventoryOutstanding)}, days_of_inventory_outstanding),
+            days_of_payables_outstanding = COALESCE(${toNum(finRatios?.daysOfPayablesOutstanding)}, days_of_payables_outstanding),
+            cash_conversion_cycle = COALESCE(${toNum(finRatios?.cashConversionCycle)}, cash_conversion_cycle),
 
-          updated_at = NOW()
-        WHERE symbol = ${sym}
-      `;
+            -- Enterprise Value
+            enterprise_value = COALESCE(${toNum(metrics?.enterpriseValue)}, enterprise_value),
+            ev_to_sales = COALESCE(${toNum(metrics?.evToSales)}, ev_to_sales),
+            ev_to_ebitda = COALESCE(${toNum(metrics?.evToEBITDA)}, ev_to_ebitda),
+            ev_to_operating_cash_flow = COALESCE(${toNum(metrics?.evToOperatingCashFlow)}, ev_to_operating_cash_flow),
+            ev_to_free_cash_flow = COALESCE(${toNum(metrics?.evToFreeCashFlow)}, ev_to_free_cash_flow),
+            net_debt_to_ebitda = COALESCE(${toNum(metrics?.netDebtToEBITDA)}, net_debt_to_ebitda),
 
-      enriched++;
-    } catch {
-      enrichFailed++;
+            -- Cash Flow
+            capex_to_revenue = COALESCE(${toNum(metrics?.capexToRevenue)}, capex_to_revenue),
+            operating_cash_flow_sales_ratio = COALESCE(${toNum(finRatios?.operatingCashFlowSalesRatio)}, operating_cash_flow_sales_ratio),
+            free_cash_flow_operating_cash_flow_ratio = COALESCE(${toNum(finRatios?.freeCashFlowOperatingCashFlowRatio)}, free_cash_flow_operating_cash_flow_ratio),
+            income_quality = COALESCE(${toNum(metrics?.incomeQuality)}, income_quality),
+
+            -- Other
+            graham_number = COALESCE(${toNum(metrics?.grahamNumber)}, graham_number),
+            working_capital = COALESCE(${toNum(metrics?.workingCapital)}, working_capital),
+            invested_capital = COALESCE(${toNum(metrics?.investedCapital)}, invested_capital),
+            tangible_asset_value = COALESCE(${toNum(metrics?.tangibleAssetValue)}, tangible_asset_value),
+            research_and_development_to_revenue = COALESCE(${toNum(metrics?.researchAndDevelopementToRevenue)}, research_and_development_to_revenue),
+            stock_based_compensation_to_revenue = COALESCE(${toNum(metrics?.stockBasedCompensationToRevenue)}, stock_based_compensation_to_revenue),
+
+            -- Growth / Income History
+            revenue_history = COALESCE(${growth?.revenueHistory ?? null}::jsonb, revenue_history),
+            net_income_history = COALESCE(${growth?.netIncomeHistory ?? null}::jsonb, net_income_history),
+            eps_history = COALESCE(${growth?.epsHistory ?? null}::jsonb, eps_history),
+            consecutive_revenue_growth_years = COALESCE(${growth?.consecutiveRevenueGrowthYears ?? null}, consecutive_revenue_growth_years),
+            consecutive_net_income_growth_years = COALESCE(${growth?.consecutiveNetIncomeGrowthYears ?? null}, consecutive_net_income_growth_years),
+            consecutive_eps_growth_years = COALESCE(${growth?.consecutiveEpsGrowthYears ?? null}, consecutive_eps_growth_years),
+            revenue_growth_3yr_avg = COALESCE(${growth?.revenueGrowth3yrAvg ?? null}, revenue_growth_3yr_avg),
+            net_income_growth_3yr_avg = COALESCE(${growth?.netIncomeGrowth3yrAvg ?? null}, net_income_growth_3yr_avg),
+
+            updated_at = NOW()
+          WHERE symbol = ${sym}
+        `;
+      })
+    );
+
+    for (const r of results2) {
+      if (r.status === "fulfilled") enriched++;
+      else enrichFailed++;
+    }
+
+    // Log progress every ~50 stocks
+    if ((i + CONCURRENCY) % 50 < CONCURRENCY) {
+      const elapsed = Math.round((Date.now() - enrichStart) / 1000);
+      console.log(`[refresh-stocks]   ...enriched ${enriched}/${batch.length} (${elapsed}s elapsed)`);
     }
   }
 
@@ -403,7 +513,7 @@ async function runRefresh(
     RETURNING symbol
   `;
   if (purged.length > 0) {
-    console.log(`[refresh] Purged ${purged.length} non-company entries`);
+    console.log(`[refresh-stocks] Purged ${purged.length} non-company entries`);
   }
 
   // Remove stale stocks not refreshed in the last 7 days
@@ -411,7 +521,7 @@ async function runRefresh(
 
   await refreshStockUniverse();
 
-  return { stocks: filtered.length, enriched, enrichFailed, nextOffset };
+  return { stocks: filtered.length, enriched, enrichFailed, noData: noDataCount, nextOffset };
 }
 
 // ── GET: Vercel Cron handler + status ──────────────────────────────
@@ -430,6 +540,8 @@ export async function GET(request: NextRequest) {
       const sql = neon(databaseUrl);
       const meta = await sql`SELECT * FROM stock_meta WHERE key IN ('last_populate', 'enrich_offset', 'last_refresh')`;
       const stockCount = await sql`SELECT count(*) as cnt FROM stocks`;
+      const enrichedCount = await sql`SELECT count(*) as cnt FROM stocks WHERE price_to_earnings_ratio IS NOT NULL OR return_on_equity IS NOT NULL`;
+      const historyCount = await sql`SELECT count(*) as cnt FROM stocks WHERE revenue_history IS NOT NULL`;
       const lastPopulate = meta.find((r) => r.key === "last_populate")?.value || null;
       const lastRefresh = meta.find((r) => r.key === "last_refresh")?.value || null;
       const enrichOffset = meta.find((r) => r.key === "enrich_offset")?.value || "0";
@@ -439,6 +551,8 @@ export async function GET(request: NextRequest) {
         lastRefresh,
         enrichOffset: Number(enrichOffset),
         stockCount: Number(stockCount[0]?.cnt || 0),
+        enrichedCount: Number(enrichedCount[0]?.cnt || 0),
+        historyCount: Number(historyCount[0]?.cnt || 0),
       });
     } catch {
       return NextResponse.json({ configured: true, error: "Could not query stock_meta — run POST /api/db/init first" });
@@ -455,6 +569,8 @@ export async function GET(request: NextRequest) {
   }
 
   const sql = neon(databaseUrl);
+  // Reset rate limiter for this request
+  nextSlot = 0;
 
   try {
     await ensureStockTables(sql);
@@ -498,6 +614,8 @@ export async function POST(request: NextRequest) {
   }
 
   const sql = neon(databaseUrl);
+  // Reset rate limiter for this request
+  nextSlot = 0;
 
   try {
     await ensureStockTables(sql);
