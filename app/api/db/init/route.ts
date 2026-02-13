@@ -12,6 +12,10 @@ export async function POST() {
   }
 
   try {
+    // Clean up stale temporary tables from failed refresh-data runs
+    await sql`DROP TABLE IF EXISTS stocks_new CASCADE`;
+    await sql`DROP TABLE IF EXISTS stocks_old CASCADE`;
+
     // Create leaderboard table (with migration for older schemas)
     await ensureLeaderboardTable(sql);
 
@@ -20,7 +24,7 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: "Database initialized successfully (leaderboard + stock tables).",
+      message: "Database initialized successfully (leaderboard + stock tables). Cleaned up stale temp tables.",
     });
   } catch (error) {
     console.error("DB init error:", error);

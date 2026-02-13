@@ -209,6 +209,10 @@ export async function POST(request: NextRequest) {
   const log: string[] = [];
 
   try {
+    // ── Step 0: Clean up stale tables from previous failed runs ──
+    await sql`DROP TABLE IF EXISTS stocks_old CASCADE`;
+    log.push("Cleaned up stale tables");
+
     // ── Step 1: Create stocks_new table ──────────────────────────
     log.push("Creating stocks_new table...");
     await createStocksNewTable(sql);
