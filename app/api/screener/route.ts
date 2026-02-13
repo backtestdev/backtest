@@ -3,51 +3,74 @@ import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+// Sector display name mapping (FMP sector text → clean display name)
+const SECTOR_DISPLAY: Record<string, string> = {
+  "Technology": "Technology",
+  "Healthcare": "Healthcare",
+  "Financial Services": "Financial",
+  "Finance": "Financial",
+  "Energy": "Energy",
+  "Consumer Cyclical": "Consumer",
+  "Consumer Defensive": "Consumer",
+  "Industrials": "Industrials",
+  "Basic Materials": "Basic Materials",
+  "Real Estate": "Real Estate",
+  "Utilities": "Utilities",
+  "Communication Services": "Communication",
+};
+
+function sectorName(raw: unknown): string {
+  const s = String(raw || "");
+  return SECTOR_DISPLAY[s] || s || "Other";
+}
+
 // Factor weights for Backtest Score (multi-factor model)
-// Positive weight = higher is better, negative weight = lower is better
+// Emphasizes: earnings yield (profit/mcap), earnings growth & consistency
 const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: number }[] = [
+  // Earnings relative to price — strongest signal (higher is better)
+  { column: "earnings_yield", weight: 20, capLow: -0.1, capHigh: 0.3 },
+  // Earnings growth — capped tight to prevent turnaround distortion (higher is better)
+  { column: "earnings_growth", weight: 10, capLow: -0.5, capHigh: 0.5 },
+  // Earnings consistency — years of consecutive net income growth (higher is better)
+  { column: "consecutive_earnings_growth", weight: 15, capLow: 0, capHigh: 10 },
   // Value (lower is better)
-  { column: "pe_ratio", weight: -15, capLow: 0, capHigh: 60 },
-  { column: "price_to_book", weight: -10, capLow: 0, capHigh: 15 },
+  { column: "pe_ratio", weight: -10, capLow: 0, capHigh: 60 },
   { column: "ev_to_ebitda", weight: -5, capLow: 0, capHigh: 40 },
   // Quality (higher is better)
-  { column: "roe", weight: 15, capLow: -0.5, capHigh: 1.0 },
-  { column: "roic", weight: 10, capLow: -0.3, capHigh: 0.5 },
+  { column: "roe", weight: 10, capLow: -0.5, capHigh: 1.0 },
   { column: "profit_margin", weight: 10, capLow: -0.5, capHigh: 0.5 },
-  // Growth (higher is better)
-  { column: "revenue_growth", weight: 10, capLow: -0.5, capHigh: 2.0 },
-  { column: "earnings_growth", weight: 10, capLow: -1.0, capHigh: 3.0 },
+  { column: "roic", weight: 5, capLow: -0.3, capHigh: 0.5 },
+  // Growth
+  { column: "revenue_growth", weight: 5, capLow: -0.5, capHigh: 2.0 },
   // Cash flow (higher is better)
-  { column: "free_cash_flow_yield", weight: 10, capLow: -0.2, capHigh: 0.3 },
+  { column: "free_cash_flow_yield", weight: 5, capLow: -0.2, capHigh: 0.3 },
   // Leverage (lower debt is better)
   { column: "debt_to_equity", weight: -5, capLow: 0, capHigh: 5 },
-  // Dividends
-  { column: "dividend_yield", weight: 5, capLow: 0, capHigh: 0.12 },
-  // Momentum
-  { column: "week52_high_pct", weight: 5, capLow: 0, capHigh: 1.0 },
+  // Size confidence — log(market cap in $B). Larger companies have more
+  // reliable metrics; prevents micro/small-cap noise from dominating.
+  // log10($1B)=0, log10($10B)=1, log10($100B)=2, log10($1T)=3
+  { column: "log_market_cap", weight: 12, capLow: -0.5, capHigh: 3.0 },
 ];
 
 function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, number> {
   const scores = new Map<string, number>();
 
-  // For each factor, compute percentile rank across all stocks
   for (const factor of SCORE_FACTORS) {
     const values: { symbol: string; value: number }[] = [];
     for (const stock of stocks) {
       const val = Number(stock[factor.column]);
       if (isNaN(val) || !isFinite(val) || stock[factor.column] === null) continue;
+      // Exclude negative P/E (unprofitable) — would distort percentile ranking
+      if (factor.column === "pe_ratio" && val <= 0) continue;
       const capped = Math.max(factor.capLow, Math.min(factor.capHigh, val));
       values.push({ symbol: stock.symbol as string, value: capped });
     }
 
     if (values.length < 10) continue;
 
-    // Sort and assign percentile (0-1)
     values.sort((a, b) => a.value - b.value);
     for (let i = 0; i < values.length; i++) {
-      const percentile = i / (values.length - 1); // 0 = lowest, 1 = highest
-      // If higher is better (positive weight), higher percentile = better
-      // If lower is better (negative weight), lower percentile = better
+      const percentile = i / (values.length - 1);
       const contribution = factor.weight > 0
         ? percentile * Math.abs(factor.weight)
         : (1 - percentile) * Math.abs(factor.weight);
@@ -82,13 +105,13 @@ export async function GET(request: NextRequest) {
   const sortBy = searchParams.get("sort") || "backtest_score";
   const sortDir = searchParams.get("dir") || "desc";
   const sectorFilter = searchParams.get("sector") || "";
+  const search = (searchParams.get("search") || "").trim();
   const minMarketCap = Number(searchParams.get("minCap")) || 0;
   const maxMarketCap = Number(searchParams.get("maxCap")) || 0;
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
-  const perPage = 50;
+  const perPage = search ? 10 : 50;
 
   try {
-    // Fetch all stocks for scoring
     const allStocks = await sql`
       SELECT symbol, company_name AS name, sector,
              price_to_earnings_ratio AS pe_ratio,
@@ -108,39 +131,54 @@ export async function GET(request: NextRequest) {
              current_ratio, interest_coverage_ratio,
              free_cash_flow_yield, free_cash_flow_per_share,
              market_cap, beta,
+             consecutive_net_income_growth_years AS consecutive_earnings_growth,
              CASE WHEN year_high > 0 THEN price / year_high ELSE 0 END AS week52_high_pct
       FROM stocks
       WHERE market_cap IS NOT NULL AND market_cap > 0.1
     `;
 
-    // Compute backtest scores for all stocks
-    const scoreMap = computeBacktestScore(allStocks as unknown as Record<string, unknown>[]);
+    // Enrich with computed log_market_cap for size-confidence scoring
+    const enriched = allStocks.map((stock) => {
+      const mcapBillions = (Number(stock.market_cap) || 0) / 1_000_000_000;
+      return {
+        ...(stock as unknown as Record<string, unknown>),
+        log_market_cap: mcapBillions > 0 ? Math.log10(mcapBillions) : -1,
+      };
+    });
 
-    // Sector name mapping
-    const sectorNames: Record<number, string> = {
-      1: "Technology", 2: "Healthcare", 3: "Financial", 4: "Energy",
-      5: "Consumer", 6: "Industrials", 7: "Basic Materials", 8: "Real Estate",
-      9: "Utilities", 10: "Communication Services",
-    };
+    const scoreMap = computeBacktestScore(enriched);
 
-    // Apply filters and build result
+    // Build result with all fields
     let filtered = allStocks.map((stock) => ({
       symbol: stock.symbol as string,
       name: stock.name as string,
-      sector: sectorNames[Number(stock.sector)] || "Other",
-      sectorId: Number(stock.sector),
+      sector: sectorName(stock.sector),
       marketCap: (Number(stock.market_cap) || 0) / 1_000_000_000,
-      peRatio: stock.pe_ratio !== null ? Number(stock.pe_ratio) : null,
+      peRatio: stock.pe_ratio !== null && Number(stock.pe_ratio) > 0 ? Number(stock.pe_ratio) : null,
       roe: stock.roe !== null ? Number(stock.roe) : null,
       revenueGrowth: stock.revenue_growth !== null ? Number(stock.revenue_growth) : null,
+      earningsGrowth: stock.earnings_growth !== null ? Number(stock.earnings_growth) : null,
+      earningsYield: stock.earnings_yield !== null ? Number(stock.earnings_yield) : null,
       profitMargin: stock.profit_margin !== null ? Number(stock.profit_margin) : null,
       dividendYield: stock.dividend_yield !== null ? Number(stock.dividend_yield) : null,
       debtToEquity: stock.debt_to_equity !== null ? Number(stock.debt_to_equity) : null,
       beta: stock.beta !== null ? Number(stock.beta) : null,
+      evToEbitda: stock.ev_to_ebitda !== null ? Number(stock.ev_to_ebitda) : null,
+      freeCashFlowYield: stock.free_cash_flow_yield !== null ? Number(stock.free_cash_flow_yield) : null,
+      consecutiveEarningsGrowth: Number(stock.consecutive_earnings_growth) || 0,
+      currentRatio: stock.current_ratio !== null ? Number(stock.current_ratio) : null,
       backtestScore: scoreMap.get(stock.symbol as string) || 0,
     }));
 
-    // Apply filters
+    // Search filter
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (s) => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+      );
+    }
+
+    // Sector filter
     if (sectorFilter) {
       filtered = filtered.filter((s) => s.sector.toLowerCase() === sectorFilter.toLowerCase());
     }
@@ -152,27 +190,28 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort
-    const sortKey = sortBy === "backtest_score" ? "backtestScore"
+    type StockResult = typeof filtered[0];
+    const sortKey: keyof StockResult = sortBy === "backtest_score" ? "backtestScore"
       : sortBy === "market_cap" ? "marketCap"
       : sortBy === "pe_ratio" ? "peRatio"
       : sortBy === "roe" ? "roe"
+      : sortBy === "earnings_yield" ? "earningsYield"
+      : sortBy === "earnings_growth" ? "earningsGrowth"
       : sortBy === "revenue_growth" ? "revenueGrowth"
       : sortBy === "dividend_yield" ? "dividendYield"
       : "backtestScore";
 
     filtered.sort((a, b) => {
-      const aVal = a[sortKey as keyof typeof a] ?? -Infinity;
-      const bVal = b[sortKey as keyof typeof b] ?? -Infinity;
-      return sortDir === "desc"
-        ? (bVal as number) - (aVal as number)
-        : (aVal as number) - (bVal as number);
+      const aVal = (a[sortKey] as number | null) ?? -Infinity;
+      const bVal = (b[sortKey] as number | null) ?? -Infinity;
+      return sortDir === "desc" ? bVal - aVal : aVal - bVal;
     });
 
     const totalCount = filtered.length;
     const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
-    // Get unique sectors for filter dropdown
-    const sectors = Array.from(new Set(allStocks.map((s) => sectorNames[Number(s.sector)]).filter(Boolean))).sort();
+    // Unique sectors for filter dropdown
+    const sectors = Array.from(new Set(allStocks.map((s) => sectorName(s.sector)).filter((s) => s !== "Other"))).sort();
 
     return NextResponse.json({
       stocks: paginated,
