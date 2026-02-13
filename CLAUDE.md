@@ -170,13 +170,31 @@ When tickers are returned, `backtestEngine.ts` bypasses metric filtering and sel
 
 ### Leaderboard Duplicate Detection
 - Uses SHA-256 hash (truncated to 16 hex chars) of sorted strategy parameters for collision-resistant duplicate detection.
-- Hash stored in `parameters_hash` column on the `leaderboard` table.
+- `parameters_hash`: hash of parsed StructuredParameters (catches identical filter sets).
+- `query_hash`: hash of normalized user query text (catches ticker-mode dupes where AI returns different ticker lists for the same prompt, e.g., "meme stocks").
+- For ticker-mode, `query_hash` is checked first; `parameters_hash` is checked second.
+- `created_by` column stores display name for future user attribution.
 
 ### Cron Jobs (Vercel)
 Configured in `vercel.json`:
 - **Daily** stock enrichment: `GET /api/admin/refresh-stocks` at 06:00 UTC
 - **Weekly** price history: `GET /api/admin/refresh-prices` at 05:00 UTC Sundays
 - Auth: cron routes check `Authorization: Bearer <CRON_SECRET>` header
+
+### TypeScript / Build Gotchas
+- **No spread on iterables**: The project targets ES5 (`--downlevelIteration` is off). Do NOT use `[...set]`, `[...map.values()]`, or `[...map.entries()]`. Use `Array.from(set)`, `Array.from(map.entries())`, etc. instead.
+- **No `for...of` on Map/Set**: Same reason — use `.forEach()` or convert to array first with `Array.from()`. `for...of` on plain arrays is fine.
+- **No unused variables**: ESLint `@typescript-eslint/no-unused-vars` is enforced. Remove any unused const/let before committing.
+- Always verify new API routes compile before pushing: check for unused imports, unused variables, and iterable spread patterns.
+
+### App Modules
+The app has four modules accessible from the top nav (`components/Navigation.tsx`):
+1. **Backtest** (`/`) — Core strategy backtesting tool
+2. **Signal Explorer** (`/signals`) — Beta. Quintile analysis of 25 metrics vs historical returns
+3. **Stock Screener** (`/screener`) — Beta. Filterable table with Backtest Score (1-100)
+4. **Portfolio Analyzer** (`/portfolio`) — Beta. Manual entry + screenshot upload, AI analysis
+
+All beta modules use static analysis (current metrics, not point-in-time). This limitation is clearly disclosed in each module's UI.
 
 ## Key Conventions
 

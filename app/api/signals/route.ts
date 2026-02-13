@@ -89,9 +89,9 @@ export async function GET() {
     }
 
     // Find min/max year for metadata
-    const years = new Set<number>();
-    for (const row of returnRows) years.add(Number(row.year));
-    const yearsOfData = years.size;
+    const yearsSet = new Set<number>();
+    returnRows.forEach((row) => yearsSet.add(Number(row.year)));
+    const yearsOfData = yearsSet.size;
 
     const results: QuintileResult[] = [];
 
@@ -125,10 +125,10 @@ export async function GET() {
         if (!stockReturns) continue;
 
         quintileReturns[q].stockCount++;
-        for (const [, ret] of stockReturns) {
+        stockReturns.forEach((ret) => {
           quintileReturns[q].totalReturn += ret;
           quintileReturns[q].count++;
-        }
+        });
       }
 
       // Compute average annual returns per quintile

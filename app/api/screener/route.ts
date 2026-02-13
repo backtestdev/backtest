@@ -163,7 +163,7 @@ export async function GET(request: NextRequest) {
     const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
     // Get unique sectors for filter dropdown
-    const sectors = [...new Set(allStocks.map((s) => sectorNames[Number(s.sector)]).filter(Boolean))].sort();
+    const sectors = Array.from(new Set(allStocks.map((s) => sectorNames[Number(s.sector)]).filter(Boolean))).sort();
 
     return NextResponse.json({
       stocks: paginated,
