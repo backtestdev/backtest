@@ -62,6 +62,7 @@ function ScoreBar({ score }: { score: number }) {
 export default function StockScreener() {
   const [data, setData] = useState<ScreenerData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("backtest_score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [sector, setSector] = useState("");
@@ -70,6 +71,7 @@ export default function StockScreener() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         sort: sortField,
@@ -79,10 +81,15 @@ export default function StockScreener() {
       });
       const res = await fetch(`/api/screener?${params}`);
       const json = await res.json();
-      setData(json);
-      if (json.sectors) setSectors(json.sectors);
+      if (json.error) {
+        setError(json.error);
+        setData(null);
+      } else {
+        setData(json);
+        if (json.sectors) setSectors(json.sectors);
+      }
     } catch {
-      console.error("Failed to fetch screener data");
+      setError("Failed to load screener data. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -143,6 +150,16 @@ export default function StockScreener() {
             </span>
           )}
         </div>
+
+        {/* Error state */}
+        {error && (
+          <div className="mb-4 flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
+            <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Table */}
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

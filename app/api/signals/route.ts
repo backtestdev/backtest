@@ -17,7 +17,6 @@ interface QuintileResult {
 const ANALYZABLE_METRICS: { column: string; label: string }[] = [
   // Valuation
   { column: "pe_ratio", label: "P/E Ratio" },
-  { column: "forward_pe", label: "Forward P/E" },
   { column: "price_to_book", label: "Price / Book" },
   { column: "peg_ratio", label: "PEG Ratio" },
   { column: "ev_to_ebitda", label: "EV / EBITDA" },
@@ -61,13 +60,23 @@ export async function GET() {
   try {
     // Get all stocks with their annual returns in one query
     const stockRows = await sql`
-      SELECT s.symbol, s.pe_ratio, s.forward_pe, s.price_to_book, s.peg_ratio,
+      SELECT s.symbol,
+             s.price_to_earnings_ratio AS pe_ratio,
+             s.price_to_book_ratio AS price_to_book,
+             s.price_to_earnings_growth_ratio AS peg_ratio,
              s.ev_to_ebitda, s.price_to_fair_value, s.earnings_yield,
-             s.roe, s.roic, s.return_on_assets, s.profit_margin,
+             s.return_on_equity AS roe,
+             s.return_on_invested_capital AS roic,
+             s.return_on_assets,
+             s.net_profit_margin AS profit_margin,
              s.gross_profit_margin, s.operating_profit_margin,
-             s.revenue_growth, s.earnings_growth, s.revenue_growth_3yr_avg,
-             s.dividend_yield, s.payout_ratio,
-             s.debt_to_equity, s.current_ratio, s.interest_coverage_ratio,
+             s.revenue_growth_yoy AS revenue_growth,
+             s.earnings_growth_yoy AS earnings_growth,
+             s.revenue_growth_3yr_avg,
+             s.dividend_yield,
+             s.dividend_payout_ratio AS payout_ratio,
+             s.debt_to_equity_ratio AS debt_to_equity,
+             s.current_ratio, s.interest_coverage_ratio,
              s.free_cash_flow_yield, s.free_cash_flow_per_share,
              s.market_cap, s.beta
       FROM stocks s

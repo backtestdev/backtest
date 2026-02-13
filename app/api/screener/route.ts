@@ -90,16 +90,25 @@ export async function GET(request: NextRequest) {
   try {
     // Fetch all stocks for scoring
     const allStocks = await sql`
-      SELECT symbol, name, sector,
-             pe_ratio, forward_pe, price_to_book, peg_ratio, ev_to_ebitda,
-             price_to_fair_value, earnings_yield,
-             roe, roic, return_on_assets, profit_margin,
+      SELECT symbol, company_name AS name, sector,
+             price_to_earnings_ratio AS pe_ratio,
+             price_to_book_ratio AS price_to_book,
+             price_to_earnings_growth_ratio AS peg_ratio,
+             ev_to_ebitda, price_to_fair_value, earnings_yield,
+             return_on_equity AS roe,
+             return_on_invested_capital AS roic,
+             return_on_assets,
+             net_profit_margin AS profit_margin,
              gross_profit_margin, operating_profit_margin,
-             revenue_growth, earnings_growth,
-             dividend_yield, payout_ratio,
-             debt_to_equity, current_ratio, interest_coverage_ratio,
+             revenue_growth_yoy AS revenue_growth,
+             earnings_growth_yoy AS earnings_growth,
+             dividend_yield,
+             dividend_payout_ratio AS payout_ratio,
+             debt_to_equity_ratio AS debt_to_equity,
+             current_ratio, interest_coverage_ratio,
              free_cash_flow_yield, free_cash_flow_per_share,
-             market_cap, beta, week52_high_pct
+             market_cap, beta,
+             CASE WHEN year_high > 0 THEN price / year_high ELSE 0 END AS week52_high_pct
       FROM stocks
       WHERE market_cap IS NOT NULL AND market_cap > 0.1
     `;
@@ -120,7 +129,7 @@ export async function GET(request: NextRequest) {
       name: stock.name as string,
       sector: sectorNames[Number(stock.sector)] || "Other",
       sectorId: Number(stock.sector),
-      marketCap: Number(stock.market_cap) || 0,
+      marketCap: (Number(stock.market_cap) || 0) / 1_000_000_000,
       peRatio: stock.pe_ratio !== null ? Number(stock.pe_ratio) : null,
       roe: stock.roe !== null ? Number(stock.roe) : null,
       revenueGrowth: stock.revenue_growth !== null ? Number(stock.revenue_growth) : null,

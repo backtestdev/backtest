@@ -13,6 +13,7 @@ interface Holding {
 interface UserProfile {
   age?: number;
   riskTolerance?: "conservative" | "moderate" | "aggressive";
+  netWorth?: string;
 }
 
 const SECTOR_NAMES: Record<number, string> = {
@@ -39,9 +40,18 @@ export async function POST(request: NextRequest) {
 
     // Fetch stock data for all holdings
     const stockRows = await sql`
-      SELECT symbol, name, sector, market_cap, pe_ratio, roe, profit_margin,
-             revenue_growth, earnings_growth, dividend_yield, debt_to_equity,
-             beta, price_to_book, free_cash_flow_yield, roic
+      SELECT symbol, company_name AS name, sector, market_cap,
+             price_to_earnings_ratio AS pe_ratio,
+             return_on_equity AS roe,
+             net_profit_margin AS profit_margin,
+             revenue_growth_yoy AS revenue_growth,
+             earnings_growth_yoy AS earnings_growth,
+             dividend_yield,
+             debt_to_equity_ratio AS debt_to_equity,
+             beta,
+             price_to_book_ratio AS price_to_book,
+             free_cash_flow_yield,
+             return_on_invested_capital AS roic
       FROM stocks
       WHERE symbol = ANY(${symbols})
     `;
@@ -132,7 +142,7 @@ export async function POST(request: NextRequest) {
         }).join("\n");
 
         const profileContext = profile
-          ? `\nInvestor profile: Age ${profile.age || "unknown"}, Risk tolerance: ${profile.riskTolerance || "moderate"}.`
+          ? `\nInvestor profile: Age ${profile.age || "unknown"}, Risk tolerance: ${profile.riskTolerance || "moderate"}${profile.netWorth ? `, Estimated net worth: ${profile.netWorth}` : ""}.`
           : "";
 
         const response = await openai.chat.completions.create({

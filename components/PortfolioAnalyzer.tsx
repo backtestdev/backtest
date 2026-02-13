@@ -145,7 +145,7 @@ function SectorBar({ breakdown }: { breakdown: SectorBreakdown[] }) {
 
 export default function PortfolioAnalyzer() {
   const [holdings, setHoldings] = useState<Holding[]>([{ symbol: "", shares: 0 }]);
-  const [profile, setProfile] = useState<{ age?: number; riskTolerance?: string }>({});
+  const [profile, setProfile] = useState<{ age?: number; netWorth?: string; riskTolerance?: string }>({});
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
@@ -242,42 +242,62 @@ export default function PortfolioAnalyzer() {
           Enter your holdings for a full analysis with diversification, risk assessment, and AI-powered recommendations.
         </p>
 
-        {/* Input section */}
+        {/* Screenshot upload zone */}
         <div className="mt-8 bg-white rounded-2xl border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-700">Your Holdings</h2>
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={imageLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-              >
-                {imageLoading ? (
-                  <>
-                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Parsing...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
-                    </svg>
-                    Upload screenshot
-                  </>
-                )}
-              </button>
-            </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={imageLoading}
+            className="w-full border-2 border-dashed border-gray-200 rounded-xl p-6 hover:border-blue-300 hover:bg-blue-50/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
+          >
+            {imageLoading ? (
+              <div className="flex flex-col items-center gap-2">
+                <svg className="animate-spin w-8 h-8 text-blue-500" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <p className="text-sm font-medium text-blue-600">Reading your portfolio screenshot...</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                  <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                  </svg>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-700">Upload a screenshot of your portfolio</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Skip manual entry &mdash; AI will extract your tickers, shares, and cost basis automatically
+                  </p>
+                </div>
+                <div className="mt-1 flex items-start gap-1.5 text-[11px] text-gray-400 bg-gray-50 rounded-lg px-3 py-2 max-w-md">
+                  <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+                  </svg>
+                  <span>
+                    Works best with the &quot;Holdings&quot; or &quot;Positions&quot; view from your brokerage (Fidelity, Schwab, Robinhood, etc.) showing ticker symbols and share counts.
+                  </span>
+                </div>
+              </div>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 border-t border-gray-100" />
+            <span className="text-xs font-medium text-gray-300 uppercase tracking-wider">or enter manually</span>
+            <div className="flex-1 border-t border-gray-100" />
           </div>
+
+          {/* Manual entry */}
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Your Holdings</h2>
 
           {/* Column headers */}
           <div className="flex items-center gap-3 mb-2 pl-0">
@@ -313,7 +333,7 @@ export default function PortfolioAnalyzer() {
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
               Optional: About you (for personalized advice)
             </p>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-start gap-4">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Age</label>
                 <input
@@ -323,6 +343,23 @@ export default function PortfolioAnalyzer() {
                   placeholder="30"
                   className="w-20 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
                 />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Est. net worth</label>
+                <select
+                  value={profile.netWorth || ""}
+                  onChange={(e) => setProfile({ ...profile, netWorth: e.target.value || undefined })}
+                  className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 text-gray-700"
+                >
+                  <option value="">Select...</option>
+                  <option value="Under $25K">Under $25K</option>
+                  <option value="$25K – $100K">$25K – $100K</option>
+                  <option value="$100K – $250K">$100K – $250K</option>
+                  <option value="$250K – $500K">$250K – $500K</option>
+                  <option value="$500K – $1M">$500K – $1M</option>
+                  <option value="$1M – $5M">$1M – $5M</option>
+                  <option value="$5M+">$5M+</option>
+                </select>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Risk tolerance</label>
