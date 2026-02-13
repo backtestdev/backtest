@@ -1,19 +1,20 @@
 /**
- * Admin endpoint to refresh the stock database using bulk FMP API calls.
+ * Admin endpoint to refresh the stock database using FMP API calls.
  *
  * POST /api/admin/refresh-data — Protected by x-admin-secret header.
  *
- * Strategy:
+ * Strategy (starter-plan compatible — no bulk TTM endpoints):
  *   1. Create stocks_new table
  *   2. Fetch stock screener (1 API call) → INSERT into stocks_new
- *   3. Wait 10s, fetch ratios-ttm-bulk (1 API call) → UPDATE stocks_new
- *   4. Wait 10s, fetch key-metrics-ttm-bulk (1 API call) → UPDATE stocks_new
- *   5. If bulk returned no data (starter plan), fall back to per-stock enrichment
- *   6. Swap: stocks → stocks_old, stocks_new → stocks
- *   7. Log verification counts
+ *   3. Enrich top stocks by market cap using per-stock /ratios + /key-metrics
+ *      (2 API calls per stock, rate-limited, time-bounded)
+ *   4. Swap: stocks → stocks_old, stocks_new → stocks
+ *   5. Log verification counts
  *
- * On premium plans: 3 bulk API calls total.
- * On starter plans: screener + per-stock enrichment (concurrent, time-bounded).
+ * Within a 5-minute Vercel function, this enriches ~500-600 stocks
+ * (top by market cap). Remaining stocks have basic screener data
+ * (sector, industry, market cap, price) with NULL metric columns.
+ * Use POST /api/admin/refresh-stocks for ongoing cron enrichment.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -30,15 +31,26 @@ const FMP_API_KEY =
   "";
 const FMP_BASE = "https://financialmodelingprep.com/stable";
 
+// Rate limiting — stay under FMP starter plan 300 req/min limit
+let lastFetchTime = 0;
+const MIN_FETCH_INTERVAL_MS = 350; // ~170 req/min, safe margin
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
+  // Rate limit
+  const elapsed = Date.now() - lastFetchTime;
+  if (elapsed < MIN_FETCH_INTERVAL_MS) {
+    await sleep(MIN_FETCH_INTERVAL_MS - elapsed);
+  }
+  lastFetchTime = Date.now();
+
   const sep = endpoint.includes("?") ? "&" : "?";
   const url = `${FMP_BASE}${endpoint}${sep}apikey=${FMP_API_KEY}`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (res.status === 429 && retries > 0) {
       console.warn(`[refresh-data] 429 on ${endpoint}, retry in 5s...`);
       await sleep(5000);
@@ -49,7 +61,7 @@ async function fetchFMP<T>(endpoint: string, retries = 2): Promise<T | null> {
       return null;
     }
     const data = await res.json();
-    if (data && typeof data === "object" && "Error Message" in data) {
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
       console.error(`[refresh-data] FMP error:`, (data as Record<string, string>)["Error Message"]);
       return null;
     }
@@ -80,6 +92,77 @@ interface ScreenerResult {
   isActivelyTrading: boolean;
 }
 
+interface KeyMetrics {
+  marketCap?: number;
+  enterpriseValue?: number;
+  evToSales?: number;
+  evToOperatingCashFlow?: number;
+  evToFreeCashFlow?: number;
+  evToEBITDA?: number;
+  netDebtToEBITDA?: number;
+  currentRatio?: number;
+  incomeQuality?: number;
+  grahamNumber?: number;
+  workingCapital?: number;
+  investedCapital?: number;
+  returnOnAssets?: number;
+  returnOnEquity?: number;
+  returnOnInvestedCapital?: number;
+  returnOnCapitalEmployed?: number;
+  earningsYield?: number;
+  freeCashFlowYield?: number;
+  capexToRevenue?: number;
+  researchAndDevelopementToRevenue?: number;
+  stockBasedCompensationToRevenue?: number;
+  tangibleAssetValue?: number;
+}
+
+interface FinancialRatios {
+  grossProfitMargin?: number;
+  ebitMargin?: number;
+  ebitdaMargin?: number;
+  operatingProfitMargin?: number;
+  pretaxProfitMargin?: number;
+  netProfitMargin?: number;
+  effectiveTaxRate?: number;
+  priceToEarningsRatio?: number;
+  priceToBookRatio?: number;
+  priceToSalesRatio?: number;
+  priceToFreeCashFlowRatio?: number;
+  priceToOperatingCashFlowRatio?: number;
+  debtToEquityRatio?: number;
+  debtToAssetsRatio?: number;
+  debtToCapitalRatio?: number;
+  financialLeverageRatio?: number;
+  interestCoverageRatio?: number;
+  currentRatio?: number;
+  quickRatio?: number;
+  cashRatio?: number;
+  dividendYield?: number;
+  dividendYieldPercentage?: number;
+  dividendPayoutRatio?: number;
+  revenuePerShare?: number;
+  netIncomePerShare?: number;
+  bookValuePerShare?: number;
+  tangibleBookValuePerShare?: number;
+  operatingCashFlowPerShare?: number;
+  freeCashFlowPerShare?: number;
+  cashPerShare?: number;
+  assetTurnover?: number;
+  inventoryTurnover?: number;
+  receivablesTurnover?: number;
+  operatingCashFlowSalesRatio?: number;
+  freeCashFlowOperatingCashFlowRatio?: number;
+  priceToFairValue?: number;
+  debtToMarketCap?: number;
+  enterpriseValueMultiple?: number;
+  priceToEarningsGrowthRatio?: number;
+  daysOfSalesOutstanding?: number;
+  daysOfInventoryOutstanding?: number;
+  daysOfPayablesOutstanding?: number;
+  cashConversionCycle?: number;
+}
+
 // Name patterns that indicate funds, trusts, SPACs, etc. — NOT operating companies
 const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due/i;
 
@@ -95,138 +178,11 @@ function isAssetManagementFund(s: ScreenerResult): boolean {
   );
 }
 
-// ── Field mapping helpers ──────────────────────────────────────────
-
-/**
- * Maps a bulk API field name to the corresponding stocks_new column name.
- * Strips "TTM" suffix and converts camelCase to snake_case.
- */
-function bulkFieldToColumn(field: string): string {
-  // Strip TTM suffix
-  let name = field.replace(/TTM$/, "");
-  // Convert camelCase to snake_case
-  name = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
-  return name;
-}
-
-/**
- * Mapping from ratios-ttm-bulk fields (after stripping TTM and converting to snake_case)
- * to the actual column names in our stocks_new table.
- * Only includes fields where the auto-conversion doesn't match the column name.
- */
-const RATIOS_FIELD_OVERRIDES: Record<string, string> = {
-  "pe_ratio": "price_to_earnings_ratio",
-  "price_to_earnings_ratio": "price_to_earnings_ratio",
-  "price_to_earnings_growth_ratio": "price_to_earnings_growth_ratio",
-  "price_to_book_ratio": "price_to_book_ratio",
-  "price_to_sales_ratio": "price_to_sales_ratio",
-  "price_to_free_cash_flow_ratio": "price_to_free_cash_flow_ratio",
-  "price_to_operating_cash_flow_ratio": "price_to_operating_cash_flow_ratio",
-  "price_to_fair_value": "price_to_fair_value",
-  "enterprise_value_multiple": "enterprise_value_multiple",
-  "gross_profit_margin": "gross_profit_margin",
-  "ebit_margin": "ebit_margin",
-  "ebitda_margin": "ebitda_margin",
-  "operating_profit_margin": "operating_profit_margin",
-  "pretax_profit_margin": "pretax_profit_margin",
-  "net_profit_margin": "net_profit_margin",
-  "effective_tax_rate": "effective_tax_rate",
-  "current_ratio": "current_ratio",
-  "quick_ratio": "quick_ratio",
-  "cash_ratio": "cash_ratio",
-  "debt_to_equity_ratio": "debt_to_equity_ratio",
-  "debt_to_assets_ratio": "debt_to_assets_ratio",
-  "debt_to_capital_ratio": "debt_to_capital_ratio",
-  "financial_leverage_ratio": "financial_leverage_ratio",
-  "debt_to_market_cap": "debt_to_market_cap",
-  "interest_coverage_ratio": "interest_coverage_ratio",
-  "dividend_yield": "dividend_yield",
-  "dividend_yield_percentage": "dividend_yield_percentage",
-  "dividend_payout_ratio": "dividend_payout_ratio",
-  "revenue_per_share": "revenue_per_share",
-  "net_income_per_share": "net_income_per_share",
-  "book_value_per_share": "book_value_per_share",
-  "tangible_book_value_per_share": "tangible_book_value_per_share",
-  "operating_cash_flow_per_share": "operating_cash_flow_per_share",
-  "free_cash_flow_per_share": "free_cash_flow_per_share",
-  "cash_per_share": "cash_per_share",
-  "asset_turnover": "asset_turnover",
-  "inventory_turnover": "inventory_turnover",
-  "receivables_turnover": "receivables_turnover",
-  "days_of_sales_outstanding": "days_of_sales_outstanding",
-  "days_of_inventory_outstanding": "days_of_inventory_outstanding",
-  "days_of_payables_outstanding": "days_of_payables_outstanding",
-  "cash_conversion_cycle": "cash_conversion_cycle",
-  "operating_cash_flow_sales_ratio": "operating_cash_flow_sales_ratio",
-  "free_cash_flow_operating_cash_flow_ratio": "free_cash_flow_operating_cash_flow_ratio",
-  "price_earnings_ratio": "price_to_earnings_ratio",
-  "long_term_debt_to_capital_ratio": "debt_to_capital_ratio",
-  "income_quality": "income_quality",
-  "earnings_yield": "earnings_yield",
-  "free_cash_flow_yield": "free_cash_flow_yield",
-  "return_on_assets": "return_on_assets",
-  "return_on_equity": "return_on_equity",
-  "return_on_invested_capital": "return_on_invested_capital",
-  "return_on_capital_employed": "return_on_capital_employed",
-  "capex_to_revenue": "capex_to_revenue",
-  "graham_number": "graham_number",
-  "net_debt_to_e_b_i_t_d_a": "net_debt_to_ebitda",
-  "ev_to_sales": "ev_to_sales",
-  "ev_to_e_b_i_t_d_a": "ev_to_ebitda",
-  "ev_to_operating_cash_flow": "ev_to_operating_cash_flow",
-  "ev_to_free_cash_flow": "ev_to_free_cash_flow",
-  "research_and_developement_to_revenue": "research_and_development_to_revenue",
-  "stock_based_compensation_to_revenue": "stock_based_compensation_to_revenue",
-};
-
-// All valid column names in the stocks_new table (for validation)
-const VALID_COLUMNS = new Set([
-  "symbol", "company_name", "exchange", "sector", "industry", "country",
-  "market_cap", "price", "beta", "volume", "avg_volume", "last_dividend",
-  "ipo_date", "is_etf", "is_fund", "is_actively_trading", "description",
-  "full_time_employees",
-  "price_to_earnings_ratio", "price_to_earnings_growth_ratio",
-  "price_to_book_ratio", "price_to_sales_ratio",
-  "price_to_free_cash_flow_ratio", "price_to_operating_cash_flow_ratio",
-  "price_to_fair_value", "enterprise_value_multiple",
-  "gross_profit_margin", "ebit_margin", "ebitda_margin",
-  "operating_profit_margin", "pretax_profit_margin", "net_profit_margin",
-  "effective_tax_rate",
-  "return_on_assets", "return_on_equity", "return_on_invested_capital",
-  "return_on_capital_employed", "earnings_yield", "free_cash_flow_yield",
-  "current_ratio", "quick_ratio", "cash_ratio",
-  "debt_to_equity_ratio", "debt_to_assets_ratio", "debt_to_capital_ratio",
-  "financial_leverage_ratio", "debt_to_market_cap", "interest_coverage_ratio",
-  "dividend_yield", "dividend_yield_percentage", "dividend_payout_ratio",
-  "revenue_per_share", "net_income_per_share", "book_value_per_share",
-  "tangible_book_value_per_share", "operating_cash_flow_per_share",
-  "free_cash_flow_per_share", "cash_per_share",
-  "asset_turnover", "inventory_turnover", "receivables_turnover",
-  "days_of_sales_outstanding", "days_of_inventory_outstanding",
-  "days_of_payables_outstanding", "cash_conversion_cycle",
-  "enterprise_value", "ev_to_sales", "ev_to_ebitda",
-  "ev_to_operating_cash_flow", "ev_to_free_cash_flow", "net_debt_to_ebitda",
-  "capex_to_revenue", "free_cash_flow_operating_cash_flow_ratio",
-  "operating_cash_flow_sales_ratio", "income_quality",
-  "graham_number", "working_capital", "invested_capital", "tangible_asset_value",
-  "research_and_development_to_revenue", "stock_based_compensation_to_revenue",
-]);
-
-/**
- * Resolves a bulk API field name to a valid column name, or null if no match.
- */
-function resolveColumn(apiField: string): string | null {
-  if (apiField === "symbol") return null; // Don't update symbol
-  const snaked = bulkFieldToColumn(apiField);
-  // Check override first
-  if (RATIOS_FIELD_OVERRIDES[snaked] && VALID_COLUMNS.has(RATIOS_FIELD_OVERRIDES[snaked])) {
-    return RATIOS_FIELD_OVERRIDES[snaked];
-  }
-  // Direct match
-  if (VALID_COLUMNS.has(snaked)) {
-    return snaked;
-  }
-  return null;
+// Helper: convert value to number or null for SQL
+function toNum(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 // ── Main refresh logic ─────────────────────────────────────────────
@@ -257,7 +213,7 @@ export async function POST(request: NextRequest) {
     log.push("Creating stocks_new table...");
     await createStocksNewTable(sql);
 
-    // ── Step 2a: Fetch stock screener ────────────────────────────
+    // ── Step 2: Fetch stock screener ─────────────────────────────
     log.push("Fetching stock screener...");
     const screenerResults = await fetchFMP<ScreenerResult[]>(
       "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=5000"
@@ -284,221 +240,174 @@ export async function POST(request: NextRequest) {
 
     // Insert all into stocks_new
     let insertedCount = 0;
-    // Batch insert in chunks of 50 for efficiency
-    for (let i = 0; i < filtered.length; i += 50) {
-      const batch = filtered.slice(i, i + 50);
-      for (const s of batch) {
-        await sql`
-          INSERT INTO stocks_new (symbol, company_name, market_cap, sector, industry, price, beta, volume, exchange, country, is_etf, is_fund, is_actively_trading, last_dividend, updated_at)
-          VALUES (${s.symbol}, ${s.companyName}, ${s.marketCap}, ${s.sector}, ${s.industry}, ${s.price || null}, ${s.beta || null}, ${s.volume || null}, ${s.exchange}, ${s.country || 'US'}, ${s.isEtf || false}, ${s.isFund || false}, ${s.isActivelyTrading}, ${s.lastAnnualDividend || null}, NOW())
-          ON CONFLICT (symbol) DO UPDATE SET
-            company_name = EXCLUDED.company_name, market_cap = EXCLUDED.market_cap,
-            sector = EXCLUDED.sector, industry = EXCLUDED.industry, price = EXCLUDED.price,
-            beta = EXCLUDED.beta, volume = EXCLUDED.volume, exchange = EXCLUDED.exchange,
-            country = EXCLUDED.country, is_etf = EXCLUDED.is_etf, is_fund = EXCLUDED.is_fund,
-            is_actively_trading = EXCLUDED.is_actively_trading, last_dividend = EXCLUDED.last_dividend,
-            updated_at = NOW()
-        `;
-        insertedCount++;
-      }
+    for (const s of filtered) {
+      await sql`
+        INSERT INTO stocks_new (symbol, company_name, market_cap, sector, industry, price, beta, volume, exchange, country, is_etf, is_fund, is_actively_trading, last_dividend, updated_at)
+        VALUES (${s.symbol}, ${s.companyName}, ${s.marketCap}, ${s.sector}, ${s.industry}, ${s.price || null}, ${s.beta || null}, ${s.volume || null}, ${s.exchange}, ${s.country || 'US'}, ${s.isEtf || false}, ${s.isFund || false}, ${s.isActivelyTrading}, ${s.lastAnnualDividend || null}, NOW())
+        ON CONFLICT (symbol) DO UPDATE SET
+          company_name = EXCLUDED.company_name, market_cap = EXCLUDED.market_cap,
+          sector = EXCLUDED.sector, industry = EXCLUDED.industry, price = EXCLUDED.price,
+          beta = EXCLUDED.beta, volume = EXCLUDED.volume, exchange = EXCLUDED.exchange,
+          country = EXCLUDED.country, is_etf = EXCLUDED.is_etf, is_fund = EXCLUDED.is_fund,
+          is_actively_trading = EXCLUDED.is_actively_trading, last_dividend = EXCLUDED.last_dividend,
+          updated_at = NOW()
+      `;
+      insertedCount++;
     }
     log.push(`Inserted/updated ${insertedCount} stocks into stocks_new`);
 
-    // ── Step 2b: Wait 10s, then fetch Ratios TTM Bulk ────────────
-    log.push("Waiting 10 seconds before ratios-ttm-bulk call...");
-    await sleep(10000);
+    // ── Step 3: Per-stock enrichment (starter-plan compatible) ───
+    log.push("Starting per-stock enrichment (ratios + key-metrics)...");
 
-    log.push("Fetching ratios-ttm-bulk...");
-    const ratiosBulk = await fetchFMP<Record<string, unknown>[]>("/ratios-ttm-bulk");
+    // Get all symbols ordered by market cap (most important first)
+    const symbolRows = await sql`SELECT symbol FROM stocks_new ORDER BY market_cap DESC NULLS LAST`;
+    const allSymbols = symbolRows.map((r) => r.symbol as string);
 
-    if (ratiosBulk && ratiosBulk.length > 0) {
-      log.push(`Ratios TTM bulk: ${ratiosBulk.length} entries received`);
-      let ratiosUpdated = 0;
+    const CONCURRENCY = 3;
+    const TIME_BUDGET_MS = 240_000; // 4 minutes for enrichment
+    const enrichStart = Date.now();
+    let enriched = 0;
+    let enrichFailed = 0;
 
-      for (const entry of ratiosBulk) {
-        const symbol = entry.symbol as string;
-        if (!symbol) continue;
-
-        // Build SET clause dynamically from available fields
-        const updates: Record<string, number> = {};
-        for (const [key, value] of Object.entries(entry)) {
-          if (key === "symbol") continue;
-          const col = resolveColumn(key);
-          if (col && value != null && typeof value === "number" && Number.isFinite(value)) {
-            updates[col] = value;
-          }
-        }
-
-        if (Object.keys(updates).length === 0) continue;
-
-        // Build dynamic UPDATE query
-        // We need to use raw SQL for dynamic column updates
-        const setClauses = Object.entries(updates)
-          .map(([col, val]) => `${col} = ${val}`)
-          .join(", ");
-
-        try {
-          await (sql as unknown as (q: string, p: unknown[]) => Promise<unknown>)(
-            `UPDATE stocks_new SET ${setClauses}, updated_at = NOW() WHERE symbol = $1`,
-            [symbol]
-          );
-          ratiosUpdated++;
-        } catch {
-          // Symbol not in our screened list — skip
-        }
-      }
-      log.push(`Ratios TTM: updated ${ratiosUpdated} stocks`);
-    } else {
-      log.push("WARNING: ratios-ttm-bulk returned no data");
-    }
-
-    // ── Step 2c: Wait 10s, then fetch Key Metrics TTM Bulk ───────
-    log.push("Waiting 10 seconds before key-metrics-ttm-bulk call...");
-    await sleep(10000);
-
-    log.push("Fetching key-metrics-ttm-bulk...");
-    const metricsBulk = await fetchFMP<Record<string, unknown>[]>("/key-metrics-ttm-bulk");
-
-    if (metricsBulk && metricsBulk.length > 0) {
-      log.push(`Key Metrics TTM bulk: ${metricsBulk.length} entries received`);
-      let metricsUpdated = 0;
-
-      for (const entry of metricsBulk) {
-        const symbol = entry.symbol as string;
-        if (!symbol) continue;
-
-        const updates: Record<string, number> = {};
-        for (const [key, value] of Object.entries(entry)) {
-          if (key === "symbol") continue;
-          const col = resolveColumn(key);
-          if (col && value != null && typeof value === "number" && Number.isFinite(value)) {
-            updates[col] = value;
-          }
-        }
-
-        if (Object.keys(updates).length === 0) continue;
-
-        const setClauses = Object.entries(updates)
-          .map(([col, val]) => `${col} = ${val}`)
-          .join(", ");
-
-        try {
-          await (sql as unknown as (q: string, p: unknown[]) => Promise<unknown>)(
-            `UPDATE stocks_new SET ${setClauses}, updated_at = NOW() WHERE symbol = $1`,
-            [symbol]
-          );
-          metricsUpdated++;
-        } catch {
-          // Symbol not in our screened list — skip
-        }
-      }
-      log.push(`Key Metrics TTM: updated ${metricsUpdated} stocks`);
-    } else {
-      log.push("WARNING: key-metrics-ttm-bulk returned no data");
-    }
-
-    // ── Step 2d: Per-stock fallback if bulk returned no data ─────
-    const bulkWorked =
-      (ratiosBulk && ratiosBulk.length > 0) ||
-      (metricsBulk && metricsBulk.length > 0);
-
-    if (!bulkWorked) {
-      log.push(
-        "Bulk endpoints not available (starter plan?), falling back to per-stock enrichment..."
-      );
-
-      // Get all symbols ordered by market cap (most important first)
-      const symbolRows = await sql`SELECT symbol FROM stocks_new ORDER BY market_cap DESC NULLS LAST`;
-      const allSymbols = symbolRows.map((r) => r.symbol as string);
-
-      const CONCURRENCY = 5;
-      const TIME_BUDGET_MS = 210_000; // 3.5 minutes for enrichment
-      const enrichStart = Date.now();
-      let enriched = 0;
-      let enrichFailed = 0;
-
-      for (let i = 0; i < allSymbols.length; i += CONCURRENCY) {
-        if (Date.now() - enrichStart > TIME_BUDGET_MS) {
-          log.push(
-            `Time budget reached after enriching ${enriched}/${allSymbols.length} stocks`
-          );
-          break;
-        }
-
-        const batch = allSymbols.slice(i, i + CONCURRENCY);
-        const results = await Promise.allSettled(
-          batch.map(async (symbol) => {
-            const [ratiosData, metricsData] = await Promise.all([
-              fetchFMP<Record<string, unknown>[]>(
-                `/ratios?symbol=${symbol}&period=annual&limit=1`
-              ),
-              fetchFMP<Record<string, unknown>[]>(
-                `/key-metrics?symbol=${symbol}&period=annual&limit=1`
-              ),
-            ]);
-
-            const updates: Record<string, number> = {};
-            const sources = [
-              ...(ratiosData && ratiosData.length > 0 ? [ratiosData[0]] : []),
-              ...(metricsData && metricsData.length > 0
-                ? [metricsData[0]]
-                : []),
-            ];
-
-            for (const source of sources) {
-              for (const [key, value] of Object.entries(source)) {
-                if (key === "symbol" || key === "date" || key === "period")
-                  continue;
-                const col = resolveColumn(key);
-                if (
-                  col &&
-                  value != null &&
-                  typeof value === "number" &&
-                  Number.isFinite(value)
-                ) {
-                  updates[col] = value;
-                }
-              }
-            }
-
-            if (Object.keys(updates).length === 0) return;
-
-            const setClauses = Object.entries(updates)
-              .map(([col, val]) => `${col} = ${val}`)
-              .join(", ");
-
-            await (
-              sql as unknown as (
-                q: string,
-                p: unknown[]
-              ) => Promise<unknown>
-            )(
-              `UPDATE stocks_new SET ${setClauses}, updated_at = NOW() WHERE symbol = $1`,
-              [symbol]
-            );
-          })
+    for (let i = 0; i < allSymbols.length; i += CONCURRENCY) {
+      if (Date.now() - enrichStart > TIME_BUDGET_MS) {
+        log.push(
+          `Time budget reached after enriching ${enriched}/${allSymbols.length} stocks`
         );
-
-        for (const r of results) {
-          if (r.status === "fulfilled") enriched++;
-          else enrichFailed++;
-        }
-
-        // Log progress every 100 stocks
-        if ((i + CONCURRENCY) % 100 < CONCURRENCY) {
-          const elapsed = Math.round((Date.now() - enrichStart) / 1000);
-          log.push(
-            `  ...enriched ${enriched}/${allSymbols.length} (${elapsed}s elapsed)`
-          );
-        }
+        break;
       }
 
-      log.push(
-        `Per-stock enrichment: ${enriched} enriched, ${enrichFailed} failed, ${allSymbols.length - enriched - enrichFailed} skipped (timeout)`
+      const batch = allSymbols.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (sym) => {
+          // Fetch ratios and key-metrics in parallel per stock
+          const [ratiosData, metricsData] = await Promise.all([
+            fetchFMP<FinancialRatios[]>(
+              `/ratios?symbol=${sym}&period=annual&limit=1`
+            ),
+            fetchFMP<KeyMetrics[]>(
+              `/key-metrics?symbol=${sym}&period=annual&limit=1`
+            ),
+          ]);
+
+          const finRatios = ratiosData?.[0] || null;
+          const metrics = metricsData?.[0] || null;
+
+          if (!finRatios && !metrics) return; // Nothing to update
+
+          // Update using tagged template literal — same pattern as refresh-stocks
+          await sql`
+            UPDATE stocks_new SET
+              -- Valuation
+              price_to_earnings_ratio = COALESCE(${toNum(finRatios?.priceToEarningsRatio)}, price_to_earnings_ratio),
+              price_to_earnings_growth_ratio = COALESCE(${toNum(finRatios?.priceToEarningsGrowthRatio)}, price_to_earnings_growth_ratio),
+              price_to_book_ratio = COALESCE(${toNum(finRatios?.priceToBookRatio)}, price_to_book_ratio),
+              price_to_sales_ratio = COALESCE(${toNum(finRatios?.priceToSalesRatio)}, price_to_sales_ratio),
+              price_to_free_cash_flow_ratio = COALESCE(${toNum(finRatios?.priceToFreeCashFlowRatio)}, price_to_free_cash_flow_ratio),
+              price_to_operating_cash_flow_ratio = COALESCE(${toNum(finRatios?.priceToOperatingCashFlowRatio)}, price_to_operating_cash_flow_ratio),
+              price_to_fair_value = COALESCE(${toNum(finRatios?.priceToFairValue)}, price_to_fair_value),
+              enterprise_value_multiple = COALESCE(${toNum(finRatios?.enterpriseValueMultiple)}, enterprise_value_multiple),
+
+              -- Profitability
+              gross_profit_margin = COALESCE(${toNum(finRatios?.grossProfitMargin)}, gross_profit_margin),
+              ebit_margin = COALESCE(${toNum(finRatios?.ebitMargin)}, ebit_margin),
+              ebitda_margin = COALESCE(${toNum(finRatios?.ebitdaMargin)}, ebitda_margin),
+              operating_profit_margin = COALESCE(${toNum(finRatios?.operatingProfitMargin)}, operating_profit_margin),
+              pretax_profit_margin = COALESCE(${toNum(finRatios?.pretaxProfitMargin)}, pretax_profit_margin),
+              net_profit_margin = COALESCE(${toNum(finRatios?.netProfitMargin)}, net_profit_margin),
+              effective_tax_rate = COALESCE(${toNum(finRatios?.effectiveTaxRate)}, effective_tax_rate),
+
+              -- Returns
+              return_on_assets = COALESCE(${toNum(metrics?.returnOnAssets)}, return_on_assets),
+              return_on_equity = COALESCE(${toNum(metrics?.returnOnEquity)}, return_on_equity),
+              return_on_invested_capital = COALESCE(${toNum(metrics?.returnOnInvestedCapital)}, return_on_invested_capital),
+              return_on_capital_employed = COALESCE(${toNum(metrics?.returnOnCapitalEmployed)}, return_on_capital_employed),
+              earnings_yield = COALESCE(${toNum(metrics?.earningsYield)}, earnings_yield),
+              free_cash_flow_yield = COALESCE(${toNum(metrics?.freeCashFlowYield)}, free_cash_flow_yield),
+
+              -- Liquidity
+              current_ratio = COALESCE(${toNum(metrics?.currentRatio ?? finRatios?.currentRatio)}, current_ratio),
+              quick_ratio = COALESCE(${toNum(finRatios?.quickRatio)}, quick_ratio),
+              cash_ratio = COALESCE(${toNum(finRatios?.cashRatio)}, cash_ratio),
+
+              -- Leverage
+              debt_to_equity_ratio = COALESCE(${toNum(finRatios?.debtToEquityRatio)}, debt_to_equity_ratio),
+              debt_to_assets_ratio = COALESCE(${toNum(finRatios?.debtToAssetsRatio)}, debt_to_assets_ratio),
+              debt_to_capital_ratio = COALESCE(${toNum(finRatios?.debtToCapitalRatio)}, debt_to_capital_ratio),
+              financial_leverage_ratio = COALESCE(${toNum(finRatios?.financialLeverageRatio)}, financial_leverage_ratio),
+              debt_to_market_cap = COALESCE(${toNum(finRatios?.debtToMarketCap)}, debt_to_market_cap),
+              interest_coverage_ratio = COALESCE(${toNum(finRatios?.interestCoverageRatio)}, interest_coverage_ratio),
+
+              -- Dividends
+              dividend_yield = COALESCE(${toNum(finRatios?.dividendYield)}, dividend_yield),
+              dividend_yield_percentage = COALESCE(${toNum(finRatios?.dividendYieldPercentage)}, dividend_yield_percentage),
+              dividend_payout_ratio = COALESCE(${toNum(finRatios?.dividendPayoutRatio)}, dividend_payout_ratio),
+
+              -- Per share
+              revenue_per_share = COALESCE(${toNum(finRatios?.revenuePerShare)}, revenue_per_share),
+              net_income_per_share = COALESCE(${toNum(finRatios?.netIncomePerShare)}, net_income_per_share),
+              book_value_per_share = COALESCE(${toNum(finRatios?.bookValuePerShare)}, book_value_per_share),
+              tangible_book_value_per_share = COALESCE(${toNum(finRatios?.tangibleBookValuePerShare)}, tangible_book_value_per_share),
+              operating_cash_flow_per_share = COALESCE(${toNum(finRatios?.operatingCashFlowPerShare)}, operating_cash_flow_per_share),
+              free_cash_flow_per_share = COALESCE(${toNum(finRatios?.freeCashFlowPerShare)}, free_cash_flow_per_share),
+              cash_per_share = COALESCE(${toNum(finRatios?.cashPerShare)}, cash_per_share),
+
+              -- Efficiency
+              asset_turnover = COALESCE(${toNum(finRatios?.assetTurnover)}, asset_turnover),
+              inventory_turnover = COALESCE(${toNum(finRatios?.inventoryTurnover)}, inventory_turnover),
+              receivables_turnover = COALESCE(${toNum(finRatios?.receivablesTurnover)}, receivables_turnover),
+              days_of_sales_outstanding = COALESCE(${toNum(finRatios?.daysOfSalesOutstanding)}, days_of_sales_outstanding),
+              days_of_inventory_outstanding = COALESCE(${toNum(finRatios?.daysOfInventoryOutstanding)}, days_of_inventory_outstanding),
+              days_of_payables_outstanding = COALESCE(${toNum(finRatios?.daysOfPayablesOutstanding)}, days_of_payables_outstanding),
+              cash_conversion_cycle = COALESCE(${toNum(finRatios?.cashConversionCycle)}, cash_conversion_cycle),
+
+              -- Enterprise Value
+              enterprise_value = COALESCE(${toNum(metrics?.enterpriseValue)}, enterprise_value),
+              ev_to_sales = COALESCE(${toNum(metrics?.evToSales)}, ev_to_sales),
+              ev_to_ebitda = COALESCE(${toNum(metrics?.evToEBITDA)}, ev_to_ebitda),
+              ev_to_operating_cash_flow = COALESCE(${toNum(metrics?.evToOperatingCashFlow)}, ev_to_operating_cash_flow),
+              ev_to_free_cash_flow = COALESCE(${toNum(metrics?.evToFreeCashFlow)}, ev_to_free_cash_flow),
+              net_debt_to_ebitda = COALESCE(${toNum(metrics?.netDebtToEBITDA)}, net_debt_to_ebitda),
+
+              -- Cash Flow
+              capex_to_revenue = COALESCE(${toNum(metrics?.capexToRevenue)}, capex_to_revenue),
+              operating_cash_flow_sales_ratio = COALESCE(${toNum(finRatios?.operatingCashFlowSalesRatio)}, operating_cash_flow_sales_ratio),
+              free_cash_flow_operating_cash_flow_ratio = COALESCE(${toNum(finRatios?.freeCashFlowOperatingCashFlowRatio)}, free_cash_flow_operating_cash_flow_ratio),
+              income_quality = COALESCE(${toNum(metrics?.incomeQuality)}, income_quality),
+
+              -- Other
+              graham_number = COALESCE(${toNum(metrics?.grahamNumber)}, graham_number),
+              working_capital = COALESCE(${toNum(metrics?.workingCapital)}, working_capital),
+              invested_capital = COALESCE(${toNum(metrics?.investedCapital)}, invested_capital),
+              tangible_asset_value = COALESCE(${toNum(metrics?.tangibleAssetValue)}, tangible_asset_value),
+              research_and_development_to_revenue = COALESCE(${toNum(metrics?.researchAndDevelopementToRevenue)}, research_and_development_to_revenue),
+              stock_based_compensation_to_revenue = COALESCE(${toNum(metrics?.stockBasedCompensationToRevenue)}, stock_based_compensation_to_revenue),
+
+              updated_at = NOW()
+            WHERE symbol = ${sym}
+          `;
+        })
       );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") enriched++;
+        else enrichFailed++;
+      }
+
+      // Log progress every 50 stocks
+      if ((i + CONCURRENCY) % 51 < CONCURRENCY) {
+        const elapsed = Math.round((Date.now() - enrichStart) / 1000);
+        log.push(
+          `  ...enriched ${enriched}/${allSymbols.length} (${elapsed}s elapsed)`
+        );
+      }
     }
 
-    // ── Step 3: Swap tables ───────────────────────────────────────
+    log.push(
+      `Per-stock enrichment: ${enriched} enriched, ${enrichFailed} failed, ${allSymbols.length - enriched - enrichFailed} skipped (timeout)`
+    );
+
+    // ── Step 4: Swap tables ───────────────────────────────────────
     log.push("Swapping tables...");
 
     // Drop old backup if it exists
@@ -582,6 +491,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       verification,
+      enrichment: {
+        enriched,
+        failed: enrichFailed,
+        skipped: allSymbols.length - enriched - enrichFailed,
+        total: allSymbols.length,
+      },
       aapl: aapl[0] || null,
       log,
     });
