@@ -20,7 +20,7 @@ const METRIC_ALIASES: Record<string, string[]> = {
   forward_pe: ["forward pe", "forward p/e", "fwd pe", "fwd p/e"],
   price_to_book: ["pb", "p/b", "pb ratio", "price to book", "price-to-book"],
   dividend_yield: ["dividend", "div yield", "dividend yield", "yield"],
-  dividend_growth_years: ["dividend growth", "div growth years", "consecutive dividend"],
+  // dividend_growth_years not reliably populated — "dividend growth" handled by composites in rule-based parser
   payout_ratio: ["payout", "payout ratio", "dividend payout"],
   revenue_growth: ["revenue growth", "rev growth", "sales growth", "top line growth"],
   revenue_growth_quarters: ["revenue growth quarters", "consecutive quarters revenue"],
@@ -169,7 +169,7 @@ Available metrics:
 - pe_ratio (Price-to-Earnings ratio)
 - forward_pe (Forward P/E ratio)
 - dividend_yield (as decimal, e.g. 0.04 for 4%)
-- dividend_growth_years (consecutive years of dividend growth)
+- payout_ratio (dividend payout ratio as decimal, e.g. 0.5 for 50%. NOTE: for "dividend aristocrats" or "consecutive dividend growth" requests, use dividend_yield > 0.025 + payout_ratio < 0.7 + payout_ratio > 0 + free_cash_flow_per_share > 0 as a proxy)
 - revenue_growth (year-over-year revenue growth rate as decimal, e.g. 0.20 for 20%. This is most recent year vs prior year)
 - revenue_growth_3yr_avg (3-year average annual revenue growth rate as decimal)
 - revenue_growth_quarters (consecutive years of revenue growth — despite the name this is years, not quarters)
@@ -183,7 +183,6 @@ Available metrics:
 - current_ratio
 - roe (return on equity as decimal)
 - roic (return on invested capital as decimal)
-- payout_ratio (dividend payout ratio as decimal)
 - beta
 - week52_high_pct (percentage of 52-week high, 1.0 = at the high)
 - sector (use value 1 for tech, 2 for healthcare, 3 for finance, 4 for energy, 5 for consumer, 6 for industrials, 7 for basic materials, 8 for real estate, 9 for utilities, 10 for communication services)
@@ -487,12 +486,34 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
   }
 
   // Dividend growth patterns
-  const divGrowthMatch = lower.match(/(\d+)\+?\s*years?\s*(?:of\s*)?(?:consecutive\s*)?dividend\s*growth/);
+  const divGrowthMatch = lower.match(/(\d+)\+?\s*years?\s*(?:of\s*)?(?:consecutive\s*)?dividend\s*(?:growth|increase)/);
   if (divGrowthMatch) {
-    filters.push({ metric: "dividend_growth_years", operator: ">=", value: parseFloat(divGrowthMatch[1]) });
+    // consecutive_dividend_growth_years isn't reliably populated from FMP,
+    // so approximate: require dividend yield + sustainable payout + positive FCF
+    if (!filters.some(f => f.metric === "dividend_yield")) {
+      filters.push({ metric: "dividend_yield", operator: ">", value: 0.02 });
+    }
+    if (!filters.some(f => f.metric === "payout_ratio")) {
+      filters.push({ metric: "payout_ratio", operator: "<", value: 0.75 });
+      filters.push({ metric: "payout_ratio", operator: ">", value: 0 });
+    }
+    if (!filters.some(f => f.metric === "free_cash_flow_per_share")) {
+      filters.push({ metric: "free_cash_flow_per_share", operator: ">", value: 0 });
+    }
   }
   if (lower.includes("dividend aristocrat")) {
-    filters.push({ metric: "dividend_growth_years", operator: ">=", value: 25 });
+    // consecutive_dividend_growth_years isn't reliably populated from FMP,
+    // so approximate with: high yield + sustainable payout + positive FCF
+    if (!filters.some(f => f.metric === "dividend_yield")) {
+      filters.push({ metric: "dividend_yield", operator: ">", value: 0.025 });
+    }
+    if (!filters.some(f => f.metric === "payout_ratio")) {
+      filters.push({ metric: "payout_ratio", operator: "<", value: 0.7 });
+      filters.push({ metric: "payout_ratio", operator: ">", value: 0 });
+    }
+    if (!filters.some(f => f.metric === "free_cash_flow_per_share")) {
+      filters.push({ metric: "free_cash_flow_per_share", operator: ">", value: 0 });
+    }
   }
 
   // Revenue growth patterns

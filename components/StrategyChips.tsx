@@ -3,8 +3,8 @@
 const EXAMPLE_STRATEGIES = [
   // Basic Value & Dividend
   {
-    label: "Dividend Aristocrats",
-    query: "Dividend aristocrats: 25+ years of consecutive dividend increases",
+    label: "Dividend Value",
+    query: "Dividend yield over 3% with P/E under 15, payout ratio under 70%, and debt-to-equity under 1",
   },
   {
     label: "Deep Value",
