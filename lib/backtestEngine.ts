@@ -37,33 +37,26 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
       console.log(`[Backtest] Tickers not in DB: ${notFound.join(", ")}`);
     }
 
-    // Backfill returns from stock_annual_returns DB table for stocks missing them.
-    // The in-memory cache may not have returns if prices were refreshed after the cache loaded.
-    const missingReturnsTickers = allByTicker
-      .filter(s => Object.keys(s.historical_returns).length === 0)
-      .map(s => s.ticker);
+    // Always load fresh returns from DB for ticker-selected stocks.
+    // The in-memory cache may have stale/empty returns (e.g., cache loaded before price refresh).
+    // IMPORTANT: create shallow copies — never mutate the cached stock objects.
+    const tickerList = allByTicker.map(s => s.ticker);
+    console.log(`[Backtest] Loading returns from DB for ${tickerList.length} tickers`);
+    const dbReturns = await loadReturnsForTickers(tickerList);
+    console.log(`[Backtest] DB returned returns for ${dbReturns.size}/${tickerList.length} tickers`);
 
-    if (missingReturnsTickers.length > 0) {
-      console.log(`[Backtest] Backfilling returns from DB for ${missingReturnsTickers.length} tickers: ${missingReturnsTickers.join(", ")}`);
-      const dbReturns = await loadReturnsForTickers(missingReturnsTickers);
-      for (const stock of allByTicker) {
-        if (Object.keys(stock.historical_returns).length === 0 && dbReturns.has(stock.ticker)) {
-          stock.historical_returns = dbReturns.get(stock.ticker)!;
-        }
+    const stocksWithReturns = allByTicker.map(s => {
+      const freshReturns = dbReturns.get(s.ticker);
+      if (freshReturns && Object.keys(freshReturns).length > 0) {
+        // Shallow copy with fresh DB returns — don't mutate cache
+        return { ...s, historical_returns: freshReturns };
       }
-      const backfilled = missingReturnsTickers.filter(t => dbReturns.has(t));
-      const stillMissing = missingReturnsTickers.filter(t => !dbReturns.has(t));
-      if (backfilled.length > 0) {
-        console.log(`[Backtest] Backfilled returns for ${backfilled.length} tickers: ${backfilled.join(", ")}`);
-      }
-      if (stillMissing.length > 0) {
-        console.log(`[Backtest] No DB returns found for: ${stillMissing.join(", ")}`);
-      }
-    }
+      // Keep original (may already have returns from cache attach)
+      return { ...s };
+    });
 
-    // Only keep stocks that have historical returns data so the chart isn't flat
-    const withReturns = allByTicker.filter(s => Object.keys(s.historical_returns).length > 0);
-    const noReturns = allByTicker.filter(s => Object.keys(s.historical_returns).length === 0);
+    const withReturns = stocksWithReturns.filter(s => Object.keys(s.historical_returns).length > 0);
+    const noReturns = stocksWithReturns.filter(s => Object.keys(s.historical_returns).length === 0);
     if (noReturns.length > 0) {
       tickerWarnings.push(`${noReturns.length} stock(s) found but had no price history: ${noReturns.map(s => s.ticker).join(", ")}`);
       console.log(`[Backtest] Tickers with no returns: ${noReturns.map(s => s.ticker).join(", ")}`);
