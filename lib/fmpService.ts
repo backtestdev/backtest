@@ -5,8 +5,8 @@
  * (single unified `stocks` table) instead of making live FMP API calls
  * during requests.
  *
- * Data is populated via POST /api/admin/refresh-data which uses bulk
- * FMP API calls (screener + ratios-ttm-bulk + key-metrics-ttm-bulk).
+ * Data is populated via POST /api/admin/refresh-data which uses the
+ * FMP screener + per-stock ratios & key-metrics enrichment.
  *
  * Maintains the same StockData interface so all downstream code
  * (stockData.ts, backtestEngine.ts, API routes) works unchanged.

@@ -62,7 +62,7 @@ One-time setup to populate the database:
 # 1. Initialize tables (run once, or after schema changes)
 curl -X POST http://localhost:3000/api/db/init
 
-# 2a. RECOMMENDED: Bulk refresh via 3 API calls (screener + ratios-ttm-bulk + key-metrics-ttm-bulk)
+# 2a. RECOMMENDED: Full refresh (screener + per-stock ratios & key-metrics enrichment)
 curl -X POST http://localhost:3000/api/admin/refresh-data
 
 # 2b. ALTERNATIVE: Per-stock enrichment via CLI script (slower but more granular)
@@ -77,7 +77,7 @@ npx tsx scripts/populate-stocks.ts
 
 Three options to update the stock database:
 
-1. **Bulk refresh endpoint** (3 API calls total — fastest):
+1. **Full refresh endpoint** (screener + per-stock enrichment, 3-5 min):
    ```bash
    curl -X POST http://localhost:3000/api/admin/refresh-data \
      -H "x-admin-secret: $ADMIN_SECRET"

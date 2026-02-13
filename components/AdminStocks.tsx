@@ -26,6 +26,7 @@ interface RefreshResult {
 interface BulkRefreshResult {
   success?: boolean;
   verification?: { total: number; has_pe: number; has_roe: number; has_div_yield: number };
+  enrichment?: { enriched: number; failed: number; skipped: number; total: number };
   aapl?: Record<string, unknown> | null;
   log?: string[];
   error?: string;
@@ -233,10 +234,10 @@ export default function AdminStocks() {
 
         {/* Bulk refresh controls (recommended) */}
         <div className="mt-6 bg-white rounded-2xl border border-blue-200 p-6">
-          <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wide">Bulk Refresh (Recommended)</h2>
+          <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wide">Full Refresh (Recommended)</h2>
           <p className="text-xs text-gray-400 mt-1">
-            Refreshes the entire database using only 3 FMP API calls: stock screener + ratios TTM bulk + key metrics TTM bulk.
-            Creates a new table, populates it, then atomically swaps. Takes ~30 seconds.
+            Refreshes the entire database: stock screener + per-stock ratios &amp; key metrics enrichment.
+            Creates a new table, enriches top stocks by market cap, then atomically swaps. Takes 3-5 minutes.
           </p>
 
           <button
@@ -250,10 +251,10 @@ export default function AdminStocks() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Bulk refreshing... (~30 seconds)
+                Refreshing... (3-5 minutes)
               </span>
             ) : (
-              "Bulk Refresh (3 API calls)"
+              "Full Refresh (screener + enrichment)"
             )}
           </button>
         </div>
@@ -267,7 +268,27 @@ export default function AdminStocks() {
           }`}>
             {bulkResult.success ? (
               <div className="text-sm">
-                <p className="font-medium text-emerald-800">Bulk refresh complete</p>
+                <p className="font-medium text-emerald-800">Refresh complete</p>
+                {bulkResult.enrichment && (
+                  <dl className="mt-3 space-y-1 text-emerald-700">
+                    <div className="flex justify-between">
+                      <dt>Enriched (ratios + metrics)</dt>
+                      <dd className="font-medium">{bulkResult.enrichment.enriched.toLocaleString()} / {bulkResult.enrichment.total.toLocaleString()}</dd>
+                    </div>
+                    {bulkResult.enrichment.failed > 0 && (
+                      <div className="flex justify-between">
+                        <dt>Failed</dt>
+                        <dd className="font-medium text-amber-700">{bulkResult.enrichment.failed}</dd>
+                      </div>
+                    )}
+                    {bulkResult.enrichment.skipped > 0 && (
+                      <div className="flex justify-between">
+                        <dt>Skipped (timeout)</dt>
+                        <dd className="font-medium text-gray-500">{bulkResult.enrichment.skipped.toLocaleString()}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
                 {bulkResult.verification && (
                   <dl className="mt-3 space-y-1 text-emerald-700">
                     <div className="flex justify-between">
