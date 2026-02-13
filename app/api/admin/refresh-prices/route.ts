@@ -127,8 +127,7 @@ export async function POST(request: NextRequest) {
          ON CONFLICT (symbol, year) DO UPDATE SET
            annual_return = EXCLUDED.annual_return,
            year_end_close = EXCLUDED.year_end_close`;
-      // neon() supports sql(string, params[]) at runtime; cast to satisfy TS
-      await (sql as unknown as (q: string, p: unknown[]) => Promise<unknown[]>)(query, params);
+      await sql.query(query, params);
       insertedRows += batch.length;
     }
 
