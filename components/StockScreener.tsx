@@ -236,6 +236,8 @@ export default function StockScreener() {
     setSelectedStock(stock);
     setSearchQuery("");
     setShowDropdown(false);
+    // Smooth scroll to top so the profile card is visible
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const setCapFilter = (min: number, max: number) => {

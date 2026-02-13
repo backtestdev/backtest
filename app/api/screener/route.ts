@@ -49,10 +49,9 @@ const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: 
   // Beta — higher beta stocks show stronger raw returns in signal explorer data.
   // Strongest spread factor; weight aligns with empirical quintile results.
   { column: "beta", weight: 8, capLow: 0, capHigh: 3 },
-  // Size confidence — log(market cap in $B). Larger companies have more
-  // reliable metrics; prevents micro/small-cap noise from dominating.
-  // log10($1B)=0, log10($10B)=1, log10($100B)=2, log10($1T)=3
-  { column: "log_market_cap", weight: 8, capLow: -0.5, capHigh: 3.0 },
+  // Size confidence — log(market cap in $B). Soft gradient within percentile
+  // ranking; the heavier size adjustment is the multiplicative dampener below.
+  { column: "log_market_cap", weight: 4, capLow: -0.5, capHigh: 3.0 },
   // Revenue consistency — how many of last 3 years had positive revenue growth (0-3)
   { column: "revenue_growth_positive_3yr_count", weight: 8, capLow: 0, capHigh: 3 },
 ];
@@ -84,6 +83,22 @@ function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, nu
       scores.set(values[i].symbol, prev + contribution);
     }
   }
+
+  // Size-confidence dampener: multiply raw scores before normalization so
+  // small-cap stocks are pushed down proportionally but the 1-100 range stays
+  // intact after min-max rescaling.
+  // Curve: confidence = min(1.0, 0.70 + 0.10 * log10(mcapB))
+  //   $0.3B → 0.65, $1B → 0.70, $5B → 0.77, $10B → 0.80,
+  //   $50B → 0.87, $100B → 0.90, $1T → 1.0
+  const mcapLookup = new Map<string, number>();
+  for (const stock of stocks) {
+    mcapLookup.set(stock.symbol as string, Number(stock.market_cap || 0) / 1_000_000_000);
+  }
+  scores.forEach((raw, symbol) => {
+    const mcapB = mcapLookup.get(symbol) || 0;
+    const confidence = mcapB > 0 ? Math.min(1.0, 0.70 + 0.10 * Math.log10(mcapB)) : 0.50;
+    scores.set(symbol, raw * confidence);
+  });
 
   // Normalize to 1-100
   const rawScores = Array.from(scores.entries());
