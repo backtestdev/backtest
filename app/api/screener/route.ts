@@ -110,6 +110,39 @@ function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, nu
     }
   }
 
+  // Hard penalty for weak/declining revenue (after normalization).
+  // Tier 1: YoY growth < 3% but non-negative → mild penalty (up to -5 pts)
+  // Tier 2: YoY growth negative (decline) → bigger penalty (-10 pts)
+  // Tier 3: Multiple declining years out of last 3 → stacking penalty
+  //         2/3 positive = -5, 1/3 = -10, 0/3 = -15
+  for (const stock of stocks) {
+    const sym = stock.symbol as string;
+    const current = scores.get(sym);
+    if (current === undefined) continue;
+
+    const yoyGrowth = Number(stock.revenue_growth ?? 0);
+    let penalty = 0;
+
+    if (yoyGrowth < 0) {
+      // Revenue decline: -10 flat (big red flag)
+      penalty = 10;
+    } else if (yoyGrowth < 0.03) {
+      // Stagnation (0% to 3%): linear ramp, 0% → -5, 3% → 0
+      penalty = Math.round(((0.03 - yoyGrowth) / 0.03) * 5);
+    }
+
+    // Multi-year decline: penalize based on how many of last 3 years declined
+    const positiveYears = Number(stock.revenue_growth_positive_3yr_count ?? 3);
+    if (positiveYears < 3) {
+      const decliningYears = 3 - positiveYears; // 1, 2, or 3
+      penalty += decliningYears * 5; // -5, -10, or -15
+    }
+
+    if (penalty > 0) {
+      scores.set(sym, Math.max(1, current - penalty));
+    }
+  }
+
   return scores;
 }
 
@@ -150,6 +183,7 @@ export async function GET(request: NextRequest) {
              free_cash_flow_yield, free_cash_flow_per_share,
              market_cap, beta,
              consecutive_net_income_growth_years AS consecutive_earnings_growth,
+             revenue_growth_positive_3yr_count,
              CASE WHEN year_high > 0 THEN price / year_high ELSE 0 END AS week52_high_pct
       FROM stocks
       WHERE market_cap IS NOT NULL AND market_cap > 0.1
