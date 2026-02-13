@@ -14,10 +14,12 @@ backtest/
 │   ├── leaderboard/route.ts           # GET/POST: leaderboard CRUD
 │   ├── db/init/route.ts               # POST: initialize all DB tables
 │   ├── admin/refresh-data/route.ts    # POST: bulk refresh (3 API calls total)
+│   ├── admin/refresh-prices/route.ts  # POST: Yahoo Finance historical prices
 │   ├── admin/refresh-stocks/route.ts  # GET/POST: rotating per-stock enrichment
 │   └── admin/cleanup/route.ts         # POST: purge non-company entries
 ├── lib/
 │   ├── fmpService.ts                  # Stock universe (reads from unified stocks table)
+│   ├── yahooFinance.ts                # Yahoo Finance historical price data
 │   ├── stockData.ts                   # Filtering, returns calculation, fallback data
 │   ├── backtestEngine.ts              # Core backtest logic
 │   ├── naturalLanguageParser.ts       # NLP → structured strategy params
@@ -67,6 +69,9 @@ curl -X POST http://localhost:3000/api/admin/refresh-data
 
 # 2b. ALTERNATIVE: Per-stock enrichment via CLI script (slower but more granular)
 npx tsx scripts/populate-stocks.ts
+
+# 3. Populate historical prices (Yahoo Finance, 20 years, needed for backtesting charts)
+curl -X POST http://localhost:3000/api/admin/refresh-prices
 ```
 
 **Required env vars:**
@@ -75,7 +80,7 @@ npx tsx scripts/populate-stocks.ts
 
 ### Refreshing Stock Data
 
-Three options to update the stock database:
+Four options to update the stock database:
 
 1. **Full refresh endpoint** (screener + per-stock enrichment, 3-5 min):
    ```bash
@@ -83,13 +88,19 @@ Three options to update the stock database:
      -H "x-admin-secret: $ADMIN_SECRET"
    ```
 
-2. **Per-stock enrichment** (rotating batches, good for cron):
+2. **Historical prices refresh** (Yahoo Finance, 20yr history for backtesting):
+   ```bash
+   curl -X POST http://localhost:3000/api/admin/refresh-prices \
+     -H "x-admin-secret: $ADMIN_SECRET"
+   ```
+
+3. **Per-stock enrichment** (rotating batches, good for cron):
    ```bash
    curl -X POST http://localhost:3000/api/admin/refresh-stocks \
      -H "x-admin-secret: $ADMIN_SECRET"
    ```
 
-3. **CLI script** (no rate limit, enriches all stocks):
+4. **CLI script** (no rate limit, enriches all stocks):
    ```bash
    npx tsx scripts/populate-stocks.ts
    ```
@@ -101,6 +112,7 @@ All stock data lives in ONE unified table. No JOINs needed.
 | Table | Purpose | Primary Key |
 |-------|---------|-------------|
 | `stocks` | **Unified** — all identity, valuation, profitability, leverage, per-share, efficiency, EV, cash flow metrics in one row per stock | `id` (SERIAL), `symbol` (UNIQUE) |
+| `stock_annual_returns` | Annual returns from Yahoo Finance (20yr history) for backtesting | (`symbol`, `year`) |
 | `stock_prices` | Historical daily close prices (for charts) | `id`, UNIQUE(`symbol`, `date`) |
 | `stock_meta` | Metadata (last refresh timestamp, enrich offset) | `key` |
 | `leaderboard` | Saved strategy results | `id` |

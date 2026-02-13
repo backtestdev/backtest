@@ -1,5 +1,5 @@
 import { StockFilter } from "./types";
-import { getStockUniverse as getFMPStockUniverse, getLastFMPError } from "./fmpService";
+import { getStockUniverse as getFMPStockUniverse, getLastFMPError, getSpyReturnsFromDb } from "./fmpService";
 
 // S&P 500 representative stock data with fundamental metrics
 // Now sourced from Financial Modeling Prep API with daily caching
@@ -313,14 +313,26 @@ const STOCK_DATABASE: StockData[] = _RAW_STOCKS.map(s => ({
   ...s,
 }) as StockData);
 
-// S&P 500 (SPY) historical annual returns
-const SPY_RETURNS: { [year: string]: number } = {
+// S&P 500 (SPY) historical annual returns — hardcoded fallback
+const HARDCODED_SPY_RETURNS: { [year: string]: number } = {
   "2024": 0.25, "2023": 0.26, "2022": -0.18, "2021": 0.29,
   "2020": 0.18, "2019": 0.31, "2018": -0.04, "2017": 0.22,
   "2016": 0.12, "2015": 0.01, "2014": 0.14, "2013": 0.32,
   "2012": 0.16, "2011": 0.02, "2010": 0.15, "2009": 0.26,
   "2008": -0.37, "2007": 0.05, "2006": 0.16, "2005": 0.05,
 };
+
+/**
+ * Returns SPY annual returns — from Yahoo Finance DB data if available,
+ * otherwise falls back to hardcoded values.
+ */
+function getSpyReturns(): { [year: string]: number } {
+  const dbReturns = getSpyReturnsFromDb();
+  if (dbReturns && Object.keys(dbReturns).length > 0) {
+    return dbReturns;
+  }
+  return HARDCODED_SPY_RETURNS;
+}
 
 export function filterStocks(filters: StockFilter[], stocks?: StockData[]): StockData[] {
   const database = stocks || STOCK_DATABASE;
@@ -358,7 +370,8 @@ export function calculateReturns(
     return { strategyReturn: 0, benchmarkReturn: 0, chartData: [] };
   }
 
-  const currentYear = 2024;
+  const spyReturns = getSpyReturns();
+  const currentYear = new Date().getFullYear() - 1; // Use last completed year
   const startYear = currentYear - years + 1;
   const chartData: { date: string; strategy: number; benchmark: number }[] = [];
 
@@ -377,7 +390,7 @@ export function calculateReturns(
     }
 
     // Benchmark: S&P 500
-    const spyReturn = SPY_RETURNS[yearStr] ?? 0;
+    const spyReturn = spyReturns[yearStr] ?? 0;
     benchmarkValue *= (1 + spyReturn);
 
     chartData.push({
@@ -394,13 +407,14 @@ export function calculateReturns(
 }
 
 export function getSpyReturn(years: number): number {
-  const currentYear = 2024;
+  const spyReturns = getSpyReturns();
+  const currentYear = new Date().getFullYear() - 1;
   const startYear = currentYear - years + 1;
   let value = 10000;
 
   for (let year = startYear; year <= currentYear; year++) {
     const yearStr = year.toString();
-    const ret = SPY_RETURNS[yearStr] ?? 0;
+    const ret = spyReturns[yearStr] ?? 0;
     value *= (1 + ret);
   }
 

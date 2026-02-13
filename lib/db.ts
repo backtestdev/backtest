@@ -172,6 +172,18 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON stock_prices(symbol, date)`;
 
+  // Precomputed annual returns from Yahoo Finance (for backtesting)
+  await sql`
+    CREATE TABLE IF NOT EXISTS stock_annual_returns (
+      symbol VARCHAR(10) NOT NULL,
+      year INT NOT NULL,
+      annual_return DECIMAL(10,6) NOT NULL,
+      year_end_close DECIMAL(12,4),
+      PRIMARY KEY (symbol, year)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_annual_returns_symbol ON stock_annual_returns(symbol)`;
+
   // Stock metadata table
   await sql`
     CREATE TABLE IF NOT EXISTS stock_meta (
