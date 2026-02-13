@@ -60,6 +60,16 @@ interface CleanupResult {
   details?: string;
 }
 
+interface PriceRefreshResult {
+  success?: boolean;
+  symbols?: { total: number; succeeded: number; failed: number };
+  records?: number;
+  spy?: { years: number; range: string | null };
+  log?: string[];
+  error?: string;
+  details?: string;
+}
+
 interface RefreshAllProgress {
   runsCompleted: number;
   totalRuns: number;
@@ -80,6 +90,8 @@ export default function AdminStocks() {
   const [bulkResult, setBulkResult] = useState<BulkRefreshResult | null>(null);
   const [cleanupResult, setCleanupResult] = useState<CleanupResult | null>(null);
   const [cleaning, setCleaning] = useState(false);
+  const [priceRefreshing, setPriceRefreshing] = useState(false);
+  const [priceResult, setPriceResult] = useState<PriceRefreshResult | null>(null);
   const [secret, setSecret] = useState("");
   const [refreshAllProgress, setRefreshAllProgress] = useState<RefreshAllProgress | null>(null);
   const abortRef = useRef(false);
@@ -106,7 +118,7 @@ export default function AdminStocks() {
     return headers;
   };
 
-  const anyBusy = refreshing || refreshingAll || bulkRefreshing || cleaning;
+  const anyBusy = refreshing || refreshingAll || bulkRefreshing || cleaning || priceRefreshing;
 
   // Single batch refresh
   const handleRefresh = async () => {
@@ -231,6 +243,21 @@ export default function AdminStocks() {
       setResult({ error: "Failed to initialize database" });
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // Refresh historical prices from Yahoo Finance
+  const handlePriceRefresh = async () => {
+    setPriceRefreshing(true);
+    setPriceResult(null);
+    try {
+      const res = await fetch("/api/admin/refresh-prices", { method: "POST", headers: getHeaders() });
+      const data = await res.json();
+      setPriceResult(data);
+    } catch {
+      setPriceResult({ error: "Network error — could not reach server" });
+    } finally {
+      setPriceRefreshing(false);
     }
   };
 
@@ -530,6 +557,109 @@ export default function AdminStocks() {
                 </details>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Historical prices refresh */}
+        <div className="mt-6 bg-white rounded-2xl border border-purple-200 p-6">
+          <h2 className="text-sm font-semibold text-purple-600 uppercase tracking-wide">Historical Prices</h2>
+          <p className="text-xs text-gray-400 mt-1">
+            Fetches 20 years of monthly price data from Yahoo Finance for all stocks and computes
+            annual returns used for backtesting charts and performance metrics. Also populates
+            the S&amp;P 500 (SPY) benchmark. No API key required.
+          </p>
+
+          <button
+            onClick={handlePriceRefresh}
+            disabled={anyBusy}
+            className="mt-4 w-full px-4 py-3 text-sm font-medium bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {priceRefreshing ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Fetching prices... (this may take a few minutes)
+              </span>
+            ) : (
+              "Refresh Historical Prices"
+            )}
+          </button>
+        </div>
+
+        {/* Price refresh result */}
+        {priceResult && (
+          <div className={`mt-4 rounded-2xl border p-6 ${
+            priceResult.success ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+          }`}>
+            {priceResult.success ? (
+              <div className="text-sm">
+                <p className="font-medium text-emerald-800">Historical prices updated</p>
+                <dl className="mt-3 space-y-1 text-emerald-700">
+                  {priceResult.symbols && (
+                    <>
+                      <div className="flex justify-between">
+                        <dt>Symbols processed</dt>
+                        <dd className="font-medium">{priceResult.symbols.total.toLocaleString()}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt>Succeeded</dt>
+                        <dd className="font-medium">{priceResult.symbols.succeeded.toLocaleString()}</dd>
+                      </div>
+                      {priceResult.symbols.failed > 0 && (
+                        <div className="flex justify-between">
+                          <dt>Failed</dt>
+                          <dd className="font-medium text-amber-600">{priceResult.symbols.failed}</dd>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {priceResult.records != null && (
+                    <div className="flex justify-between">
+                      <dt>Annual return records</dt>
+                      <dd className="font-medium">{priceResult.records.toLocaleString()}</dd>
+                    </div>
+                  )}
+                  {priceResult.spy && (
+                    <div className="flex justify-between">
+                      <dt>SPY benchmark</dt>
+                      <dd className="font-medium">
+                        {priceResult.spy.years} years ({priceResult.spy.range ?? "—"})
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                {priceResult.log && priceResult.log.length > 0 && (
+                  <details className="mt-3">
+                    <summary className="text-emerald-600 cursor-pointer text-xs font-medium">
+                      Log ({priceResult.log.length} entries)
+                    </summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-emerald-700 space-y-0.5 font-mono">
+                      {priceResult.log.map((line, i) => (
+                        <div key={i}>{line}</div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm">
+                <p className="font-medium text-red-800">Price refresh failed</p>
+                <p className="text-red-700 mt-1">{priceResult.error}</p>
+                {priceResult.details && <p className="text-red-600 text-xs mt-2">{priceResult.details}</p>}
+                {priceResult.log && priceResult.log.length > 0 && (
+                  <details className="mt-3">
+                    <summary className="text-red-600 cursor-pointer text-xs">Log ({priceResult.log.length} entries)</summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-red-700 space-y-0.5 font-mono">
+                      {priceResult.log.map((line, i) => (
+                        <div key={i}>{line}</div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
           </div>
         )}
 
