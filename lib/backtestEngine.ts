@@ -1,5 +1,6 @@
 import { BacktestResult, StrategyParameters, StockFilter, DebugInfo } from "./types";
 import { filterStocks, getStockNames, calculateReturns, getStockDatabase } from "./stockData";
+import { loadReturnsForTickers } from "./fmpService";
 
 function formatMarketCapFilter(filter: StockFilter): string {
   const formatVal = (v: number) => {
@@ -26,9 +27,52 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
   }
 
   // Use ticker-based selection when GPT returns specific tickers (non-metric queries)
-  const matchedStocks = params.tickers && params.tickers.length > 0
-    ? stockDatabase.filter(s => params.tickers!.includes(s.ticker))
-    : filterStocks(params.filters, stockDatabase);
+  let matchedStocks;
+  const tickerWarnings: string[] = [];
+  if (params.tickers && params.tickers.length > 0) {
+    const allByTicker = stockDatabase.filter(s => params.tickers!.includes(s.ticker));
+    const notFound = params.tickers.filter(t => !allByTicker.some(s => s.ticker === t));
+    if (notFound.length > 0) {
+      tickerWarnings.push(`${notFound.length} ticker(s) not in database: ${notFound.slice(0, 10).join(", ")}${notFound.length > 10 ? "..." : ""}`);
+      console.log(`[Backtest] Tickers not in DB: ${notFound.join(", ")}`);
+    }
+
+    // Backfill returns from stock_annual_returns DB table for stocks missing them.
+    // The in-memory cache may not have returns if prices were refreshed after the cache loaded.
+    const missingReturnsTickers = allByTicker
+      .filter(s => Object.keys(s.historical_returns).length === 0)
+      .map(s => s.ticker);
+
+    if (missingReturnsTickers.length > 0) {
+      console.log(`[Backtest] Backfilling returns from DB for ${missingReturnsTickers.length} tickers: ${missingReturnsTickers.join(", ")}`);
+      const dbReturns = await loadReturnsForTickers(missingReturnsTickers);
+      for (const stock of allByTicker) {
+        if (Object.keys(stock.historical_returns).length === 0 && dbReturns.has(stock.ticker)) {
+          stock.historical_returns = dbReturns.get(stock.ticker)!;
+        }
+      }
+      const backfilled = missingReturnsTickers.filter(t => dbReturns.has(t));
+      const stillMissing = missingReturnsTickers.filter(t => !dbReturns.has(t));
+      if (backfilled.length > 0) {
+        console.log(`[Backtest] Backfilled returns for ${backfilled.length} tickers: ${backfilled.join(", ")}`);
+      }
+      if (stillMissing.length > 0) {
+        console.log(`[Backtest] No DB returns found for: ${stillMissing.join(", ")}`);
+      }
+    }
+
+    // Only keep stocks that have historical returns data so the chart isn't flat
+    const withReturns = allByTicker.filter(s => Object.keys(s.historical_returns).length > 0);
+    const noReturns = allByTicker.filter(s => Object.keys(s.historical_returns).length === 0);
+    if (noReturns.length > 0) {
+      tickerWarnings.push(`${noReturns.length} stock(s) found but had no price history: ${noReturns.map(s => s.ticker).join(", ")}`);
+      console.log(`[Backtest] Tickers with no returns: ${noReturns.map(s => s.ticker).join(", ")}`);
+    }
+    matchedStocks = withReturns;
+    console.log(`[Backtest] Ticker selection: ${params.tickers.length} requested → ${allByTicker.length} found → ${withReturns.length} with returns`);
+  } else {
+    matchedStocks = filterStocks(params.filters, stockDatabase);
+  }
 
   // Log filtering results
   console.log(`[Backtest] Filtered to ${matchedStocks.length} stocks matching all criteria`);
@@ -114,6 +158,7 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
     description: params.description,
     matchedStocks: getStockNames(matchedStocks),
     matchedStockCount: matchedStocks.length,
+    warnings: tickerWarnings.length > 0 ? tickerWarnings : undefined,
     timeHorizons,
     chartData,
     runDate: new Date().toISOString(),

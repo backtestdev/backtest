@@ -145,6 +145,39 @@ chat models:
 If switching to a different model in the future, verify which parameters it
 supports before changing the API call.
 
+## Architecture Notes
+
+### NLP Ticker Selection Mode
+The GPT parser (`lib/naturalLanguageParser.ts`) supports two modes:
+1. **Filter mode** (default) — maps user queries to metric-based filters (PE, ROE, etc.)
+2. **Ticker selection mode** — for subjective/qualitative queries (e.g., "meme stocks", "stocks with funny names"), GPT returns specific ticker symbols instead of filters
+
+When tickers are returned, `backtestEngine.ts` bypasses metric filtering and selects stocks directly by ticker. It also backfills historical returns from the `stock_annual_returns` DB table via `fmpService.loadReturnsForTickers()` since the in-memory cache may not have returns loaded.
+
+### Backtest Return Calculation
+- Uses equal-weight annual rebalancing: each year, the average return of all stocks with data for that year
+- Returns are sourced from `stock_annual_returns` table (Yahoo Finance data)
+- Current year YTD data is included in chart data but not in period return calculations
+- $10k growth chart is normalized dynamically based on the selected time period
+
+### Neon Serverless Driver Gotchas
+- **Tagged templates only**: Use `sql\`SELECT ...\`` for simple queries. The driver does NOT support `sql("SELECT $1", [val])` syntax.
+- **Parameterized bulk inserts**: Use `sql.query(queryString, paramsArray)` for dynamically-built SQL (e.g., batched INSERT statements with variable placeholders).
+- **Batch size**: Bulk inserts should use batches of ~500 rows to avoid serverless function timeouts.
+
+### Column Types
+- Use `NUMERIC` (not `BIGINT`) for columns that may receive decimal values from FMP API (market_cap, volume, avg_volume, enterprise_value, working_capital, invested_capital, tangible_asset_value).
+
+### Leaderboard Duplicate Detection
+- Uses SHA-256 hash (truncated to 16 hex chars) of sorted strategy parameters for collision-resistant duplicate detection.
+- Hash stored in `parameters_hash` column on the `leaderboard` table.
+
+### Cron Jobs (Vercel)
+Configured in `vercel.json`:
+- **Daily** stock enrichment: `GET /api/admin/refresh-stocks` at 06:00 UTC
+- **Weekly** price history: `GET /api/admin/refresh-prices` at 05:00 UTC Sundays
+- Auth: cron routes check `Authorization: Bearer <CRON_SECRET>` header
+
 ## Key Conventions
 
 - Keep this CLAUDE.md up to date when adding new tools, frameworks, or workflows

@@ -439,6 +439,38 @@ async function attachAnnualReturns(stocks: StockData[]): Promise<void> {
   console.log(`[FMP-DB] Attached annual returns to ${attached}/${stocks.length} stocks (${returnsMap.size} symbols in DB)`);
 }
 
+/**
+ * Loads annual returns for specific tickers from the DB.
+ * Used by the backtest engine to backfill returns for ticker-selected stocks
+ * that may not have had returns attached during the initial universe load.
+ */
+export async function loadReturnsForTickers(tickers: string[]): Promise<Map<string, { [year: string]: number }>> {
+  const sql = getDb();
+  if (!sql || tickers.length === 0) return new Map();
+
+  try {
+    const rows = await sql`
+      SELECT symbol, year, annual_return
+      FROM stock_annual_returns
+      WHERE symbol = ANY(${tickers})
+      ORDER BY symbol, year
+    `;
+
+    const map = new Map<string, { [year: string]: number }>();
+    for (const row of rows) {
+      const symbol = String(row.symbol);
+      const year = String(row.year);
+      const ret = Number(row.annual_return);
+      if (!map.has(symbol)) map.set(symbol, {});
+      map.get(symbol)![year] = ret;
+    }
+    return map;
+  } catch (err) {
+    console.error('[FMP-DB] Failed to load returns for tickers:', err);
+    return new Map();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API — same signatures as before
 // ---------------------------------------------------------------------------
