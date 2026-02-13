@@ -19,6 +19,9 @@ import { getDb } from './db';
 const MEMORY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 let memoryCache: { stocks: StockData[]; timestamp: number } | null = null;
 
+// Cache for SPY annual returns (loaded alongside stocks)
+let spyReturnsCache: { returns: { [year: string]: number }; timestamp: number } | null = null;
+
 // Track last error for reporting to callers
 let lastError: string | null = null;
 
@@ -367,12 +370,83 @@ function num(v: unknown): number {
 }
 
 // ---------------------------------------------------------------------------
+// Historical annual returns — loaded from stock_annual_returns table
+// (populated via POST /api/admin/refresh-prices using Yahoo Finance)
+// ---------------------------------------------------------------------------
+
+async function loadAnnualReturnsFromDb(): Promise<Map<string, { [year: string]: number }>> {
+  const sql = getDb();
+  if (!sql) return new Map();
+
+  try {
+    const rows = await sql`
+      SELECT symbol, year, annual_return
+      FROM stock_annual_returns
+      ORDER BY symbol, year
+    `;
+
+    const map = new Map<string, { [year: string]: number }>();
+    for (const row of rows) {
+      const symbol = String(row.symbol);
+      const year = String(row.year);
+      const ret = Number(row.annual_return);
+
+      if (!map.has(symbol)) {
+        map.set(symbol, {});
+      }
+      map.get(symbol)![year] = ret;
+    }
+
+    return map;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('relation') && msg.includes('does not exist')) {
+      console.warn('[FMP-DB] stock_annual_returns table not found — run POST /api/db/init then POST /api/admin/refresh-prices');
+      return new Map();
+    }
+    console.error('[FMP-DB] Failed to load annual returns:', msg);
+    return new Map();
+  }
+}
+
+/**
+ * Attaches historical annual returns from the DB to an array of StockData.
+ * Also caches SPY returns for benchmark calculations.
+ */
+async function attachAnnualReturns(stocks: StockData[]): Promise<void> {
+  const returnsMap = await loadAnnualReturnsFromDb();
+  if (returnsMap.size === 0) {
+    console.warn('[FMP-DB] No annual returns in DB — historical metrics will use fallback data');
+    return;
+  }
+
+  let attached = 0;
+  for (const stock of stocks) {
+    const returns = returnsMap.get(stock.ticker);
+    if (returns && Object.keys(returns).length > 0) {
+      stock.historical_returns = returns;
+      attached++;
+    }
+  }
+
+  // Cache SPY returns for benchmark calculations
+  const spyReturns = returnsMap.get('SPY');
+  if (spyReturns && Object.keys(spyReturns).length > 0) {
+    spyReturnsCache = { returns: spyReturns, timestamp: Date.now() };
+    console.log(`[FMP-DB] Cached SPY returns: ${Object.keys(spyReturns).length} years`);
+  }
+
+  console.log(`[FMP-DB] Attached annual returns to ${attached}/${stocks.length} stocks (${returnsMap.size} symbols in DB)`);
+}
+
+// ---------------------------------------------------------------------------
 // Public API — same signatures as before
 // ---------------------------------------------------------------------------
 
 /**
  * Returns cached stock universe from the database.
  * Uses 10-minute in-memory cache to avoid redundant DB queries.
+ * Now also loads and attaches historical annual returns from Yahoo Finance data.
  */
 export async function getStockUniverse(): Promise<StockData[]> {
   if (memoryCache && Date.now() - memoryCache.timestamp < MEMORY_CACHE_TTL_MS) {
@@ -384,6 +458,8 @@ export async function getStockUniverse(): Promise<StockData[]> {
   const stocks = await queryStocksFromDb();
 
   if (stocks.length > 0) {
+    // Attach historical annual returns from Yahoo Finance data
+    await attachAnnualReturns(stocks);
     memoryCache = { stocks, timestamp: Date.now() };
     console.log(`[FMP-DB] Loaded ${stocks.length} stocks from database`);
   } else {
@@ -415,4 +491,15 @@ export function isFMPConfigured(): boolean {
  */
 export function getLastFMPError(): string | null {
   return lastError;
+}
+
+/**
+ * Returns SPY annual returns loaded from the database.
+ * Returns null if not yet loaded (caller should use hardcoded fallback).
+ */
+export function getSpyReturnsFromDb(): { [year: string]: number } | null {
+  if (spyReturnsCache && Date.now() - spyReturnsCache.timestamp < MEMORY_CACHE_TTL_MS) {
+    return spyReturnsCache.returns;
+  }
+  return null;
 }
