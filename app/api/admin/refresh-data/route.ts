@@ -381,6 +381,8 @@ export async function POST(request: NextRequest) {
     let enriched = 0;
     let enrichFailed = 0;
     let noDataCount = 0;
+    let partialCount = 0;
+    const enrichIssues: { symbol: string; status: string; detail: string }[] = [];
 
     for (let i = 0; i < allSymbols.length; i += CONCURRENCY) {
       if (Date.now() - enrichStart > TIME_BUDGET_MS) {
@@ -390,7 +392,7 @@ export async function POST(request: NextRequest) {
 
       const batch = allSymbols.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
-        batch.map(async (sym) => {
+        batch.map(async (sym): Promise<'ok' | 'partial' | 'no_data'> => {
           const [ratiosData, metricsData, incomeData, quoteData] = await Promise.all([
             fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`),
             fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`),
@@ -404,9 +406,21 @@ export async function POST(request: NextRequest) {
           const quote = quoteData?.[0] ?? null;
 
           if (!finRatios && !metrics && !growth && !quote) {
-            noDataCount++;
-            return;
+            const missing = [
+              !ratiosData || ratiosData.length === 0 ? 'ratios' : null,
+              !metricsData || metricsData.length === 0 ? 'key-metrics' : null,
+              !incomeData || incomeData.length === 0 ? 'income-stmt' : null,
+              !quoteData || quoteData.length === 0 ? 'quote' : null,
+            ].filter(Boolean);
+            enrichIssues.push({ symbol: sym, status: 'no_data', detail: `All endpoints empty (${missing.join(', ')})` });
+            return 'no_data';
           }
+
+          const missing: string[] = [];
+          if (!finRatios) missing.push('ratios');
+          if (!metrics) missing.push('key-metrics');
+          if (!growth) missing.push('income-stmt');
+          if (!quote) missing.push('quote');
 
           await sql`
             UPDATE stocks_new SET
@@ -490,12 +504,23 @@ export async function POST(request: NextRequest) {
               updated_at = NOW()
             WHERE symbol = ${sym}
           `;
+
+          if (missing.length > 0) {
+            return 'partial';
+          }
+          return 'ok';
         })
       );
 
       for (const r of results) {
-        if (r.status === "fulfilled") enriched++;
-        else enrichFailed++;
+        if (r.status === "fulfilled") {
+          if (r.value === 'no_data') noDataCount++;
+          else if (r.value === 'partial') { enriched++; partialCount++; }
+          else enriched++;
+        } else {
+          enrichFailed++;
+          enrichIssues.push({ symbol: '?', status: 'error', detail: String(r.reason).slice(0, 200) });
+        }
       }
 
       // Log progress every ~50 stocks
@@ -506,7 +531,7 @@ export async function POST(request: NextRequest) {
     }
 
     log.push(
-      `Per-stock enrichment: ${enriched} enriched, ${enrichFailed} failed, ${noDataCount} no data, ${allSymbols.length - enriched - enrichFailed} skipped (timeout)`
+      `Per-stock enrichment: ${enriched} enriched (${partialCount} partial), ${enrichFailed} failed, ${noDataCount} no data, ${allSymbols.length - enriched - enrichFailed - noDataCount} skipped (timeout)`
     );
 
     // ── Step 4: Swap tables ───────────────────────────────────────
@@ -585,7 +610,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       verification,
-      enrichment: { enriched, failed: enrichFailed, noData: noDataCount, skipped: allSymbols.length - enriched - enrichFailed, total: allSymbols.length },
+      enrichment: {
+        enriched,
+        partial: partialCount,
+        failed: enrichFailed,
+        noData: noDataCount,
+        skipped: allSymbols.length - enriched - enrichFailed - noDataCount,
+        total: allSymbols.length,
+      },
+      enrichIssues: enrichIssues.slice(0, 100),
       aapl: aapl[0] || null,
       log,
     });

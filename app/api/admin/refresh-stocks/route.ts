@@ -29,7 +29,8 @@ import { ensureStockTables } from "@/lib/db";
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes
 
-const ENRICH_BATCH_SIZE = 120;
+// No fixed batch size — each run enriches as many stocks as possible
+// within the 4-minute time budget, starting from the saved offset.
 
 const FMP_API_KEY =
   process.env.FINANCIAL_MODELING_PREP_API_KEY ||
@@ -292,10 +293,12 @@ function computeGrowthData(entries: IncomeStatementEntry[] | null): GrowthData |
 
 // ── Shared refresh logic ───────────────────────────────────────────
 
+interface EnrichIssue { symbol: string; status: string; detail: string }
+
 async function runRefresh(
   sql: NeonQueryFunction<false, false>,
   enrichOffset: number
-): Promise<{ stocks: number; enriched: number; enrichFailed: number; noData: number; nextOffset: number }> {
+): Promise<{ stocks: number; enriched: number; enrichFailed: number; noData: number; partial: number; processedCount: number; nextOffset: number; enrichIssues: EnrichIssue[]; batchRange: string; totalStocks: number; runsRemaining: number }> {
   await ensureStockTables(sql);
 
   // Step 1: Screener — always refresh ALL stocks basic data
@@ -340,12 +343,15 @@ async function runRefresh(
   const totalStocks = allSymbols.length;
 
   const safeOffset = enrichOffset >= totalStocks ? 0 : enrichOffset;
-  const batch = allSymbols.slice(safeOffset, safeOffset + ENRICH_BATCH_SIZE);
-  console.log(`[refresh-stocks] Enriching batch ${safeOffset}–${safeOffset + batch.length - 1} of ${totalStocks} (${batch.length} stocks)`);
+  // Take ALL remaining stocks from offset — time budget controls how many actually get processed
+  const batch = allSymbols.slice(safeOffset);
+  console.log(`[refresh-stocks] Enriching from offset ${safeOffset} of ${totalStocks} (time-budget limited)`);
 
   let enriched = 0;
   let enrichFailed = 0;
   let noDataCount = 0;
+  let partialCount = 0;
+  const enrichIssues: { symbol: string; status: string; detail: string }[] = [];
 
   const CONCURRENCY = 2;
   const TIME_BUDGET_MS = 240_000; // 4 minutes
@@ -359,7 +365,7 @@ async function runRefresh(
 
     const chunk = batch.slice(i, i + CONCURRENCY);
     const results2 = await Promise.allSettled(
-      chunk.map(async (sym) => {
+      chunk.map(async (sym): Promise<'ok' | 'partial' | 'no_data'> => {
         const [ratiosData, metricsData, incomeData, quoteData] = await Promise.all([
           fetchFMP<FinancialRatios[]>(`/ratios?symbol=${sym}&period=annual&limit=1`),
           fetchFMP<KeyMetrics[]>(`/key-metrics?symbol=${sym}&period=annual&limit=1`),
@@ -373,9 +379,21 @@ async function runRefresh(
         const quote = quoteData?.[0] ?? null;
 
         if (!finRatios && !metrics && !growth && !quote) {
-          noDataCount++;
-          return;
+          const missing = [
+            !ratiosData || ratiosData.length === 0 ? 'ratios' : null,
+            !metricsData || metricsData.length === 0 ? 'key-metrics' : null,
+            !incomeData || incomeData.length === 0 ? 'income-stmt' : null,
+            !quoteData || quoteData.length === 0 ? 'quote' : null,
+          ].filter(Boolean);
+          enrichIssues.push({ symbol: sym, status: 'no_data', detail: `All endpoints empty (${missing.join(', ')})` });
+          return 'no_data';
         }
+
+        const missing: string[] = [];
+        if (!finRatios) missing.push('ratios');
+        if (!metrics) missing.push('key-metrics');
+        if (!growth) missing.push('income-stmt');
+        if (!quote) missing.push('quote');
 
         // Update all metrics directly in the unified stocks table
         await sql`
@@ -486,12 +504,24 @@ async function runRefresh(
             updated_at = NOW()
           WHERE symbol = ${sym}
         `;
+
+        if (missing.length > 0) {
+          enrichIssues.push({ symbol: sym, status: 'partial', detail: `Missing: ${missing.join(', ')}` });
+          return 'partial';
+        }
+        return 'ok';
       })
     );
 
     for (const r of results2) {
-      if (r.status === "fulfilled") enriched++;
-      else enrichFailed++;
+      if (r.status === "fulfilled") {
+        if (r.value === 'no_data') noDataCount++;
+        else if (r.value === 'partial') { enriched++; partialCount++; }
+        else enriched++;
+      } else {
+        enrichFailed++;
+        enrichIssues.push({ symbol: '?', status: 'error', detail: String(r.reason).slice(0, 200) });
+      }
     }
 
     // Log progress every ~50 stocks
@@ -501,8 +531,9 @@ async function runRefresh(
     }
   }
 
-  // Calculate next offset (wrap around)
-  const nextOffset = safeOffset + ENRICH_BATCH_SIZE >= totalStocks ? 0 : safeOffset + ENRICH_BATCH_SIZE;
+  // Calculate next offset based on how many were actually processed (wrap around)
+  const processedCount = enriched + enrichFailed + noDataCount;
+  const nextOffset = (safeOffset + processedCount >= totalStocks) ? 0 : safeOffset + processedCount;
 
   // Save next offset + timestamp
   const timestamp = new Date().toISOString();
@@ -559,7 +590,24 @@ async function runRefresh(
 
   await refreshStockUniverse();
 
-  return { stocks: filtered.length, enriched, enrichFailed, noData: noDataCount, nextOffset };
+  // Estimate runs remaining based on throughput of this run
+  const throughput = processedCount || 1; // avoid division by zero
+  const remaining = nextOffset === 0 ? 0 : totalStocks - nextOffset;
+  const runsRemaining = nextOffset === 0 ? 0 : Math.ceil(remaining / throughput);
+
+  return {
+    stocks: filtered.length,
+    enriched,
+    enrichFailed,
+    noData: noDataCount,
+    partial: partialCount,
+    processedCount,
+    nextOffset,
+    enrichIssues: enrichIssues.slice(0, 100),
+    batchRange: `${safeOffset}–${safeOffset + processedCount - 1}`,
+    totalStocks,
+    runsRemaining,
+  };
 }
 
 // ── GET: Vercel Cron handler + status ──────────────────────────────
@@ -624,7 +672,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...result,
-      message: `Enriched batch ${offset}–${offset + result.enriched - 1}, next batch starts at ${result.nextOffset}`,
+      message: `Batch ${result.batchRange} of ${result.totalStocks}: ${result.enriched} enriched, ${result.noData} no data, ${result.enrichFailed} errors. ${result.runsRemaining > 0 ? `~${result.runsRemaining} runs remaining.` : 'Full cycle complete!'}`,
     });
   } catch (error) {
     console.error("Cron refresh error:", error);
@@ -667,7 +715,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...result,
-      message: `Enriched batch ${offset}–${offset + result.enriched - 1}, next batch starts at ${result.nextOffset}`,
+      message: `Batch ${result.batchRange} of ${result.totalStocks}: ${result.enriched} enriched, ${result.noData} no data, ${result.enrichFailed} errors. ${result.runsRemaining > 0 ? `~${result.runsRemaining} runs remaining.` : 'Full cycle complete!'}`,
     });
   } catch (error) {
     console.error("Refresh error:", error);
