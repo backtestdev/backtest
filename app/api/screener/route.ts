@@ -49,7 +49,7 @@ const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: 
   // Size confidence — log(market cap in $B). Larger companies have more
   // reliable metrics; prevents micro/small-cap noise from dominating.
   // log10($1B)=0, log10($10B)=1, log10($100B)=2, log10($1T)=3
-  { column: "log_market_cap", weight: 8, capLow: -0.5, capHigh: 3.0 },
+  { column: "log_market_cap", weight: 12, capLow: -0.5, capHigh: 3.0 },
 ];
 
 function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, number> {
