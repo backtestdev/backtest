@@ -113,7 +113,7 @@ function StockProfileCard({ stock, onClose }: { stock: Stock; onClose: () => voi
           <div key={m.key} className="group relative">
             <p className="text-[10px] text-gray-400 uppercase tracking-wider">{m.label}</p>
             <p className="text-sm font-semibold text-gray-800">{m.format(stock[m.key] as number | null)}</p>
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 w-48 px-2 py-1 text-[10px] text-white bg-gray-800 rounded-md shadow-lg pointer-events-none">
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover:block z-10 w-48 px-2 py-1 text-[10px] text-white bg-gray-800 rounded-md shadow-lg pointer-events-none">
               {m.tooltip}
             </div>
           </div>
@@ -242,7 +242,7 @@ export default function StockScreener() {
     >
       {label}
       {sortField === field && (sortDir === "desc" ? " \u2193" : " \u2191")}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
+      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
         {HEADER_TOOLTIPS[field]}
       </div>
     </button>
@@ -351,20 +351,20 @@ export default function StockScreener() {
               <SortHeader field="market_cap" label="MCap" className="text-right" />
             </div>
             <div className="col-span-1 text-right">
-              <SortHeader field="earnings_yield" label="E. Yield" className="text-right" />
+              <SortHeader field="earnings_yield" label="Earn Yld" className="text-right" />
             </div>
             <div className="col-span-1 text-right">
               <SortHeader field="pe_ratio" label="P/E" className="text-right" />
             </div>
             <div className="col-span-1 text-right hidden md:block">
-              <SortHeader field="earnings_growth" label="Earn Gr" className="text-right" />
+              <SortHeader field="earnings_growth" label="NI Gr." className="text-right" />
             </div>
             <div className="col-span-1 text-right hidden md:block">
               <SortHeader field="roe" label="ROE" className="text-right" />
             </div>
             <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:block group/hdr relative cursor-help" title={HEADER_TOOLTIPS.de}>
               D/E
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
                 {HEADER_TOOLTIPS.de}
               </div>
             </div>

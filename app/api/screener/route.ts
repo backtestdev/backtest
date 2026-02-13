@@ -29,10 +29,10 @@ function sectorName(raw: unknown): string {
 const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: number }[] = [
   // Earnings relative to price — strongest signal (higher is better)
   { column: "earnings_yield", weight: 20, capLow: -0.1, capHigh: 0.3 },
-  // Earnings growth (higher is better)
-  { column: "earnings_growth", weight: 15, capLow: -1.0, capHigh: 3.0 },
+  // Earnings growth — capped tight to prevent turnaround distortion (higher is better)
+  { column: "earnings_growth", weight: 10, capLow: -0.5, capHigh: 0.5 },
   // Earnings consistency — years of consecutive net income growth (higher is better)
-  { column: "consecutive_earnings_growth", weight: 10, capLow: 0, capHigh: 10 },
+  { column: "consecutive_earnings_growth", weight: 15, capLow: 0, capHigh: 10 },
   // Value (lower is better)
   { column: "pe_ratio", weight: -10, capLow: 0, capHigh: 60 },
   { column: "ev_to_ebitda", weight: -5, capLow: 0, capHigh: 40 },
@@ -56,6 +56,8 @@ function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, nu
     for (const stock of stocks) {
       const val = Number(stock[factor.column]);
       if (isNaN(val) || !isFinite(val) || stock[factor.column] === null) continue;
+      // Exclude negative P/E (unprofitable) — would distort percentile ranking
+      if (factor.column === "pe_ratio" && val <= 0) continue;
       const capped = Math.max(factor.capLow, Math.min(factor.capHigh, val));
       values.push({ symbol: stock.symbol as string, value: capped });
     }
@@ -139,7 +141,7 @@ export async function GET(request: NextRequest) {
       name: stock.name as string,
       sector: sectorName(stock.sector),
       marketCap: (Number(stock.market_cap) || 0) / 1_000_000_000,
-      peRatio: stock.pe_ratio !== null ? Number(stock.pe_ratio) : null,
+      peRatio: stock.pe_ratio !== null && Number(stock.pe_ratio) > 0 ? Number(stock.pe_ratio) : null,
       roe: stock.roe !== null ? Number(stock.roe) : null,
       revenueGrowth: stock.revenue_growth !== null ? Number(stock.revenue_growth) : null,
       earningsGrowth: stock.earnings_growth !== null ? Number(stock.earnings_growth) : null,
