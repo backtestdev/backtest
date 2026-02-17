@@ -192,7 +192,6 @@ export default function StockDetail({ ticker }: { ticker: string }) {
   const [data, setData] = useState<ResearchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [priceRange, setPriceRange] = useState<"1Y" | "5Y" | "MAX">("1Y");
   const [backtestScore, setBacktestScore] = useState<number | null>(null);
 
   const fetchResearch = useCallback(async () => {
@@ -280,9 +279,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
     ? ((weightedTarget - f.price) / f.price) * 100
     : null;
 
-  const filteredPriceHistory = data.priceHistory && data.priceHistory.length > 0
-    ? filterPriceHistory(data.priceHistory, priceRange)
-    : [];
+  const priceHistory = data.priceHistory || [];
 
   return (
     <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
@@ -381,6 +378,17 @@ export default function StockDetail({ ticker }: { ticker: string }) {
           )}
         </div>
 
+        {/* Price Chart — monthly closes from Yahoo Finance, shown near top */}
+        {priceHistory.length > 2 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-900">Price History</h2>
+              <span className="text-[10px] text-gray-300">Monthly closes</span>
+            </div>
+            <PriceChart data={priceHistory} />
+          </div>
+        )}
+
         {/* Key Metrics with improved percentile bars */}
         <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Key Metrics</h2>
@@ -408,31 +416,6 @@ export default function StockDetail({ ticker }: { ticker: string }) {
             })}
           </div>
         </div>
-
-        {/* Price Chart */}
-        {filteredPriceHistory.length > 10 && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-gray-900">Price History</h2>
-              <div className="flex items-center gap-1">
-                {(["1Y", "5Y", "MAX"] as const).map((range) => (
-                  <button
-                    key={range}
-                    onClick={() => setPriceRange(range)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                      priceRange === range
-                        ? "bg-gray-900 text-white"
-                        : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {range}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <PriceChart data={filteredPriceHistory} />
-          </div>
-        )}
 
         {/* Revenue & Net Income — LINE charts */}
         {data.revenueTrend && data.revenueTrend.length > 1 && (
@@ -742,6 +725,15 @@ function TrendLineChart({ data, dataKey, color, negativeColor, formatValue }: {
 
 // ── Price Chart ──────────────────────────────────────────────────────
 
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatDateLabel(dateStr: string): string {
+  const parts = dateStr.split("-");
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const yr = parts[0].slice(2); // "24"
+  return `${MONTH_ABBR[monthIdx]} '${yr}`;
+}
+
 function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
   if (data.length < 2) return null;
 
@@ -758,25 +750,26 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
   const firstPrice = prices[0];
   const lastPrice = prices[prices.length - 1];
   const isUp = lastPrice >= firstPrice;
+  const lineColor = isUp ? "#10b981" : "#ef4444";
 
-  const pts = data.map((d, i) => {
-    const x = pad.left + (i / (data.length - 1)) * chartW;
-    const y = pad.top + chartH - ((d.price - minPrice) / range) * chartH;
-    return `${x},${y}`;
-  });
-  const pathD = `M ${pts.join(" L ")}`;
-  const fillD = `${pathD} L ${pad.left + chartW},${pad.top + chartH} L ${pad.left},${pad.top + chartH} Z`;
+  const points = data.map((d, i) => ({
+    x: pad.left + (i / (data.length - 1)) * chartW,
+    y: pad.top + chartH - ((d.price - minPrice) / range) * chartH,
+  }));
+  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const fillD = `${pathD} L ${points[points.length - 1].x},${pad.top + chartH} L ${points[0].x},${pad.top + chartH} Z`;
 
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((pct) => ({
     price: minPrice + pct * range,
     y: pad.top + chartH - pct * chartH,
   }));
 
+  // Pick ~6 evenly spaced date labels
   const dateLabels: { label: string; x: number }[] = [];
-  const step = Math.max(1, Math.floor(data.length / 5));
+  const step = Math.max(1, Math.floor(data.length / 6));
   for (let i = 0; i < data.length; i += step) {
     dateLabels.push({
-      label: data[i].date.slice(0, 7),
+      label: formatDateLabel(data[i].date),
       x: pad.left + (i / (data.length - 1)) * chartW,
     });
   }
@@ -792,7 +785,11 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
         </g>
       ))}
       <path d={fillD} fill={isUp ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)"} />
-      <path d={pathD} fill="none" stroke={isUp ? "#10b981" : "#ef4444"} strokeWidth="1.5" />
+      <path d={pathD} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
+      {/* Data point dots */}
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={lineColor} />
+      ))}
       {dateLabels.map((dl, i) => (
         <text key={i} x={dl.x} y={height - 5} textAnchor="middle" className="text-[9px] fill-gray-300">
           {dl.label}
@@ -800,15 +797,6 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
       ))}
     </svg>
   );
-}
-
-function filterPriceHistory(data: PriceHistoryPoint[], rangeStr: "1Y" | "5Y" | "MAX"): PriceHistoryPoint[] {
-  if (rangeStr === "MAX") return data;
-  const now = new Date();
-  const years = rangeStr === "1Y" ? 1 : 5;
-  const cutoff = new Date(now.getFullYear() - years, now.getMonth(), now.getDate());
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return data.filter((d) => d.date >= cutoffStr);
 }
 
 // ── Sub-components ───────────────────────────────────────────────────
