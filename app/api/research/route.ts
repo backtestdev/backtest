@@ -19,7 +19,7 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
   const sep = endpoint.includes("?") ? "&" : "?";
   const url = `${FMP_BASE}${endpoint}${sep}apikey=${FMP_API_KEY}`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -27,11 +27,13 @@ async function fetchFMP<T>(endpoint: string): Promise<T | null> {
   }
 }
 
+// ── FMP Stable API interfaces (field names match actual API response) ──
+
 interface FMPProfile {
   symbol: string;
   companyName: string;
   price: number;
-  mktCap: number;
+  marketCap: number;
   sector: string;
   industry: string;
   description: string;
@@ -43,6 +45,8 @@ interface FMPProfile {
   volAvg: number;
   isActivelyTrading: boolean;
   image: string;
+  // Stable API may also return these as fallbacks
+  mktCap?: number;
 }
 
 interface FMPIncomeStatement {
@@ -55,7 +59,7 @@ interface FMPIncomeStatement {
   netIncome: number;
   netIncomeRatio: number;
   eps: number;
-  epsdiluted: number;
+  epsDiluted: number;
   ebitda: number;
   ebitdaratio: number;
   researchAndDevelopmentExpenses: number;
@@ -63,20 +67,32 @@ interface FMPIncomeStatement {
 
 interface FMPKeyMetrics {
   date: string;
-  peRatio: number;
-  pbRatio: number;
-  evToSales: number;
-  evToEBITDA: number;
-  debtToEquity: number;
-  currentRatio: number;
-  roe: number;
-  roic: number;
-  dividendYield: number;
-  freeCashFlowPerShare: number;
-  revenuePerShare: number;
-  netIncomePerShare: number;
-  marketCap: number;
-  enterpriseValue: number;
+  marketCap?: number;
+  enterpriseValue?: number;
+  evToSales?: number;
+  evToEBITDA?: number;
+  currentRatio?: number;
+  returnOnEquity?: number;
+  returnOnInvestedCapital?: number;
+  freeCashFlowYield?: number;
+  earningsYield?: number;
+}
+
+interface FMPRatios {
+  date: string;
+  priceToEarningsRatio?: number;
+  priceToBookRatio?: number;
+  priceToSalesRatio?: number;
+  debtToEquityRatio?: number;
+  currentRatio?: number;
+  dividendYield?: number;
+  dividendYieldPercentage?: number;
+  grossProfitMargin?: number;
+  operatingProfitMargin?: number;
+  netProfitMargin?: number;
+  freeCashFlowPerShare?: number;
+  netIncomePerShare?: number;
+  revenuePerShare?: number;
 }
 
 // ── Build data context for AI ────────────────────────────────────────
@@ -84,11 +100,14 @@ interface FMPKeyMetrics {
 function buildFinancialContext(
   profile: FMPProfile,
   income: FMPIncomeStatement[],
-  metrics: FMPKeyMetrics[]
+  metrics: FMPKeyMetrics[],
+  ratios: FMPRatios[]
 ): string {
   const latest = income[0];
   const prev = income[1];
   const latestMetrics = metrics[0];
+  const latestRatios = ratios[0];
+  const mktCap = profile.marketCap || profile.mktCap;
 
   const revenueGrowth =
     latest && prev && prev.revenue > 0
@@ -100,7 +119,7 @@ function buildFinancialContext(
     `Sector: ${profile.sector} | Industry: ${profile.industry}`,
     `Exchange: ${profile.exchange} | Country: ${profile.country}`,
     `Current Price: $${profile.price?.toFixed(2) || "N/A"}`,
-    `Market Cap: $${profile.mktCap ? (profile.mktCap / 1e9).toFixed(1) + "B" : "N/A"}`,
+    `Market Cap: $${mktCap ? (mktCap / 1e9).toFixed(1) + "B" : "N/A"}`,
     `Beta: ${profile.beta?.toFixed(2) || "N/A"}`,
     `IPO Date: ${profile.ipoDate || "N/A"}`,
     "",
@@ -115,9 +134,20 @@ function buildFinancialContext(
       `Gross Margin: ${(latest.grossProfitRatio * 100).toFixed(1)}%`,
       `Operating Margin: ${(latest.operatingIncomeRatio * 100).toFixed(1)}%`,
       `Net Margin: ${(latest.netIncomeRatio * 100).toFixed(1)}%`,
-      `EPS (diluted): $${latest.epsdiluted?.toFixed(2) || "N/A"}`,
-      `EBITDA: $${(latest.ebitda / 1e9).toFixed(2)}B`,
-      `R&D: $${latest.researchAndDevelopmentExpenses ? (latest.researchAndDevelopmentExpenses / 1e9).toFixed(2) + "B" : "N/A"}`
+      `Net Income: $${(latest.netIncome / 1e9).toFixed(2)}B`,
+      `EPS (diluted): $${latest.epsDiluted?.toFixed(2) || "N/A"}`,
+      `EBITDA: $${(latest.ebitda / 1e9).toFixed(2)}B`
+    );
+  }
+
+  if (latestRatios) {
+    lines.push(
+      "",
+      "--- Valuation Ratios ---",
+      `P/E Ratio: ${latestRatios.priceToEarningsRatio?.toFixed(1) || "N/A"}`,
+      `P/B Ratio: ${latestRatios.priceToBookRatio?.toFixed(1) || "N/A"}`,
+      `Debt/Equity: ${latestRatios.debtToEquityRatio?.toFixed(2) || "N/A"}`,
+      `Dividend Yield: ${latestRatios.dividendYield ? (latestRatios.dividendYield * 100).toFixed(2) + "%" : "N/A"}`
     );
   }
 
@@ -125,25 +155,19 @@ function buildFinancialContext(
     lines.push(
       "",
       "--- Key Metrics ---",
-      `P/E Ratio: ${latestMetrics.peRatio?.toFixed(1) || "N/A"}`,
-      `P/B Ratio: ${latestMetrics.pbRatio?.toFixed(1) || "N/A"}`,
       `EV/Sales: ${latestMetrics.evToSales?.toFixed(1) || "N/A"}`,
       `EV/EBITDA: ${latestMetrics.evToEBITDA?.toFixed(1) || "N/A"}`,
-      `ROE: ${latestMetrics.roe ? (latestMetrics.roe * 100).toFixed(1) + "%" : "N/A"}`,
-      `ROIC: ${latestMetrics.roic ? (latestMetrics.roic * 100).toFixed(1) + "%" : "N/A"}`,
-      `Debt/Equity: ${latestMetrics.debtToEquity?.toFixed(2) || "N/A"}`,
-      `Current Ratio: ${latestMetrics.currentRatio?.toFixed(2) || "N/A"}`,
-      `Dividend Yield: ${latestMetrics.dividendYield ? (latestMetrics.dividendYield * 100).toFixed(2) + "%" : "N/A"}`,
-      `FCF/Share: $${latestMetrics.freeCashFlowPerShare?.toFixed(2) || "N/A"}`,
+      `ROE: ${latestMetrics.returnOnEquity ? (latestMetrics.returnOnEquity * 100).toFixed(1) + "%" : "N/A"}`,
+      `ROIC: ${latestMetrics.returnOnInvestedCapital ? (latestMetrics.returnOnInvestedCapital * 100).toFixed(1) + "%" : "N/A"}`,
       `Enterprise Value: $${latestMetrics.enterpriseValue ? (latestMetrics.enterpriseValue / 1e9).toFixed(1) + "B" : "N/A"}`
     );
   }
 
-  // Historical revenue trend
+  // Historical revenue + earnings trend
   if (income.length > 1) {
-    lines.push("", "--- Revenue Trend ---");
+    lines.push("", "--- Revenue & Earnings Trend ---");
     for (const stmt of income) {
-      lines.push(`  ${stmt.date}: $${(stmt.revenue / 1e9).toFixed(2)}B (margin: ${(stmt.netIncomeRatio * 100).toFixed(1)}%)`);
+      lines.push(`  ${stmt.date}: Revenue $${(stmt.revenue / 1e9).toFixed(2)}B, Net Income $${(stmt.netIncome / 1e9).toFixed(2)}B (margin: ${(stmt.netIncomeRatio * 100).toFixed(1)}%)`);
     }
   }
 
@@ -164,11 +188,12 @@ export async function GET(request: NextRequest) {
   const { userId } = await auth();
   const isAuthenticated = !!userId;
 
-  // Fetch FMP data in parallel
-  const [profileArr, incomeArr, metricsArr] = await Promise.all([
+  // Fetch FMP data in parallel (4 endpoints)
+  const [profileArr, incomeArr, metricsArr, ratiosArr] = await Promise.all([
     fetchFMP<FMPProfile[]>(`/profile?symbol=${ticker}`),
-    fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${ticker}&period=annual&limit=4`),
+    fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${ticker}&period=annual&limit=5`),
     fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${ticker}&period=annual&limit=4`),
+    fetchFMP<FMPRatios[]>(`/ratios?symbol=${ticker}&period=annual&limit=4`),
   ]);
 
   const profile = profileArr?.[0];
@@ -215,10 +240,13 @@ export async function GET(request: NextRequest) {
   }
 
   const income = incomeArr || [];
+  const ratios = ratiosArr || [];
   const metrics = metricsArr || [];
   const latestMetrics = metrics[0] || null;
+  const latestRatios = ratios[0] || null;
   const latestIncome = income[0] || null;
   const prevIncome = income[1] || null;
+  const mktCap = profile.marketCap || profile.mktCap || latestMetrics?.marketCap || null;
 
   const revenueGrowth =
     latestIncome && prevIncome && prevIncome.revenue > 0
@@ -228,7 +256,7 @@ export async function GET(request: NextRequest) {
   // Build fundamentals response (always returned)
   const fundamentals = {
     price: profile.price,
-    marketCap: profile.mktCap,
+    marketCap: mktCap,
     sector: profile.sector,
     industry: profile.industry,
     beta: profile.beta,
@@ -238,29 +266,51 @@ export async function GET(request: NextRequest) {
     revenueGrowth,
     grossMargin: latestIncome?.grossProfitRatio || null,
     operatingMargin: latestIncome?.operatingIncomeRatio || null,
-    netMargin: latestIncome?.netIncomeRatio || null,
-    eps: latestIncome?.epsdiluted || null,
+    netMargin: latestIncome?.netIncomeRatio || latestRatios?.netProfitMargin || null,
+    eps: latestIncome?.epsDiluted || null,
     ebitda: latestIncome?.ebitda || null,
-    peRatio: latestMetrics?.peRatio || null,
-    pbRatio: latestMetrics?.pbRatio || null,
+    netIncome: latestIncome?.netIncome || null,
+    peRatio: latestRatios?.priceToEarningsRatio || null,
+    pbRatio: latestRatios?.priceToBookRatio || null,
     evToSales: latestMetrics?.evToSales || null,
     evToEbitda: latestMetrics?.evToEBITDA || null,
-    roe: latestMetrics?.roe || null,
-    roic: latestMetrics?.roic || null,
-    debtToEquity: latestMetrics?.debtToEquity || null,
-    currentRatio: latestMetrics?.currentRatio || null,
-    dividendYield: latestMetrics?.dividendYield || null,
-    fcfPerShare: latestMetrics?.freeCashFlowPerShare || null,
+    roe: latestMetrics?.returnOnEquity || null,
+    roic: latestMetrics?.returnOnInvestedCapital || null,
+    debtToEquity: latestRatios?.debtToEquityRatio || null,
+    currentRatio: latestRatios?.currentRatio || latestMetrics?.currentRatio || null,
+    dividendYield: latestRatios?.dividendYield || null,
+    fcfPerShare: latestRatios?.freeCashFlowPerShare || null,
     enterpriseValue: latestMetrics?.enterpriseValue || null,
   };
 
-  // Revenue trend for chart
+  // Revenue + earnings trend for charts
   const revenueTrend = income.map((stmt) => ({
     date: stmt.date,
     revenue: stmt.revenue,
+    netIncome: stmt.netIncome,
+    grossProfit: stmt.grossProfit,
     netMargin: stmt.netIncomeRatio,
-    eps: stmt.epsdiluted,
+    eps: stmt.epsDiluted,
   })).reverse();
+
+  // Historical prices for chart (from DB)
+  let priceHistory: { date: string; price: number }[] = [];
+  const sql = getDb();
+  if (sql) {
+    try {
+      const priceRows = await sql`
+        SELECT date, close_price FROM stock_prices
+        WHERE symbol = ${ticker}
+        ORDER BY date ASC
+      `;
+      priceHistory = priceRows.map((r) => ({
+        date: String(r.date),
+        price: Number(r.close_price),
+      }));
+    } catch {
+      // DB not available, skip price history
+    }
+  }
 
   // Generate AI report only for authenticated users
   let report: ResearchReport | null = null;
@@ -270,7 +320,7 @@ export async function GET(request: NextRequest) {
     if (openaiKey) {
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
-        const context = buildFinancialContext(profile, income, metrics);
+        const context = buildFinancialContext(profile, income, metrics, ratios);
 
         const response = await openai.chat.completions.create({
           model: "gpt-4o-mini",
@@ -287,7 +337,7 @@ You MUST respond with valid JSON matching this exact structure:
   "baseCase": { "targetPrice": <number>, "probability": <number 0-100>, "rationale": "2-3 sentences" },
   "bearCase": { "targetPrice": <number>, "probability": <number 0-100>, "rationale": "2-3 sentences" },
   "riskFactors": ["risk1", "risk2", "risk3", "risk4"],
-  "recommendation": "BUY" | "HOLD" | "SELL",
+  "recommendation": "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL",
   "recommendationRationale": "1-2 sentence justification"
 }
 
@@ -297,6 +347,7 @@ Rules:
 - Be specific about financial metrics in your rationale
 - Risk factors should be concise (1 sentence each)
 - Base recommendation on the probability-weighted expected return vs current price
+- Use STRONG_BUY for >20% expected upside, BUY for 10-20%, HOLD for -10% to 10%, SELL for -10% to -20%, STRONG_SELL for >20% downside
 - Do NOT include any text outside the JSON object`,
             },
             {
@@ -308,7 +359,6 @@ Rules:
 
         const content = response.choices[0]?.message?.content;
         if (content) {
-          // Strip markdown code fences if present
           const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
           report = JSON.parse(cleaned) as ResearchReport;
         }
@@ -327,6 +377,7 @@ Rules:
     source: "fmp",
     fundamentals,
     revenueTrend,
+    priceHistory,
     report,
   });
 }
@@ -337,6 +388,6 @@ interface ResearchReport {
   baseCase: { targetPrice: number; probability: number; rationale: string };
   bearCase: { targetPrice: number; probability: number; rationale: string };
   riskFactors: string[];
-  recommendation: "BUY" | "HOLD" | "SELL";
+  recommendation: "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL";
   recommendationRationale: string;
 }
