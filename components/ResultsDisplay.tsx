@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useUser, SignUpButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { BacktestResult, StructuredParameters } from "@/lib/types";
 import ResultsChart from "./ResultsChart";
 import StrategyInspector from "./StrategyInspector";
@@ -67,6 +68,17 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
     })();
     return () => { cancelled = true; };
   }, [result.matchedStocks]);
+
+  // Sort matched stocks by composite score (descending), unscored go last
+  const sortedMatchedStocks = useMemo(() => {
+    return [...result.matchedStocks].sort((a, b) => {
+      const tickerA = a.split(" ")[0];
+      const tickerB = b.split(" ")[0];
+      const scoreA = stockScores.get(tickerA)?.score ?? -1;
+      const scoreB = stockScores.get(tickerB)?.score ?? -1;
+      return scoreB - scoreA;
+    });
+  }, [result.matchedStocks, stockScores]);
 
   const handleSave = async () => {
     const name = leaderboardName.trim() || result.strategyName;
@@ -221,13 +233,15 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         </button>
         {stocksExpanded && (
           <div className="flex flex-wrap gap-2 mt-4">
-            {result.matchedStocks.map((stock) => {
+            {sortedMatchedStocks.map((stock) => {
               const ticker = stock.split(" ")[0];
               const scoreData = stockScores.get(ticker);
               return (
-                <span
+                <Link
                   key={stock}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg border border-gray-100"
+                  href={`/research/${ticker}`}
+                  title={scoreData?.name || ticker}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
                 >
                   <StockLogo ticker={ticker} sector={scoreData?.sector} />
                   <span className="font-medium">{ticker}</span>
@@ -241,12 +255,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
                       {scoreData.score}
                     </span>
                   )}
-                  {result.recentListings?.some(r => r.ticker === ticker) && (
-                    <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-purple-50 text-purple-600" title="Recently listed — limited price history">
-                      New
-                    </span>
-                  )}
-                </span>
+                </Link>
               );
             })}
           </div>
