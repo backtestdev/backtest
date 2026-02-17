@@ -58,6 +58,9 @@ export interface StockData {
   // Other
   ipo_date?: string;
 
+  // Listing recency — number of years with return data in stock_annual_returns
+  years_of_returns?: number;
+
   // Historical annual returns for backtesting (approximate)
   historical_returns: {
     [year: string]: number; // annual return as decimal

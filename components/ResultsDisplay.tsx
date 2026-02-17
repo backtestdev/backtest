@@ -241,6 +241,11 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
                       {scoreData.score}
                     </span>
                   )}
+                  {result.recentListings?.some(r => r.ticker === ticker) && (
+                    <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-purple-50 text-purple-600" title="Recently listed — limited price history">
+                      New
+                    </span>
+                  )}
                 </span>
               );
             })}
