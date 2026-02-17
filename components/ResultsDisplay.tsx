@@ -157,9 +157,9 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
           <button
             key={horizon.period}
             onClick={() => handlePeriodClick(horizon.period)}
-            className={`bg-th-surface rounded-2xl border-2 p-3 sm:p-5 text-center transition-all duration-150 cursor-pointer ${
+            className={`bg-th-surface rounded-2xl border-2 p-3 sm:p-5 text-center transition-all duration-150 cursor-pointer shadow-sm hover:shadow-md ${
               selectedPeriod === horizon.period
-                ? "border-th-focus-border ring-4 ring-th-focus-ring"
+                ? "border-th-focus-border ring-4 ring-th-focus-ring shadow-md"
                 : "border-th-border-light hover:border-th-border"
             }`}
           >

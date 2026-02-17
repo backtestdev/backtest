@@ -293,7 +293,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
         </Link>
 
         {/* Header with recommendation gauge + backtest score */}
-        <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
+        <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 shadow-sm">
           <div className="flex flex-col sm:flex-row items-start gap-4">
             <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
               <StockLogo ticker={data.ticker} sector={f.sector || undefined} size="md" />
@@ -380,7 +380,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
 
         {/* Price Chart — monthly closes from Yahoo Finance, shown near top */}
         {priceHistory.length > 2 && (
-          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
+          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-th-text">Price History</h2>
               <span className="text-[10px] text-th-text-4">Monthly closes</span>
@@ -390,7 +390,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
         )}
 
         {/* Key Metrics with improved percentile bars */}
-        <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
+        <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 shadow-sm">
           <h2 className="text-sm font-semibold text-th-text mb-4">Key Metrics</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 sm:gap-x-6 gap-y-3 sm:gap-y-4">
             {KEY_METRICS.map((m) => {
@@ -444,7 +444,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
 
         {/* Auth gate for AI report */}
         {!isSignedIn && !report && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-th-accent-border p-6 sm:p-8 mb-4 text-center">
+          <div className="bg-th-accent-bg rounded-2xl border border-th-accent-border p-6 sm:p-8 mb-4 text-center">
             <svg className="w-10 h-10 text-th-accent mx-auto mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
             </svg>
@@ -707,9 +707,9 @@ function TrendLineChart({ data, dataKey, color, negativeColor, formatValue }: {
         const dotColor = isNeg && negativeColor ? negativeColor : lineColor;
         return (
           <g key={i}>
-            <circle cx={p.x} cy={p.y} r="4" fill="white" stroke={dotColor} strokeWidth="2" />
+            <circle cx={p.x} cy={p.y} r="4" fill="var(--bg-surface)" stroke={dotColor} strokeWidth="2" />
             <text x={p.x} y={p.y - 8} textAnchor="middle"
-              className="text-[9px]" fill={isNeg ? (negativeColor || "var(--negative)") : "#6b7280"}>
+              className="text-[9px]" fill={isNeg ? (negativeColor || "var(--negative)") : "var(--text-2)"}>
               {formatValue(p.val)}
             </text>
             {/* Year label */}
@@ -735,6 +735,8 @@ function formatDateLabel(dateStr: string): string {
 }
 
 function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
   if (data.length < 2) return null;
 
   const prices = data.map((d) => d.price);
@@ -742,8 +744,8 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
   const maxPrice = Math.max(...prices);
   const range = maxPrice - minPrice || 1;
   const width = 800;
-  const height = 200;
-  const pad = { top: 10, right: 10, bottom: 25, left: 50 };
+  const height = 240;
+  const pad = { top: 20, right: 15, bottom: 32, left: 56 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
 
@@ -764,7 +766,6 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
     y: pad.top + chartH - pct * chartH,
   }));
 
-  // Pick ~6 evenly spaced date labels
   const dateLabels: { label: string; x: number }[] = [];
   const step = Math.max(1, Math.floor(data.length / 6));
   for (let i = 0; i < data.length; i += step) {
@@ -774,24 +775,82 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
     });
   }
 
+  const hp = hoveredIdx !== null ? points[hoveredIdx] : null;
+  const hd = hoveredIdx !== null ? data[hoveredIdx] : null;
+  const ttX = hp ? Math.max(pad.left + 55, Math.min(width - pad.right - 55, hp.x)) : 0;
+  const ttAbove = hp ? hp.y > pad.top + 50 : true;
+
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full h-auto"
+      onMouseLeave={() => setHoveredIdx(null)}
+    >
+      <defs>
+        <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={isUp ? "var(--positive)" : "var(--negative)"} stopOpacity="0.15" />
+          <stop offset="100%" stopColor={isUp ? "var(--positive)" : "var(--negative)"} stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+
+      {/* Grid + Y labels */}
       {yTicks.map((tick, i) => (
         <g key={i}>
           <line x1={pad.left} y1={tick.y} x2={width - pad.right} y2={tick.y} stroke="var(--border-light)" strokeWidth="1" />
-          <text x={pad.left - 6} y={tick.y + 3} textAnchor="end" className="text-[9px] fill-th-text-4">
+          <text x={pad.left - 8} y={tick.y + 4} textAnchor="end" className="text-[11px]" fill="var(--text-2)">
             ${tick.price >= 1000 ? (tick.price / 1000).toFixed(0) + "k" : tick.price.toFixed(0)}
           </text>
         </g>
       ))}
-      <path d={fillD} fill={isUp ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)"} />
-      <path d={pathD} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
-      {/* Data point dots */}
-      {points.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={lineColor} />
-      ))}
+
+      {/* Fill area */}
+      <path d={fillD} fill="url(#priceGrad)" />
+
+      {/* Line */}
+      <path d={pathD} fill="none" stroke={lineColor} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+
+      {/* Hover crosshair */}
+      {hp && (
+        <line x1={hp.x} y1={pad.top} x2={hp.x} y2={pad.top + chartH} stroke="var(--text-4)" strokeWidth="1" strokeDasharray="4 3" />
+      )}
+
+      {/* Hit areas + hover dots */}
+      {points.map((p, i) => {
+        const hitW = chartW / data.length;
+        return (
+          <g key={i} onMouseEnter={() => setHoveredIdx(i)}>
+            <rect x={p.x - hitW / 2} y={pad.top} width={hitW} height={chartH} fill="transparent" style={{ cursor: "crosshair" }} />
+            <circle
+              cx={p.x} cy={p.y}
+              r={hoveredIdx === i ? 5 : 0}
+              fill={lineColor}
+              stroke="var(--bg-surface)"
+              strokeWidth="2"
+            />
+          </g>
+        );
+      })}
+
+      {/* Tooltip */}
+      {hp && hd && (
+        <g>
+          <rect
+            x={ttX - 52} y={ttAbove ? hp.y - 46 : hp.y + 12}
+            width="104" height="36" rx="8"
+            fill="var(--tooltip-bg)" stroke="var(--border)" strokeWidth="1"
+          />
+          <text x={ttX} y={ttAbove ? hp.y - 28 : hp.y + 30} textAnchor="middle" className="text-[12px] font-semibold" fill="var(--tooltip-text)">
+            ${hd.price.toFixed(2)}
+          </text>
+          <text x={ttX} y={ttAbove ? hp.y - 16 : hp.y + 42} textAnchor="middle" className="text-[10px]" fill="var(--text-3)">
+            {formatDateLabel(hd.date)}
+          </text>
+        </g>
+      )}
+
+      {/* Date labels */}
       {dateLabels.map((dl, i) => (
-        <text key={i} x={dl.x} y={height - 5} textAnchor="middle" className="text-[9px] fill-th-text-4">
+        <text key={i} x={dl.x} y={height - 8} textAnchor="middle" className="text-[11px]" fill="var(--text-2)">
           {dl.label}
         </text>
       ))}

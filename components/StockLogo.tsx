@@ -10,15 +10,15 @@ import { useState, useCallback } from "react";
 
 const SECTOR_COLORS: Record<string, { bg: string; text: string }> = {
   Technology:              { bg: "bg-th-accent-muted",    text: "text-th-accent-text" },
-  Healthcare:              { bg: "bg-th-positive-bg", text: "text-th-positive-text" },
-  Financial:               { bg: "bg-th-warning-bg",   text: "text-th-warning-text" },
-  "Financial Services":    { bg: "bg-th-warning-bg",   text: "text-th-warning-text" },
-  Energy:                  { bg: "bg-orange-100",  text: "text-orange-700" },
-  Consumer:                { bg: "bg-pink-100",    text: "text-pink-700" },
-  "Consumer Cyclical":     { bg: "bg-pink-100",    text: "text-pink-700" },
-  "Consumer Defensive":    { bg: "bg-rose-100",    text: "text-rose-700" },
-  Industrials:             { bg: "bg-th-skeleton",    text: "text-th-text-2" },
-  "Basic Materials":       { bg: "bg-th-warning-bg",  text: "text-th-warning-text" },
+  Healthcare:              { bg: "bg-cyan-100",        text: "text-cyan-700" },
+  Financial:               { bg: "bg-amber-100",       text: "text-amber-700" },
+  "Financial Services":    { bg: "bg-amber-100",       text: "text-amber-700" },
+  Energy:                  { bg: "bg-orange-100",      text: "text-orange-700" },
+  Consumer:                { bg: "bg-violet-100",      text: "text-violet-700" },
+  "Consumer Cyclical":     { bg: "bg-violet-100",      text: "text-violet-700" },
+  "Consumer Defensive":    { bg: "bg-purple-100",      text: "text-purple-700" },
+  Industrials:             { bg: "bg-slate-100",      text: "text-slate-600" },
+  "Basic Materials":       { bg: "bg-amber-100",      text: "text-amber-700" },
   "Real Estate":           { bg: "bg-purple-100",  text: "text-purple-700" },
   Utilities:               { bg: "bg-teal-100",    text: "text-teal-700" },
   Communication:           { bg: "bg-indigo-100",  text: "text-indigo-700" },
@@ -29,7 +29,7 @@ const FALLBACK_COLORS = [
   { bg: "bg-slate-100",  text: "text-slate-600" },
   { bg: "bg-sky-100",    text: "text-sky-700" },
   { bg: "bg-violet-100", text: "text-violet-700" },
-  { bg: "bg-lime-100",   text: "text-lime-700" },
+  { bg: "bg-amber-100",  text: "text-amber-700" },
   { bg: "bg-cyan-100",   text: "text-cyan-700" },
 ];
 

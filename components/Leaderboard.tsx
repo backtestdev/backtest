@@ -92,7 +92,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
       </p>
 
       {/* Table */}
-      <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto">
+      <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto shadow-sm">
         <div className="min-w-[480px]">
           {/* Header */}
           <div className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 border-b border-th-border-light items-center">

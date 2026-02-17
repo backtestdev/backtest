@@ -496,7 +496,7 @@ export default function StockScreener() {
         )}
 
         {/* Table */}
-        <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto">
+        <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto shadow-sm">
           <div className="min-w-[600px]">
           {/* Header */}
           <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-th-border-light items-center">

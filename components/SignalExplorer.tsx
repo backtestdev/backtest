@@ -291,7 +291,7 @@ export default function SignalExplorer() {
 
         {/* Composite signal card */}
         {compositeSignal && (
-          <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-th-accent-border p-4 sm:p-5">
+          <div className="mb-6 bg-th-accent-bg rounded-2xl border border-th-accent-border p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-th-text">Combined Signal</h3>

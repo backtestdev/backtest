@@ -432,7 +432,7 @@ export default function BacktestInput({
             onBlur={() => setIsFocused(false)}
             onKeyDown={handleKeyDown}
             placeholder=""
-            className="w-full h-28 sm:h-32 px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg text-th-text bg-th-surface border-2 border-th-border rounded-2xl resize-none focus:outline-none focus:border-th-focus-border focus:ring-4 focus:ring-th-focus-ring transition-all duration-200"
+            className="w-full h-28 sm:h-32 px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg text-th-text bg-th-surface border-2 border-th-border rounded-2xl resize-none focus:outline-none focus:border-th-focus-border focus:ring-4 focus:ring-th-focus-ring transition-all duration-200 shadow-sm"
             disabled={isLoading}
           />
 
@@ -497,7 +497,7 @@ export default function BacktestInput({
         <button
           type="submit"
           disabled={!strategy.trim() || isLoading}
-          className="w-full py-3 sm:py-4 px-6 sm:px-8 text-base sm:text-lg font-semibold text-white bg-th-accent rounded-xl hover:bg-th-accent-hover focus:outline-none focus:ring-4 focus:ring-th-focus-ring disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-3"
+          className="w-full py-3 sm:py-4 px-6 sm:px-8 text-base sm:text-lg font-semibold text-white bg-th-accent rounded-xl hover:bg-th-accent-hover focus:outline-none focus:ring-4 focus:ring-th-focus-ring disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-3 shadow-md hover:shadow-lg"
         >
           {isLoading ? (
             <>

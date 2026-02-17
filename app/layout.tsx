@@ -41,7 +41,7 @@ export default function RootLayout({
         </head>
         <body className={`${geistSans.variable} font-sans antialiased`}>
           <ThemeProvider>
-            <nav className="relative flex justify-between items-center px-4 sm:px-6 py-3 border-b border-th-border-light bg-th-surface">
+            <nav className="sticky top-0 z-50 relative flex justify-between items-center px-4 sm:px-6 py-3 border-b border-th-border-light bg-th-surface/95 backdrop-blur-sm shadow-sm">
               <Navigation />
               <div className="flex items-center gap-2 sm:gap-3">
                 <SignedOut>

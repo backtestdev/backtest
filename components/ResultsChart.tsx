@@ -40,7 +40,7 @@ export default function ResultsChart({ data, period }: ResultsChartProps) {
   const tickFontSize = data.length > 18 ? 9 : data.length > 12 ? 10 : 11;
 
   return (
-    <div className="w-full bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mt-6">
+    <div className="w-full bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mt-6 shadow-sm">
       <h3 className="text-base sm:text-lg font-semibold text-th-text mb-1">
         Growth of $10,000
       </h3>
@@ -133,8 +133,8 @@ export default function ResultsChart({ data, period }: ResultsChartProps) {
                 dataKey="strategy"
                 stroke={chartColors.strategy}
                 strokeWidth={2.5}
-                dot={false}
-                activeDot={{ r: 4 }}
+                dot={{ r: 3, fill: chartColors.strategy, strokeWidth: 0 }}
+                activeDot={{ r: 6, fill: chartColors.strategy, stroke: chartColors.tooltipBg, strokeWidth: 2 }}
               />
               <Line
                 type="monotone"
@@ -143,7 +143,7 @@ export default function ResultsChart({ data, period }: ResultsChartProps) {
                 strokeWidth={2}
                 strokeDasharray="6 3"
                 dot={false}
-                activeDot={{ r: 4 }}
+                activeDot={{ r: 5, fill: chartColors.benchmark, stroke: chartColors.tooltipBg, strokeWidth: 2 }}
               />
             </LineChart>
           )}

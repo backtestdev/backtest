@@ -25,19 +25,19 @@ const LIGHT_CHART: ChartColors = {
   benchmark: "#94a3b8",
   grid: "#f1f5f9",
   axis: "#e2e8f0",
-  tick: "#94a3b8",
+  tick: "#64748b",
   tooltipBg: "#ffffff",
   tooltipBorder: "#e2e8f0",
 };
 
 const DARK_CHART: ChartColors = {
   strategy: "#60a5fa",
-  benchmark: "#64748b",
+  benchmark: "#94a3b8",
   grid: "#1e293b",
-  axis: "#334155",
-  tick: "#64748b",
+  axis: "#475569",
+  tick: "#94a3b8",
   tooltipBg: "#1e293b",
-  tooltipBorder: "#334155",
+  tooltipBorder: "#475569",
 };
 
 const ThemeContext = createContext<ThemeContextType>({
