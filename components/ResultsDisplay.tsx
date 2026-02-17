@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser, SignUpButton } from "@clerk/nextjs";
 import { BacktestResult, StructuredParameters } from "@/lib/types";
 import ResultsChart from "./ResultsChart";
 import StrategyInspector from "./StrategyInspector";
+import StockLogo from "./StockLogo";
 
 interface ResultsDisplayProps {
   result: BacktestResult;
@@ -30,6 +31,42 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
   const isTickerMode = !!(result.parsedParams?.tickers && result.parsedParams.tickers.length > 0);
   const [stocksExpanded, setStocksExpanded] = useState(false);
+
+  // Score data for matched stocks
+  const [stockScores, setStockScores] = useState<Map<string, { score: number; sector: string; name: string }>>(new Map());
+
+  useEffect(() => {
+    if (result.matchedStocks.length === 0) return;
+    // Extract tickers from "AAPL (Apple Inc.)" format
+    const tickers = result.matchedStocks.map((s) => s.split(" ")[0]);
+    // Batch fetch in chunks of 100 to avoid URL length limits
+    const chunks: string[][] = [];
+    for (let i = 0; i < tickers.length; i += 100) {
+      chunks.push(tickers.slice(i, i + 100));
+    }
+    let cancelled = false;
+    (async () => {
+      const allScores = new Map<string, { score: number; sector: string; name: string }>();
+      for (const chunk of chunks) {
+        if (cancelled) return;
+        try {
+          const res = await fetch(`/api/screener?tickers=${chunk.join(",")}`);
+          const json = await res.json();
+          if (json.stocks) {
+            for (const stock of json.stocks) {
+              allScores.set(stock.symbol, {
+                score: stock.backtestScore,
+                sector: stock.sector,
+                name: stock.name,
+              });
+            }
+          }
+        } catch { /* ignore fetch errors */ }
+      }
+      if (!cancelled) setStockScores(allScores);
+    })();
+    return () => { cancelled = true; };
+  }, [result.matchedStocks]);
 
   const handleSave = async () => {
     const name = leaderboardName.trim() || result.strategyName;
@@ -184,14 +221,29 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         </button>
         {stocksExpanded && (
           <div className="flex flex-wrap gap-2 mt-4">
-            {result.matchedStocks.map((stock) => (
-              <span
-                key={stock}
-                className="px-3 py-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg border border-gray-100"
-              >
-                {stock}
-              </span>
-            ))}
+            {result.matchedStocks.map((stock) => {
+              const ticker = stock.split(" ")[0];
+              const scoreData = stockScores.get(ticker);
+              return (
+                <span
+                  key={stock}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg border border-gray-100"
+                >
+                  <StockLogo ticker={ticker} sector={scoreData?.sector} />
+                  <span className="font-medium">{ticker}</span>
+                  {scoreData && (
+                    <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
+                      scoreData.score >= 75 ? "bg-emerald-50 text-emerald-600" :
+                      scoreData.score >= 50 ? "bg-blue-50 text-blue-600" :
+                      scoreData.score >= 25 ? "bg-amber-50 text-amber-600" :
+                      "bg-red-50 text-red-500"
+                    }`}>
+                      {scoreData.score}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

@@ -5,6 +5,14 @@ export const dynamic = "force-dynamic";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
+interface TopStock {
+  symbol: string;
+  name: string;
+  sector: string;
+  metricValue: number;
+  marketCap: number;
+}
+
 interface QuintileResult {
   metric: string;
   label: string;
@@ -13,6 +21,7 @@ interface QuintileResult {
   direction: "higher_better" | "lower_better";
   yearsOfData: number;
   type: "static"; // future: "dynamic" when we have historical metric snapshots
+  topStocks: TopStock[];
 }
 
 // Metrics to analyze — only numeric, filterable ones that are commonly populated
@@ -70,7 +79,7 @@ export async function GET(request: NextRequest) {
   try {
     // Get all stocks with their annual returns in one query
     const stockRows = await sql`
-      SELECT s.symbol,
+      SELECT s.symbol, s.company_name, s.sector,
              s.price_to_earnings_ratio AS pe_ratio,
              s.price_to_book_ratio AS price_to_book,
              s.price_to_earnings_growth_ratio AS peg_ratio,
@@ -114,6 +123,30 @@ export async function GET(request: NextRequest) {
     const yearsOfData = yearsSet.size;
 
     const results: QuintileResult[] = [];
+
+    // Sector display name mapping
+    const SECTOR_DISPLAY: Record<string, string> = {
+      "Technology": "Technology", "Healthcare": "Healthcare",
+      "Financial Services": "Financial", "Finance": "Financial",
+      "Energy": "Energy", "Consumer Cyclical": "Consumer",
+      "Consumer Defensive": "Consumer", "Industrials": "Industrials",
+      "Basic Materials": "Basic Materials", "Real Estate": "Real Estate",
+      "Utilities": "Utilities", "Communication Services": "Communication",
+    };
+    const sectorName = (raw: unknown) => {
+      const s = String(raw || "");
+      return SECTOR_DISPLAY[s] || s || "Other";
+    };
+
+    // Build a lookup for stock metadata
+    const stockMeta = new Map<string, { name: string; sector: string; marketCap: number }>();
+    for (const row of stockRows) {
+      stockMeta.set(row.symbol as string, {
+        name: (row.company_name as string) || "",
+        sector: sectorName(row.sector),
+        marketCap: Number(row.market_cap || 0) / 1_000_000_000,
+      });
+    }
 
     for (const metric of ANALYZABLE_METRICS) {
       // Get stocks with non-null values for this metric
@@ -166,6 +199,38 @@ export async function GET(request: NextRequest) {
       const spread = q1Avg - q5Avg;
       const direction: "higher_better" | "lower_better" = spread < 0 ? "higher_better" : "lower_better";
 
+      // Top stocks from the winner quintile, sorted by metric value (most extreme first).
+      // Winner = Q5 for higher_better (highest values), Q1 for lower_better (lowest values).
+      // Return up to 20 so the client can compute composite top stocks across signals.
+      const winnerStart = direction === "higher_better"
+        ? stocksWithMetric.length - quintileSize
+        : 0;
+      const winnerEnd = direction === "higher_better"
+        ? stocksWithMetric.length
+        : quintileSize;
+      const winnerSlice = stocksWithMetric.slice(winnerStart, winnerEnd);
+      // Sort by metric value: best-in-class first
+      const sortedWinners = winnerSlice
+        .filter((s) => {
+          const meta = stockMeta.get(s.symbol);
+          return meta && meta.marketCap >= 1; // ≥$1B market cap for relevance
+        })
+        .sort((a, b) =>
+          direction === "higher_better" ? b.value - a.value : a.value - b.value
+        );
+      const topStocks = sortedWinners
+        .slice(0, 20)
+        .map((s) => {
+          const meta = stockMeta.get(s.symbol);
+          return {
+            symbol: s.symbol,
+            name: meta?.name || "",
+            sector: meta?.sector || "Other",
+            metricValue: s.value,
+            marketCap: meta?.marketCap || 0,
+          };
+        });
+
       results.push({
         metric: metric.column,
         label: metric.label,
@@ -174,6 +239,7 @@ export async function GET(request: NextRequest) {
         direction,
         yearsOfData,
         type: "static",
+        topStocks,
       });
     }
 
