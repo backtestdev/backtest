@@ -199,8 +199,9 @@ export async function GET(request: NextRequest) {
       const spread = q1Avg - q5Avg;
       const direction: "higher_better" | "lower_better" = spread < 0 ? "higher_better" : "lower_better";
 
-      // Top 5 stocks from the winner quintile (best metric values)
-      // Winner = Q5 for higher_better, Q1 for lower_better
+      // Top stocks from the winner quintile, sorted by metric value (most extreme first).
+      // Winner = Q5 for higher_better (highest values), Q1 for lower_better (lowest values).
+      // Return up to 20 so the client can compute composite top stocks across signals.
       const winnerStart = direction === "higher_better"
         ? stocksWithMetric.length - quintileSize
         : 0;
@@ -208,18 +209,17 @@ export async function GET(request: NextRequest) {
         ? stocksWithMetric.length
         : quintileSize;
       const winnerSlice = stocksWithMetric.slice(winnerStart, winnerEnd);
-      // Sort by market cap descending to surface well-known names first, then take top 5
-      const topStocks = winnerSlice
+      // Sort by metric value: best-in-class first
+      const sortedWinners = winnerSlice
         .filter((s) => {
           const meta = stockMeta.get(s.symbol);
           return meta && meta.marketCap >= 1; // ≥$1B market cap for relevance
         })
-        .sort((a, b) => {
-          const aCap = stockMeta.get(a.symbol)?.marketCap || 0;
-          const bCap = stockMeta.get(b.symbol)?.marketCap || 0;
-          return bCap - aCap;
-        })
-        .slice(0, 5)
+        .sort((a, b) =>
+          direction === "higher_better" ? b.value - a.value : a.value - b.value
+        );
+      const topStocks = sortedWinners
+        .slice(0, 20)
         .map((s) => {
           const meta = stockMeta.get(s.symbol);
           return {

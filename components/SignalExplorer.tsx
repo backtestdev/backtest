@@ -133,11 +133,38 @@ export default function SignalExplorer() {
     const direction: "higher_better" | "lower_better" =
       compositeQuintiles[4].avgReturn > compositeQuintiles[0].avgReturn ? "higher_better" : "lower_better";
 
+    // Composite top stocks: find stocks that appear across the most selected
+    // signals' winner quintiles, ranked by frequency then market cap.
+    const stockAppearances = new Map<string, { count: number; stock: TopStock }>();
+    for (const sig of selected) {
+      for (const stock of sig.topStocks) {
+        const existing = stockAppearances.get(stock.symbol);
+        if (existing) {
+          existing.count++;
+          // Keep the entry with the highest market cap data
+          if (stock.marketCap > existing.stock.marketCap) {
+            existing.stock = stock;
+          }
+        } else {
+          stockAppearances.set(stock.symbol, { count: 1, stock: { ...stock } });
+        }
+      }
+    }
+    const compositeTopStocks = Array.from(stockAppearances.values())
+      .sort((a, b) => b.count - a.count || b.stock.marketCap - a.stock.marketCap)
+      .slice(0, 5)
+      .map((entry) => ({
+        ...entry.stock,
+        signalCount: entry.count,
+      }));
+
     return {
       quintiles: compositeQuintiles,
       spread,
       direction,
       labels: selected.map((s) => s.label),
+      topStocks: compositeTopStocks,
+      totalSignals: selected.length,
     };
   }, [selectedMetrics, data]);
 
@@ -304,6 +331,38 @@ export default function SignalExplorer() {
                 );
               })}
             </div>
+            {/* Composite top stocks */}
+            {compositeSignal.topStocks && compositeSignal.topStocks.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-blue-200/60">
+                <p className="text-xs font-semibold text-gray-500 mb-2">
+                  Stocks ranking across the most selected signals
+                </p>
+                <div className="space-y-1.5">
+                  {compositeSignal.topStocks.map((stock) => (
+                    <div
+                      key={stock.symbol}
+                      className="flex items-center gap-2 bg-white/80 rounded-lg px-3 py-2 border border-blue-100"
+                    >
+                      <StockLogo ticker={stock.symbol} sector={stock.sector} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
+                          <span className="text-xs text-gray-400 truncate">{stock.name}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                          {stock.signalCount}/{compositeSignal.totalSignals} signals
+                        </span>
+                        <span className="text-[10px] text-gray-400">{formatMarketCap(stock.marketCap)}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <p className="text-[10px] text-gray-400 mt-3 text-center">
               Average of per-metric quintile returns. A true composite would require per-stock multi-factor scoring.
             </p>
@@ -436,14 +495,14 @@ export default function SignalExplorer() {
                       })}
                     </div>
 
-                    {/* Top stocks in the winner quintile */}
+                    {/* Top stocks in the winner quintile (show first 5) */}
                     {signal.topStocks && signal.topStocks.length > 0 && (
                       <div className="mt-4 pt-3 border-t border-gray-200">
                         <p className="text-xs font-semibold text-gray-500 mb-2">
                           Top stocks with {signal.direction === "lower_better" ? "lowest" : "strongest"} {signal.label}
                         </p>
                         <div className="space-y-1.5">
-                          {signal.topStocks.map((stock) => (
+                          {signal.topStocks.slice(0, 5).map((stock) => (
                             <div
                               key={stock.symbol}
                               className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100"

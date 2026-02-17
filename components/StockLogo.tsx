@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
 /**
- * StockLogo — small colored letter avatar for stock tickers.
- * Color is deterministic based on sector (or ticker hash fallback).
+ * StockLogo — company logo from FMP with letter-avatar fallback.
+ * Tries to load the real logo; on error, shows a sector-colored letter.
  */
 
 const SECTOR_COLORS: Record<string, { bg: string; text: string }> = {
@@ -38,6 +40,10 @@ function hashCode(s: string): number {
   return Math.abs(h);
 }
 
+// Track tickers that have already failed so we don't retry across re-renders.
+// Shared across all StockLogo instances.
+const failedTickers = new Set<string>();
+
 interface StockLogoProps {
   ticker: string;
   sector?: string;
@@ -45,21 +51,40 @@ interface StockLogoProps {
 }
 
 export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProps) {
+  const [imgFailed, setImgFailed] = useState(() => failedTickers.has(ticker));
+
   const colors = (sector && SECTOR_COLORS[sector]) ||
     FALLBACK_COLORS[hashCode(ticker) % FALLBACK_COLORS.length];
 
-  const letter = ticker.charAt(0);
-
+  const px = size === "sm" ? 24 : 32;
   const dims = size === "sm"
     ? "w-6 h-6 text-[10px]"
     : "w-8 h-8 text-xs";
 
+  if (!imgFailed) {
+    return (
+      <img
+        src={`https://financialmodelingprep.com/image-stock/${encodeURIComponent(ticker)}.png`}
+        alt={ticker}
+        width={px}
+        height={px}
+        loading="lazy"
+        className={`rounded-md object-contain flex-shrink-0 bg-white ${dims}`}
+        onError={() => {
+          failedTickers.add(ticker);
+          setImgFailed(true);
+        }}
+      />
+    );
+  }
+
+  // Fallback: sector-colored letter avatar
   return (
     <span
       className={`inline-flex items-center justify-center rounded-md font-bold flex-shrink-0 ${dims} ${colors.bg} ${colors.text}`}
       title={ticker}
     >
-      {letter}
+      {ticker.charAt(0)}
     </span>
   );
 }
