@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import StockLogo from "./StockLogo";
 
 interface Stock {
   symbol: string;
   name: string;
   sector: string;
+  industry: string;
   marketCap: number;
   peRatio: number | null;
   roe: number | null;
@@ -30,9 +32,21 @@ interface ScreenerData {
   page: number;
   perPage: number;
   sectors: string[];
+  industries: string[];
 }
 
 type SortField = "backtest_score" | "market_cap" | "pe_ratio" | "roe" | "earnings_yield" | "earnings_growth" | "revenue_growth" | "dividend_yield";
+
+const POPULAR_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM"];
+
+const THEME_BUTTONS = [
+  { id: "ai", label: "AI" },
+  { id: "semiconductors", label: "Chips" },
+  { id: "data_centers", label: "Data Centers" },
+  { id: "cybersecurity", label: "Cybersecurity" },
+  { id: "cloud", label: "Cloud" },
+  { id: "ev", label: "EVs" },
+];
 
 function formatMarketCap(b: number): string {
   if (b >= 1000) return `$${(b / 1000).toFixed(1)}T`;
@@ -66,66 +80,6 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
-// ── Metric helpers for profile card ──
-const PROFILE_METRICS: { key: keyof Stock; label: string; format: (v: number | null) => string; tooltip: string }[] = [
-  { key: "earningsYield", label: "Earnings Yield", format: formatPct, tooltip: "Net income / market cap. Higher means more profit per dollar invested." },
-  { key: "peRatio", label: "P/E", format: (v) => formatNum(v), tooltip: "Price / Earnings. Lower may indicate better value." },
-  { key: "earningsGrowth", label: "Earnings Gr.", format: formatPct, tooltip: "Year-over-year growth in net income." },
-  { key: "consecutiveEarningsGrowth", label: "Earn. Streak", format: (v) => v !== null ? `${v}yr` : "\u2014", tooltip: "Consecutive years of net income growth." },
-  { key: "roe", label: "ROE", format: formatPct, tooltip: "Return on equity. Profit generated per dollar of shareholder equity." },
-  { key: "profitMargin", label: "Margin", format: formatPct, tooltip: "Net profit margin. Percentage of revenue kept as profit." },
-  { key: "freeCashFlowYield", label: "FCF Yield", format: formatPct, tooltip: "Free cash flow / market cap. Cash generation relative to price." },
-  { key: "revenueGrowth", label: "Rev. Gr.", format: formatPct, tooltip: "Year-over-year revenue growth rate." },
-  { key: "evToEbitda", label: "EV/EBITDA", format: (v) => formatNum(v), tooltip: "Enterprise value / EBITDA. Lower may indicate better value." },
-  { key: "debtToEquity", label: "D/E", format: (v) => formatNum(v), tooltip: "Debt to equity ratio. Lower means less leveraged." },
-  { key: "dividendYield", label: "Div. Yield", format: formatPct, tooltip: "Annual dividend / share price." },
-  { key: "beta", label: "Beta", format: (v) => formatNum(v, 2), tooltip: "Volatility relative to the market. 1.0 = market average." },
-];
-
-function StockProfileCard({ stock, onClose }: { stock: Stock; onClose: () => void }) {
-  return (
-    <div className="mb-4 bg-white rounded-2xl border border-blue-100 p-4 sm:p-5 animate-in fade-in duration-200">
-      <div className="flex items-start justify-between mb-3 gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <StockLogo ticker={stock.symbol} sector={stock.sector} size="md" />
-            <h3 className="text-lg font-bold text-gray-900">{stock.symbol}</h3>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
-          </div>
-          <p className="text-sm text-gray-400 mt-1 sm:ml-10">{stock.name}</p>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          <div className="text-right hidden sm:block">
-            <p className="text-xs text-gray-400">Score</p>
-            <ScoreBar score={stock.backtestScore} />
-          </div>
-          <div className="text-right hidden sm:block">
-            <p className="text-xs text-gray-400">MCap</p>
-            <p className="text-sm font-semibold text-gray-700">{formatMarketCap(stock.marketCap)}</p>
-          </div>
-          <button onClick={onClose} className="p-2 sm:p-1 text-gray-300 hover:text-gray-500 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center" title="Close">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-        {PROFILE_METRICS.map((m) => (
-          <div key={m.key} className="group relative">
-            <p className="text-[10px] text-gray-400 uppercase tracking-wider">{m.label}</p>
-            <p className="text-sm font-semibold text-gray-800">{m.format(stock[m.key] as number | null)}</p>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover:block z-10 w-48 px-2 py-1 text-[10px] text-white bg-gray-800 rounded-md shadow-lg pointer-events-none">
-              {m.tooltip}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Header tooltips ──
 const HEADER_TOOLTIPS: Record<string, string> = {
   backtest_score: "Composite 1\u2013100 score based on earnings yield, growth, consistency, value, quality, and leverage factors.",
   market_cap: "Market capitalization \u2014 total value of all outstanding shares.",
@@ -139,14 +93,18 @@ const HEADER_TOOLTIPS: Record<string, string> = {
 };
 
 export default function StockScreener() {
+  const router = useRouter();
   const [data, setData] = useState<ScreenerData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("backtest_score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [sector, setSector] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [theme, setTheme] = useState("");
   const [page, setPage] = useState(1);
   const [sectors, setSectors] = useState<string[]>([]);
+  const [industries, setIndustries] = useState<string[]>([]);
 
   // Market cap filter
   const [minCap, setMinCap] = useState(0);
@@ -156,7 +114,6 @@ export default function StockScreener() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Stock[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -169,6 +126,8 @@ export default function StockScreener() {
         dir: sortDir,
         page: String(page),
         ...(sector && { sector }),
+        ...(industry && { industry }),
+        ...(theme && { theme }),
         ...(minCap > 0 && { minCap: String(minCap) }),
         ...(maxCap > 0 && { maxCap: String(maxCap) }),
       });
@@ -180,13 +139,14 @@ export default function StockScreener() {
       } else {
         setData(json);
         if (json.sectors) setSectors(json.sectors);
+        if (json.industries) setIndustries(json.industries);
       }
     } catch {
       setError("Failed to load screener data. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [sortField, sortDir, sector, page, minCap, maxCap]);
+  }, [sortField, sortDir, sector, industry, theme, page, minCap, maxCap]);
 
   useEffect(() => {
     fetchData();
@@ -234,16 +194,13 @@ export default function StockScreener() {
     setPage(1);
   };
 
-  const selectStock = (stock: Stock) => {
-    setSelectedStock(stock);
+  const navigateToStock = (ticker: string) => {
     setSearchQuery("");
     setShowDropdown(false);
-    // Smooth scroll to top so the profile card is visible
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    router.push(`/screener/${ticker}`);
   };
 
   const setCapFilter = (min: number, max: number) => {
-    // Toggle off if already active
     if (minCap === min && maxCap === max) {
       setMinCap(0);
       setMaxCap(0);
@@ -254,7 +211,49 @@ export default function StockScreener() {
     setPage(1);
   };
 
+  const toggleTheme = (id: string) => {
+    setTheme(theme === id ? "" : id);
+    setPage(1);
+  };
+
+  const selectIndustry = (ind: string) => {
+    setIndustry(ind);
+    setSector("");
+    setTheme("");
+    setSearchQuery("");
+    setShowDropdown(false);
+    setPage(1);
+  };
+
+  const selectSectorFromSearch = (s: string) => {
+    setSector(s);
+    setIndustry("");
+    setTheme("");
+    setSearchQuery("");
+    setShowDropdown(false);
+    setPage(1);
+  };
+
+  const clearAllFilters = () => {
+    setSector("");
+    setIndustry("");
+    setTheme("");
+    setMinCap(0);
+    setMaxCap(0);
+    setPage(1);
+  };
+
   const isCapActive = (min: number, max: number) => minCap === min && maxCap === max;
+  const hasActiveFilters = sector || industry || theme || minCap > 0 || maxCap > 0;
+
+  // Client-side filtering for sectors/industries in dropdown
+  const q = searchQuery.trim().toLowerCase();
+  const matchingSectors = q.length >= 2
+    ? sectors.filter((s) => s.toLowerCase().includes(q))
+    : [];
+  const matchingIndustries = q.length >= 2
+    ? industries.filter((ind) => ind.toLowerCase().includes(q)).slice(0, 6)
+    : [];
 
   const SortHeader = ({ field, label, className = "" }: { field: SortField; label: string; className?: string }) => (
     <button
@@ -276,67 +275,141 @@ export default function StockScreener() {
   return (
     <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Stock Screener</h1>
-        <p className="mt-2 text-sm sm:text-base text-gray-400">
-          Every stock scored 1&ndash;100 based on earnings power, growth consistency, value, and quality factors.
-        </p>
+        {/* Hero section */}
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">AI Stock Screener</h1>
+          <p className="mt-2 text-sm sm:text-base text-gray-400 max-w-xl mx-auto">
+            Search any stock for AI-powered analysis, or browse all stocks ranked by our multi-factor Backtest Score.
+          </p>
+        </div>
 
         {/* Search bar */}
-        <div ref={searchRef} className="relative mt-6">
+        <div ref={searchRef} className="relative max-w-2xl mx-auto">
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
             </svg>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by ticker or company name..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
+              placeholder="Search by ticker, company, sector, or industry..."
+              className="w-full pl-12 pr-4 py-3 text-base bg-white border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
             />
           </div>
+
           {/* Search dropdown */}
-          {showDropdown && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 overflow-hidden">
-              {searchResults.map((stock) => (
-                <button
-                  key={stock.symbol}
-                  onClick={() => selectStock(stock)}
-                  className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 min-h-[44px]"
-                >
-                  <div className="min-w-0 flex items-center gap-2">
-                    <StockLogo ticker={stock.symbol} sector={stock.sector} />
-                    <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
-                    <span className="text-xs text-gray-400 truncate hidden sm:inline">{stock.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                    <span className="text-xs text-gray-400 hidden sm:inline">{stock.sector}</span>
-                    <ScoreBar score={stock.backtestScore} />
-                  </div>
-                </button>
-              ))}
+          {showDropdown && (searchResults.length > 0 || matchingSectors.length > 0 || matchingIndustries.length > 0) && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 overflow-hidden max-h-[400px] overflow-y-auto">
+              {/* Matching sectors */}
+              {matchingSectors.length > 0 && (
+                <div>
+                  <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Sectors</p>
+                  {matchingSectors.map((s) => (
+                    <button
+                      key={`sector-${s}`}
+                      onClick={() => selectSectorFromSearch(s)}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-blue-50 transition-colors min-h-[40px]"
+                    >
+                      <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" />
+                      </svg>
+                      <span className="text-sm text-gray-700">Filter by sector: <span className="font-medium">{s}</span></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Matching industries */}
+              {matchingIndustries.length > 0 && (
+                <div>
+                  <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Industries</p>
+                  {matchingIndustries.map((ind) => (
+                    <button
+                      key={`ind-${ind}`}
+                      onClick={() => selectIndustry(ind)}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-blue-50 transition-colors min-h-[40px]"
+                    >
+                      <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z" />
+                      </svg>
+                      <span className="text-sm text-gray-700">Filter by industry: <span className="font-medium">{ind}</span></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Matching stocks */}
+              {searchResults.length > 0 && (
+                <div>
+                  {(matchingSectors.length > 0 || matchingIndustries.length > 0) && (
+                    <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Stocks</p>
+                  )}
+                  {searchResults.map((stock) => (
+                    <button
+                      key={stock.symbol}
+                      onClick={() => navigateToStock(stock.symbol)}
+                      className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 min-h-[44px]"
+                    >
+                      <div className="min-w-0 flex items-center gap-2">
+                        <StockLogo ticker={stock.symbol} sector={stock.sector} />
+                        <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
+                        <span className="text-xs text-gray-400 truncate hidden sm:inline">{stock.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                        <span className="text-xs text-gray-400 hidden sm:inline">{stock.sector}</span>
+                        <ScoreBar score={stock.backtestScore} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-          {showDropdown && searchQuery.trim() && searchResults.length === 0 && (
+          {showDropdown && searchQuery.trim() && searchResults.length === 0 && matchingSectors.length === 0 && matchingIndustries.length === 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 px-4 py-3 text-sm text-gray-400">
-              No stocks found for &ldquo;{searchQuery}&rdquo;
+              No results for &ldquo;{searchQuery}&rdquo;
             </div>
           )}
         </div>
 
-        {/* Profile card */}
-        {selectedStock && (
-          <div className="mt-4">
-            <StockProfileCard stock={selectedStock} onClose={() => setSelectedStock(null)} />
-          </div>
-        )}
+        {/* Popular stocks */}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <span className="text-xs text-gray-300">Popular:</span>
+          {POPULAR_TICKERS.map((t) => (
+            <button
+              key={t}
+              onClick={() => navigateToStock(t)}
+              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:text-blue-600 transition-colors min-h-[44px] sm:min-h-0"
+            >
+              {t}
+            </button>
+          ))}
+        </div>
 
-        {/* Filters */}
-        <div className="mt-4 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
+        {/* Theme buttons */}
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <span className="text-xs text-gray-300">Themes:</span>
+          {THEME_BUTTONS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => toggleTheme(t.id)}
+              className={`px-3 py-2 sm:py-1.5 text-xs font-medium rounded-lg border transition-all min-h-[44px] sm:min-h-0 ${
+                theme === t.id
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Filters row */}
+        <div className="mt-5 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <select
             value={sector}
-            onChange={(e) => { setSector(e.target.value); setPage(1); }}
+            onChange={(e) => { setSector(e.target.value); setIndustry(""); setPage(1); }}
             className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:border-blue-400"
           >
             <option value="">All sectors</option>
@@ -349,9 +422,9 @@ export default function StockScreener() {
 
           {/* Market cap range presets */}
           {([
-            { label: "Small", min: 0.3, max: 2, title: "$300M – $2B" },
-            { label: "Mid", min: 2, max: 10, title: "$2B – $10B" },
-            { label: "Large", min: 10, max: 200, title: "$10B – $200B" },
+            { label: "Small", min: 0.3, max: 2, title: "$300M \u2013 $2B" },
+            { label: "Mid", min: 2, max: 10, title: "$2B \u2013 $10B" },
+            { label: "Large", min: 10, max: 200, title: "$10B \u2013 $200B" },
             { label: "Mega", min: 200, max: 0, title: "$200B+" },
           ] as const).map((preset) => (
             <button
@@ -370,7 +443,6 @@ export default function StockScreener() {
 
           <span className="text-xs text-gray-300 hidden sm:inline">|</span>
 
-          {/* Quick min-cap filters */}
           {([
             { label: ">$10B", min: 10, title: "Market cap above $10B" },
             { label: ">$100B", min: 100, title: "Market cap above $100B" },
@@ -388,6 +460,23 @@ export default function StockScreener() {
               {quick.label}
             </button>
           ))}
+
+          {/* Active filter badges */}
+          {industry && (
+            <span className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-lg">
+              {industry}
+              <button onClick={() => { setIndustry(""); setPage(1); }} className="ml-0.5 hover:text-blue-900">&times;</button>
+            </span>
+          )}
+
+          {hasActiveFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Clear all
+            </button>
+          )}
 
           {data && (
             <span className="text-xs text-gray-400 ml-auto">
@@ -456,7 +545,7 @@ export default function StockScreener() {
           {!loading && data?.stocks?.map((stock) => (
             <button
               key={stock.symbol}
-              onClick={() => selectStock(stock)}
+              onClick={() => navigateToStock(stock.symbol)}
               className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-0 items-center hover:bg-blue-50/40 transition-colors text-left cursor-pointer min-h-[44px]"
             >
               <div className="col-span-3 min-w-0 flex items-center gap-2">
@@ -520,7 +609,7 @@ export default function StockScreener() {
           </div>
         )}
 
-        {/* Score methodology */}
+        {/* Score methodology + disclaimer */}
         <details className="mt-6 group">
           <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -536,6 +625,10 @@ export default function StockScreener() {
             <p>Percentile ranks are weighted and combined into a composite score from 1 (weakest) to 100 (strongest). The score reflects today&apos;s metrics &mdash; it&apos;s a static snapshot, not a forward prediction.</p>
           </div>
         </details>
+
+        <p className="text-center mt-4 text-[10px] text-gray-300">
+          AI-generated analysis uses current data. Not financial advice. Always do your own research.
+        </p>
       </div>
     </div>
   );
