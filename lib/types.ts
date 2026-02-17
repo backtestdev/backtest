@@ -49,6 +49,7 @@ export interface BacktestResult {
   parsedParams?: StructuredParameters;
   debugInfo?: DebugInfo;
   warnings?: string[]; // Warnings about parsing fallbacks or issues
+  recentListings?: { ticker: string; yearsOfData: number }[]; // Stocks with < 3 years of return data
   parsingMethod?: ParsingMethod;
   dataSource?: "fmp" | "hardcoded";
   stockUniverseSize?: number;

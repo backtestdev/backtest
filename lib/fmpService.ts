@@ -169,7 +169,9 @@ async function queryStocksFromDb(): Promise<StockData[]> {
         net_income_growth_3yr_avg,
         revenue_growth_yoy,
         earnings_growth_yoy,
-        eps_growth_yoy
+        eps_growth_yoy,
+
+        ipo_date
 
       FROM stocks
       WHERE is_actively_trading = true
@@ -267,6 +269,9 @@ function toStockData(row: Record<string, unknown>): StockData {
     consecutive_revenue_growth_years: num(row.consecutive_revenue_growth_years),
     consecutive_earnings_growth_years: num(row.consecutive_net_income_growth_years),
     consecutive_eps_growth_years: num(row.consecutive_eps_growth_years),
+
+    // IPO / listing date
+    ipo_date: row.ipo_date ? String(row.ipo_date) : undefined,
 
     // Historical returns — not in the unified table yet, empty for now
     historical_returns: {},
@@ -425,7 +430,10 @@ async function attachAnnualReturns(stocks: StockData[]): Promise<void> {
     const returns = returnsMap.get(stock.ticker);
     if (returns && Object.keys(returns).length > 0) {
       stock.historical_returns = returns;
+      stock.years_of_returns = Object.keys(returns).length;
       attached++;
+    } else {
+      stock.years_of_returns = 0;
     }
   }
 

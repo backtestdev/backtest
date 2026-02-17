@@ -12,6 +12,7 @@ interface TopStock {
   sector: string;
   metricValue: number;
   marketCap: number;
+  yearsOfData?: number;
 }
 
 interface QuintileResult {
@@ -130,6 +131,12 @@ export async function GET(request: NextRequest) {
       returnsMap.get(row.symbol)!.set(Number(row.year), Number(row.annual_return));
     }
 
+    // Count years of return data per symbol (for listing recency)
+    const yearsOfDataPerSymbol = new Map<string, number>();
+    returnsMap.forEach((yearMap, symbol) => {
+      yearsOfDataPerSymbol.set(symbol, yearMap.size);
+    });
+
     // Find min/max year for metadata
     const yearsSet = new Set<number>();
     returnRows.forEach((row) => yearsSet.add(Number(row.year)));
@@ -242,12 +249,14 @@ export async function GET(request: NextRequest) {
         .slice(0, 20)
         .map((s) => {
           const meta = stockMeta.get(s.symbol);
+          const yrs = yearsOfDataPerSymbol.get(s.symbol) ?? 0;
           return {
             symbol: s.symbol,
             name: meta?.name || "",
             sector: meta?.sector || "Other",
             metricValue: s.value,
             marketCap: meta?.marketCap || 0,
+            yearsOfData: yrs < 3 ? yrs : undefined, // only include if recently listed
           };
         });
 

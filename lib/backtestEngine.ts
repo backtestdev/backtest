@@ -55,14 +55,22 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
       return { ...s };
     });
 
-    const withReturns = stocksWithReturns.filter(s => Object.keys(s.historical_returns).length > 0);
-    const noReturns = stocksWithReturns.filter(s => Object.keys(s.historical_returns).length === 0);
-    if (noReturns.length > 0) {
-      tickerWarnings.push(`${noReturns.length} stock(s) found but had no price history: ${noReturns.map(s => s.ticker).join(", ")}`);
-      console.log(`[Backtest] Tickers with no returns: ${noReturns.map(s => s.ticker).join(", ")}`);
+    // Include ALL matched stocks — even those with no/limited returns.
+    // They appear in the matched stocks list; they just don't contribute
+    // to years where they lack data (calculateReturns already handles
+    // this via its per-year availability filter).
+    const limitedHistory = stocksWithReturns.filter(s => Object.keys(s.historical_returns).length < 3);
+    if (limitedHistory.length > 0) {
+      const noData = limitedHistory.filter(s => Object.keys(s.historical_returns).length === 0);
+      const partial = limitedHistory.filter(s => Object.keys(s.historical_returns).length > 0);
+      const parts: string[] = [];
+      if (noData.length > 0) parts.push(`${noData.map(s => s.ticker).join(", ")} (no price history yet)`);
+      if (partial.length > 0) parts.push(`${partial.map(s => s.ticker).join(", ")} (< 3 years)`);
+      tickerWarnings.push(`Recently-listed stocks included with limited history: ${parts.join("; ")}`);
+      console.log(`[Backtest] Tickers with limited history: ${limitedHistory.map(s => s.ticker).join(", ")}`);
     }
-    matchedStocks = withReturns;
-    console.log(`[Backtest] Ticker selection: ${params.tickers.length} requested → ${allByTicker.length} found → ${withReturns.length} with returns`);
+    matchedStocks = stocksWithReturns;
+    console.log(`[Backtest] Ticker selection: ${params.tickers.length} requested → ${allByTicker.length} found → ${stocksWithReturns.length} included (${limitedHistory.length} with limited history)`);
   } else {
     matchedStocks = filterStocks(params.filters, stockDatabase);
   }
@@ -146,12 +154,22 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
   // Get chart data for the longest available period (20yr), including current year YTD
   const { chartData } = calculateReturns(matchedStocks, 20, { includeYtd: true });
 
+  // Identify recently-listed stocks (< 3 years of return data)
+  const RECENT_THRESHOLD = 3;
+  const recentListings = matchedStocks
+    .filter(s => (s.years_of_returns ?? Object.keys(s.historical_returns).length) < RECENT_THRESHOLD)
+    .map(s => ({
+      ticker: s.ticker,
+      yearsOfData: s.years_of_returns ?? Object.keys(s.historical_returns).length,
+    }));
+
   return {
     strategyName: params.description,
     description: params.description,
     matchedStocks: getStockNames(matchedStocks),
     matchedStockCount: matchedStocks.length,
     warnings: tickerWarnings.length > 0 ? tickerWarnings : undefined,
+    recentListings: recentListings.length > 0 ? recentListings : undefined,
     timeHorizons,
     chartData,
     runDate: new Date().toISOString(),
