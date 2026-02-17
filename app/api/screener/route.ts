@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -157,6 +158,8 @@ export async function GET(request: NextRequest) {
              CASE WHEN year_high > 0 THEN price / year_high ELSE 0 END AS week52_high_pct
       FROM stocks
       WHERE market_cap IS NOT NULL AND market_cap > 0.1
+        AND is_etf IS NOT TRUE
+        AND company_name !~* ${NON_COMPANY_PATTERN}
     `;
 
     // Enrich with computed log_market_cap for size-confidence scoring

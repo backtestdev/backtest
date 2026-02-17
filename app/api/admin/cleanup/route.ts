@@ -10,32 +10,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { refreshStockUniverse } from "@/lib/fmpService";
+import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 
 export const runtime = "nodejs";
 
-// PostgreSQL POSIX regex patterns for non-company names (\y = word boundary)
-const NON_COMPANY_PATTERN = [
-  '\\y(ETF|ETN)\\y',
-  'Exchange.Traded',
-  '\\yFunds?\\y',
-  '\\y(Money Market)\\y',
-  'Closed.End',
-  '\\y(Acquisition Corp|Blank Check|SPAC|Special Purpose)\\y',
-  '\\y(Statutory Trust|Capital Trust|Investment Trust)\\y',
-  'Trust [IVX]+\\y',
-  'Depositary (Shares?|Receipt)',
-  'Preferred (Shares?|Stock|Securities)',
-  '\\d+\\.?\\d*% ',
-  'Fixed.Income',
-  '\\yRights$',
-  '\\yWarrants?$',
-  '\\yUnits?$',
-  '\\ySenior Notes?\\y',
-  'Notes Due',
-  '\\ySubordinated\\y',
-  '\\yDebentures?\\y',
-  'L\\.P\\.?$',
-].join('|');
+// Use shared pattern — no local definition needed
 
 export async function POST(request: NextRequest) {
   const adminSecret = process.env.ADMIN_SECRET;

@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { neon, NeonQueryFunction } from "@neondatabase/serverless";
 import { refreshStockUniverse } from "@/lib/fmpService";
 import { ensureStockTables } from "@/lib/db";
+import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes
@@ -191,7 +192,7 @@ interface Quote {
 }
 
 // Name patterns that indicate funds, trusts, SPACs, debt instruments, etc.
-const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*% |\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due/i;
+const EXCLUDE_NAME_PATTERNS = /\b(ETF|ETN|Exchange.Traded|Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market|Closed.End|Acquisition Corp|Blank Check|SPAC|Special Purpose|Statutory Trust|Capital Trust|Investment Trust|Depositary Shares?|Depositary Receipt|Preferred Shares?|Preferred Stock|Preferred Securities|Fixed.Income|Senior Notes?|Subordinated|Debentures?)\b|\bTrust [IVX]+\b|\d+\.?\d*%|\bRights$|\bWarrants?$|\bUnits?$|\bL\.?P\.?$|Notes Due|\bFinance (Co|Inc|LLC)\b|\bFunding (Co|Inc|LLC)\b/i;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -548,36 +549,14 @@ async function runRefresh(
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
   `;
 
-  // Cleanup: remove non-company entries
-  const NON_COMPANY_PATTERN_PG = [
-    '\\y(ETF|ETN)\\y',
-    'Exchange.Traded',
-    '\\y(Index Fund|Mutual Fund|Bond Fund|Income Fund|Money Market)\\y',
-    'Closed.End',
-    '\\y(Acquisition Corp|Blank Check|SPAC|Special Purpose)\\y',
-    '\\y(Statutory Trust|Capital Trust|Investment Trust)\\y',
-    'Trust [IVX]+\\y',
-    'Depositary (Shares?|Receipt)',
-    'Preferred (Shares?|Stock|Securities)',
-    '\\d+\\.?\\d*% ',
-    'Fixed.Income',
-    '\\yRights$',
-    '\\yWarrants?$',
-    '\\yUnits?$',
-    '\\ySenior Notes?\\y',
-    'Notes Due',
-    '\\ySubordinated\\y',
-    '\\yDebentures?\\y',
-    'L\\.P\\.?$',
-  ].join('|');
-
+  // Cleanup: remove non-company entries (shared pattern from lib/stockFilters.ts)
   const purged = await sql`
     DELETE FROM stocks
     WHERE is_etf = true
        OR sector IS NULL OR TRIM(sector) = ''
        OR symbol LIKE '%.%'
        OR LENGTH(symbol) > 5
-       OR company_name ~* ${NON_COMPANY_PATTERN_PG}
+       OR company_name ~* ${NON_COMPANY_PATTERN}
        OR (LENGTH(symbol) = 5 AND symbol LIKE '%X' AND (sector = 'Asset Management' OR industry = 'Asset Management'))
     RETURNING symbol
   `;
