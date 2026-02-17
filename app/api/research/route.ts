@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import OpenAI from "openai";
 import { getDb } from "@/lib/db";
+import YahooFinance from "yahoo-finance2";
+
+const yf = new YahooFinance({ suppressNotices: ["ripHistorical"] });
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -344,22 +347,29 @@ export async function GET(request: NextRequest) {
     eps: stmt.epsDiluted,
   })).reverse();
 
-  // Historical prices for chart (from DB)
+  // Historical prices for chart — live from Yahoo Finance (monthly, ~2 years)
   let priceHistory: { date: string; price: number }[] = [];
-  if (sql) {
-    try {
-      const priceRows = await sql`
-        SELECT date, close_price FROM stock_prices
-        WHERE symbol = ${ticker}
-        ORDER BY date ASC
-      `;
-      priceHistory = priceRows.map((r) => ({
-        date: String(r.date),
-        price: Number(r.close_price),
-      }));
-    } catch {
-      // DB not available, skip price history
+  try {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setFullYear(startDate.getFullYear() - 2);
+
+    const yhResult = await yf.chart(ticker, {
+      period1: startDate,
+      period2: endDate,
+      interval: "1mo",
+    });
+
+    if (yhResult?.quotes?.length) {
+      priceHistory = yhResult.quotes
+        .filter((q: { date: Date; close?: number | null }) => q.close != null && q.close > 0)
+        .map((q: { date: Date; close?: number | null }) => ({
+          date: q.date.toISOString().slice(0, 10),
+          price: Math.round((q.close as number) * 100) / 100,
+        }));
     }
+  } catch {
+    // Yahoo Finance unavailable — chart will be empty
   }
 
   // Generate AI report only for authenticated users
