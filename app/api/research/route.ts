@@ -204,32 +204,42 @@ export async function GET(request: NextRequest) {
       const rows = await sql`
         SELECT symbol, company_name, sector, industry, market_cap, price,
                price_to_earnings_ratio, price_to_book_ratio, return_on_equity,
-               net_profit_margin, revenue_growth_yoy, dividend_yield, debt_to_equity_ratio,
-               beta, ev_to_sales, ev_to_ebitda
+               return_on_invested_capital, net_profit_margin, revenue_growth_yoy,
+               earnings_growth_yoy, earnings_yield, dividend_yield, debt_to_equity_ratio,
+               current_ratio, beta, ev_to_sales, ev_to_ebitda, free_cash_flow_yield,
+               consecutive_net_income_growth_years
         FROM stocks WHERE symbol = ${ticker}
       `;
       if (rows.length > 0) {
         const row = rows[0];
+        const num = (v: unknown): number | null => v != null ? Number(v) : null;
         return NextResponse.json({
           ticker,
           companyName: row.company_name || ticker,
           isAuthenticated,
           source: "database",
           fundamentals: {
-            price: row.price ? Number(row.price) : null,
-            marketCap: row.market_cap ? Number(row.market_cap) : null,
+            price: num(row.price),
+            marketCap: num(row.market_cap),
             sector: row.sector || null,
             industry: row.industry || null,
-            peRatio: row.price_to_earnings_ratio ? Number(row.price_to_earnings_ratio) : null,
-            pbRatio: row.price_to_book_ratio ? Number(row.price_to_book_ratio) : null,
-            roe: row.return_on_equity ? Number(row.return_on_equity) : null,
-            netMargin: row.net_profit_margin ? Number(row.net_profit_margin) : null,
-            revenueGrowth: row.revenue_growth_yoy ? Number(row.revenue_growth_yoy) : null,
-            dividendYield: row.dividend_yield ? Number(row.dividend_yield) : null,
-            debtToEquity: row.debt_to_equity_ratio ? Number(row.debt_to_equity_ratio) : null,
-            beta: row.beta ? Number(row.beta) : null,
-            evToSales: row.ev_to_sales ? Number(row.ev_to_sales) : null,
-            evToEbitda: row.ev_to_ebitda ? Number(row.ev_to_ebitda) : null,
+            peRatio: num(row.price_to_earnings_ratio),
+            pbRatio: num(row.price_to_book_ratio),
+            roe: num(row.return_on_equity),
+            roic: num(row.return_on_invested_capital),
+            netMargin: num(row.net_profit_margin),
+            revenueGrowth: num(row.revenue_growth_yoy),
+            earningsGrowth: num(row.earnings_growth_yoy),
+            earningsYield: num(row.earnings_yield),
+            profitMargin: num(row.net_profit_margin),
+            dividendYield: num(row.dividend_yield),
+            debtToEquity: num(row.debt_to_equity_ratio),
+            currentRatio: num(row.current_ratio),
+            beta: num(row.beta),
+            evToSales: num(row.ev_to_sales),
+            evToEbitda: num(row.ev_to_ebitda),
+            fcfYield: num(row.free_cash_flow_yield),
+            consecutiveEarningsGrowth: num(row.consecutive_net_income_growth_years),
           },
           report: null,
           error: "FMP API unavailable. Showing database metrics only.",
@@ -253,6 +263,11 @@ export async function GET(request: NextRequest) {
       ? ((latestIncome.revenue - prevIncome.revenue) / prevIncome.revenue)
       : null;
 
+  const earningsGrowthFMP =
+    latestIncome && prevIncome && prevIncome.netIncome !== 0
+      ? ((latestIncome.netIncome - prevIncome.netIncome) / Math.abs(prevIncome.netIncome))
+      : null;
+
   // Helper: null-safe pick (preserves 0 values, only nullifies undefined/null)
   const nn = (v: number | undefined | null): number | null =>
     v != null ? v : null;
@@ -266,10 +281,10 @@ export async function GET(request: NextRequest) {
         SELECT market_cap, price, beta,
                price_to_earnings_ratio, price_to_book_ratio, return_on_equity,
                return_on_invested_capital, net_profit_margin, revenue_growth_yoy,
-               earnings_growth, dividend_yield, debt_to_equity_ratio, current_ratio,
+               earnings_growth_yoy, dividend_yield, debt_to_equity_ratio, current_ratio,
                ev_to_sales, ev_to_ebitda, free_cash_flow_per_share, enterprise_value,
-               earnings_yield, profit_margin, free_cash_flow_yield,
-               consecutive_earnings_growth, revenue_growth_positive_3yr_count
+               earnings_yield, free_cash_flow_yield,
+               consecutive_net_income_growth_years
         FROM stocks WHERE symbol = ${ticker}
       `;
       dbRow = rows.length > 0 ? (rows[0] as Record<string, unknown>) : null;
@@ -309,12 +324,14 @@ export async function GET(request: NextRequest) {
     dividendYield: nn(latestRatios?.dividendYield) ?? dbNum("dividend_yield"),
     fcfPerShare: nn(latestRatios?.freeCashFlowPerShare) ?? dbNum("free_cash_flow_per_share"),
     enterpriseValue: nn(latestMetrics?.enterpriseValue) ?? dbNum("enterprise_value"),
-    // Extra fields from DB for research page
-    earningsYield: dbNum("earnings_yield"),
-    earningsGrowth: dbNum("earnings_growth"),
-    profitMargin: nn(latestIncome?.netIncomeRatio) ?? dbNum("profit_margin"),
-    fcfYield: dbNum("free_cash_flow_yield"),
-    consecutiveEarningsGrowth: dbNum("consecutive_earnings_growth"),
+    // Earnings yield — FMP key metrics first, then DB
+    earningsYield: nn(latestMetrics?.earningsYield) ?? dbNum("earnings_yield"),
+    // Earnings growth — computed from income statements, then DB
+    earningsGrowth: earningsGrowthFMP ?? dbNum("earnings_growth_yoy"),
+    // Profit margin — FMP income ratio, FMP ratios, then DB
+    profitMargin: nn(latestIncome?.netIncomeRatio) ?? nn(latestRatios?.netProfitMargin) ?? dbNum("net_profit_margin"),
+    fcfYield: nn(latestMetrics?.freeCashFlowYield) ?? dbNum("free_cash_flow_yield"),
+    consecutiveEarningsGrowth: dbNum("consecutive_net_income_growth_years"),
   };
 
   // Revenue + earnings trend for charts
