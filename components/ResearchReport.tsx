@@ -242,18 +242,18 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
+      <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gray-200 rounded-lg animate-pulse" />
+            <div className="w-10 h-10 bg-th-bar rounded-lg animate-pulse" />
             <div>
-              <div className="h-7 w-48 bg-gray-200 rounded animate-pulse" />
-              <div className="h-4 w-32 bg-gray-100 rounded animate-pulse mt-1" />
+              <div className="h-7 w-48 bg-th-bar rounded animate-pulse" />
+              <div className="h-4 w-32 bg-th-skeleton rounded animate-pulse mt-1" />
             </div>
           </div>
           <div className="space-y-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-40 bg-white rounded-2xl animate-pulse border border-gray-100" />
+              <div key={i} className="h-40 bg-th-surface rounded-2xl animate-pulse border border-th-border-light" />
             ))}
           </div>
         </div>
@@ -263,17 +263,17 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
+      <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
         <div className="max-w-4xl mx-auto">
-          <Link href="/research" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6 transition-colors min-h-[44px]">
+          <Link href="/research" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-6 transition-colors min-h-[44px]">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
             Back
           </Link>
-          <div className="bg-white rounded-2xl border border-red-100 p-6 sm:p-8 text-center">
-            <p className="text-red-500 font-medium">{error || "No data available"}</p>
-            <p className="text-sm text-gray-400 mt-2">Check that the ticker is valid and data sources are configured.</p>
+          <div className="bg-th-surface rounded-2xl border border-th-negative-border p-6 sm:p-8 text-center">
+            <p className="text-th-negative font-medium">{error || "No data available"}</p>
+            <p className="text-sm text-th-text-3 mt-2">Check that the ticker is valid and data sources are configured.</p>
           </div>
         </div>
       </div>
@@ -300,10 +300,10 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
     : [];
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
+    <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-4xl mx-auto">
         {/* Back link */}
-        <Link href="/research" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4 sm:mb-6 transition-colors min-h-[44px]">
+        <Link href="/research" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-4 sm:mb-6 transition-colors min-h-[44px]">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
           </svg>
@@ -311,22 +311,22 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
         </Link>
 
         {/* Header with recommendation gauge + backtest score */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
+        <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
           <div className="flex flex-col sm:flex-row items-start gap-4">
             <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
             <StockLogo ticker={data.ticker} sector={f.sector || undefined} size="md" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{data.ticker}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-th-text">{data.ticker}</h1>
                 {f.price != null && (
-                  <span className="text-xl font-bold text-gray-700">${f.price.toFixed(2)}</span>
+                  <span className="text-xl font-bold text-th-text-2">${f.price.toFixed(2)}</span>
                 )}
                 {backtestScore != null && (
                   <Tooltip content="Backtest Score. Composite 1-100 score based on earnings yield, growth, consistency, value, quality, and leverage factors." position="bottom">
                     <span className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
-                      backtestScore >= 70 ? "bg-emerald-100 text-emerald-700" :
-                      backtestScore >= 40 ? "bg-amber-100 text-amber-700" :
-                      "bg-red-100 text-red-600"
+                      backtestScore >= 70 ? "bg-th-positive-bg text-th-positive-text" :
+                      backtestScore >= 40 ? "bg-th-warning-bg text-th-warning-text" :
+                      "bg-th-negative-bg text-th-negative"
                     }`}>
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292Z" />
@@ -336,13 +336,13 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                   </Tooltip>
                 )}
               </div>
-              <p className="text-gray-500 mt-0.5">{data.companyName}</p>
-              <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+              <p className="text-th-text-3 mt-0.5">{data.companyName}</p>
+              <div className="flex items-center gap-3 mt-1 text-xs text-th-text-3">
                 {f.sector && <span>{f.sector}</span>}
-                {f.industry && <><span className="text-gray-200">|</span><span>{f.industry}</span></>}
-                {f.exchange && <><span className="text-gray-200">|</span><span>{f.exchange}</span></>}
+                {f.industry && <><span className="text-th-text-4">|</span><span>{f.industry}</span></>}
+                {f.exchange && <><span className="text-th-text-4">|</span><span>{f.exchange}</span></>}
                 {f.marketCap != null && (
-                  <><span className="text-gray-200">|</span><span>{formatCurrency(f.marketCap)}</span></>
+                  <><span className="text-th-text-4">|</span><span>{formatCurrency(f.marketCap)}</span></>
                 )}
               </div>
             </div>
@@ -358,10 +358,10 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                 />
                 {weightedTarget != null && (
                   <div className="text-center mt-1">
-                    <p className="text-xs text-gray-400">
-                      Target: <span className="font-semibold text-gray-600">${weightedTarget.toFixed(2)}</span>
+                    <p className="text-xs text-th-text-3">
+                      Target: <span className="font-semibold text-th-text-2">${weightedTarget.toFixed(2)}</span>
                       {impliedUpside != null && (
-                        <span className={`ml-1 font-medium ${impliedUpside >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                        <span className={`ml-1 font-medium ${impliedUpside >= 0 ? "text-th-positive" : "text-th-negative"}`}>
                           ({impliedUpside >= 0 ? "+" : ""}{impliedUpside.toFixed(1)}%)
                         </span>
                       )}
@@ -374,11 +374,11 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
           {/* Executive Summary inline */}
           {report && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-sm text-gray-600 leading-relaxed">{report.executiveSummary}</p>
+            <div className="mt-4 pt-4 border-t border-th-border-light">
+              <p className="text-sm text-th-text-2 leading-relaxed">{report.executiveSummary}</p>
               {report.recommendationRationale && (
-                <p className="text-xs text-gray-400 mt-2">
-                  <span className="font-medium text-gray-500">Thesis:</span> {report.recommendationRationale}
+                <p className="text-xs text-th-text-3 mt-2">
+                  <span className="font-medium text-th-text-3">Thesis:</span> {report.recommendationRationale}
                 </p>
               )}
             </div>
@@ -386,8 +386,8 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
         </div>
 
         {/* Key Metrics — focused set with distribution bars */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Key Metrics</h2>
+        <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
+          <h2 className="text-sm font-semibold text-th-text mb-4">Key Metrics</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 sm:gap-x-6 gap-y-3 sm:gap-y-4">
             {KEY_METRICS.map((m) => {
               const val = m.getValue(f);
@@ -395,12 +395,12 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                 <Tooltip key={m.key} content={m.tooltip} position="bottom" width="w-64">
                   <div className="w-full">
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wider">{m.label}</span>
+                      <span className="text-[10px] text-th-text-3 uppercase tracking-wider">{m.label}</span>
                       {val != null && m.direction !== "neutral" && m.benchmarks && (
                         <MetricQualityDot value={val} direction={m.direction} benchmarks={m.benchmarks} />
                       )}
                     </div>
-                    <p className={`text-sm font-bold ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-gray-300"}`}>
+                    <p className={`text-sm font-bold ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
                       {val != null ? m.format(val) : "N/A"}
                     </p>
                     {val != null && m.benchmarks && m.direction !== "neutral" && (
@@ -415,9 +415,9 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Price Chart */}
         {filteredPriceHistory.length > 10 && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
+          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-gray-900">Price History</h2>
+              <h2 className="text-sm font-semibold text-th-text">Price History</h2>
               <div className="flex items-center gap-1">
                 {(["1Y", "5Y", "MAX"] as const).map((range) => (
                   <button
@@ -425,8 +425,8 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                     onClick={() => setPriceRange(range)}
                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
                       priceRange === range
-                        ? "bg-gray-900 text-white"
-                        : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                        ? "bg-th-nav-active text-white"
+                        : "text-th-text-3 hover:text-th-text-2 hover:bg-th-hover"
                     }`}
                   >
                     {range}
@@ -441,22 +441,22 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
         {/* Revenue & Earnings Charts */}
         {data.revenueTrend && data.revenueTrend.length > 1 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">Revenue</h2>
+            <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
+              <h2 className="text-sm font-semibold text-th-text mb-4">Revenue</h2>
               <VerticalBarChart
                 data={data.revenueTrend}
                 dataKey="revenue"
-                color="bg-blue-500"
+                color="bg-th-accent"
                 formatValue={(v) => formatCurrency(v)}
               />
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">Net Income</h2>
+            <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
+              <h2 className="text-sm font-semibold text-th-text mb-4">Net Income</h2>
               <VerticalBarChart
                 data={data.revenueTrend}
                 dataKey="netIncome"
-                color="bg-emerald-500"
-                negativeColor="bg-red-400"
+                color="bg-th-positive-bar"
+                negativeColor="bg-th-negative"
                 formatValue={(v) => formatCurrency(v)}
               />
             </div>
@@ -465,16 +465,16 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Auth gate for AI report */}
         {!isSignedIn && !report && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-6 sm:p-8 mb-4 text-center">
-            <svg className="w-10 h-10 text-blue-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-th-accent-border p-6 sm:p-8 mb-4 text-center">
+            <svg className="w-10 h-10 text-th-accent mx-auto mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
             </svg>
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Sign up for the full research report</h3>
-            <p className="text-sm text-gray-500 mb-4">
+            <h3 className="text-lg font-semibold text-th-text mb-1">Sign up for the full research report</h3>
+            <p className="text-sm text-th-text-3 mb-4">
               Get AI-generated price targets, bull/bear scenarios, risk analysis, and buy/hold/sell recommendations.
             </p>
             <SignUpButton mode="modal">
-              <button className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+              <button className="px-6 py-2.5 text-sm font-medium text-white bg-th-accent rounded-lg hover:bg-th-accent-hover transition-colors">
                 Sign Up Free
               </button>
             </SignUpButton>
@@ -483,8 +483,8 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Price Targets — Bear (left) → Base (center) → Bull (right) */}
         {report && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
-            <h2 className="text-sm font-semibold text-gray-900 mb-4">Price Targets</h2>
+          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
+            <h2 className="text-sm font-semibold text-th-text mb-4">Price Targets</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <PriceTargetCard
                 label="Bear Case"
@@ -507,7 +507,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
             </div>
             {/* Visual price range */}
             {f.price != null && (
-              <div className="mt-5 pt-4 border-t border-gray-100">
+              <div className="mt-5 pt-4 border-t border-th-border-light">
                 <PriceRangeBar
                   currentPrice={f.price}
                   bear={report.bearCase.targetPrice}
@@ -521,15 +521,15 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Risk Factors */}
         {report && report.riskFactors.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">Risk Factors</h2>
+          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
+            <h2 className="text-sm font-semibold text-th-text mb-3">Risk Factors</h2>
             <div className="space-y-2">
               {report.riskFactors.map((risk, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <svg className="w-4 h-4 text-th-warning mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                   </svg>
-                  <p className="text-sm text-gray-600">{risk}</p>
+                  <p className="text-sm text-th-text-2">{risk}</p>
                 </div>
               ))}
             </div>
@@ -538,7 +538,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Disclaimer */}
         <div className="text-center mt-6 mb-4">
-          <p className="text-[10px] text-gray-300">
+          <p className="text-[10px] text-th-text-4">
             This report is AI-generated for informational purposes only. Not financial advice.
             Data sourced from Financial Modeling Prep. Always do your own research.
           </p>
@@ -555,19 +555,19 @@ function getMetricColor(
   direction: "higher" | "lower" | "neutral",
   benchmarks?: [number, number, number],
 ): string {
-  if (!benchmarks || direction === "neutral") return "text-gray-900";
+  if (!benchmarks || direction === "neutral") return "text-th-text";
   const [low, mid, high] = benchmarks;
   if (direction === "higher") {
-    if (value >= high) return "text-emerald-600";
-    if (value >= mid) return "text-gray-900";
-    if (value >= low) return "text-amber-600";
-    return "text-red-500";
+    if (value >= high) return "text-th-positive";
+    if (value >= mid) return "text-th-text";
+    if (value >= low) return "text-th-warning";
+    return "text-th-negative";
   }
   // "lower" — low is good
-  if (value <= low) return "text-emerald-600";
-  if (value <= mid) return "text-gray-900";
-  if (value <= high) return "text-amber-600";
-  return "text-red-500";
+  if (value <= low) return "text-th-positive";
+  if (value <= mid) return "text-th-text";
+  if (value <= high) return "text-th-warning";
+  return "text-th-negative";
 }
 
 function MetricQualityDot({ value, direction, benchmarks }: {
@@ -576,17 +576,17 @@ function MetricQualityDot({ value, direction, benchmarks }: {
   benchmarks: [number, number, number];
 }) {
   const [low, mid, high] = benchmarks;
-  let color = "bg-gray-300";
+  let color = "bg-th-bar";
   if (direction === "higher") {
-    if (value >= high) color = "bg-emerald-400";
-    else if (value >= mid) color = "bg-gray-300";
-    else if (value >= low) color = "bg-amber-400";
-    else color = "bg-red-400";
+    if (value >= high) color = "bg-th-positive-bar";
+    else if (value >= mid) color = "bg-th-bar";
+    else if (value >= low) color = "bg-th-warning";
+    else color = "bg-th-negative";
   } else {
-    if (value <= low) color = "bg-emerald-400";
-    else if (value <= mid) color = "bg-gray-300";
-    else if (value <= high) color = "bg-amber-400";
-    else color = "bg-red-400";
+    if (value <= low) color = "bg-th-positive-bar";
+    else if (value <= mid) color = "bg-th-bar";
+    else if (value <= high) color = "bg-th-warning";
+    else color = "bg-th-negative";
   }
   return <div className={`w-1.5 h-1.5 rounded-full ${color}`} />;
 }
@@ -612,7 +612,7 @@ function PercentileBar({ value, benchmarks, direction }: {
     <div className="mt-1 relative h-1 w-full rounded-full overflow-hidden">
       <div className={`absolute inset-0 bg-gradient-to-r ${gradient}`} />
       <div
-        className="absolute top-0 w-1.5 h-1.5 bg-gray-800 rounded-full -translate-y-[0.5px]"
+        className="absolute top-0 w-1.5 h-1.5 bg-th-tooltip-bg rounded-full -translate-y-[0.5px]"
         style={{ left: `${pct}%`, transform: `translateX(-50%) translateY(-0.5px)` }}
       />
     </div>
@@ -632,9 +632,9 @@ function RecommendationGauge({ recommendation, label, angle }: {
   const needleY = 80 - 52 * Math.sin(radians);
 
   const colorForRec = (rec: string) => {
-    if (rec === "STRONG_BUY" || rec === "BUY") return "text-emerald-600";
-    if (rec === "STRONG_SELL" || rec === "SELL") return "text-red-600";
-    return "text-amber-500";
+    if (rec === "STRONG_BUY" || rec === "BUY") return "text-th-positive";
+    if (rec === "STRONG_SELL" || rec === "SELL") return "text-th-negative";
+    return "text-th-warning";
   };
 
   return (
@@ -651,10 +651,10 @@ function RecommendationGauge({ recommendation, label, angle }: {
         {/* Strong Buy */}
         <path d="M 131.3 39.2 A 64 64 0 0 1 144 80" fill="none" stroke="#6ee7b7" strokeWidth="10" strokeLinecap="round" />
         {/* Needle */}
-        <line x1="80" y1="80" x2={needleX} y2={needleY} stroke="#1f2937" strokeWidth="2.5" strokeLinecap="round" />
-        <circle cx="80" cy="80" r="4" fill="#1f2937" />
-        <text x="10" y="95" className="text-[7px] fill-gray-300" textAnchor="start">Sell</text>
-        <text x="150" y="95" className="text-[7px] fill-gray-300" textAnchor="end">Buy</text>
+        <line x1="80" y1="80" x2={needleX} y2={needleY} stroke="var(--text)" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="80" cy="80" r="4" fill="var(--text)" />
+        <text x="10" y="95" className="text-[7px] fill-th-text-4" textAnchor="start">Sell</text>
+        <text x="150" y="95" className="text-[7px] fill-th-text-4" textAnchor="end">Buy</text>
       </svg>
       <span className={`text-sm font-bold ${colorForRec(recommendation)} -mt-1`}>{label}</span>
     </div>
@@ -686,14 +686,14 @@ function VerticalBarChart({ data, dataKey, color, negativeColor, formatValue }: 
         const val = (point as unknown as Record<string, number>)[dataKey] || 0;
         const isNeg = val < 0;
         const barHeight = maxVal > 0 ? (Math.abs(val) / totalRange) * chartHeight : 0;
-        const barColor = isNeg ? (negativeColor || "bg-red-400") : color;
+        const barColor = isNeg ? (negativeColor || "bg-th-negative") : color;
         const year = point.date.slice(0, 4);
 
         return (
           <div key={i} className="flex-1 flex flex-col items-center" style={{ height: chartHeight + 30 }}>
             {!isNeg && (
               <div style={{ height: hasNegative ? zeroLineY - barHeight : chartHeight - barHeight }} className="flex items-end">
-                <p className="text-[9px] text-gray-400 mb-0.5 whitespace-nowrap">{formatValue(val)}</p>
+                <p className="text-[9px] text-th-text-3 mb-0.5 whitespace-nowrap">{formatValue(val)}</p>
               </div>
             )}
             <div
@@ -705,9 +705,9 @@ function VerticalBarChart({ data, dataKey, color, negativeColor, formatValue }: 
               }}
             />
             {isNeg && (
-              <p className="text-[9px] text-red-400 mt-0.5 whitespace-nowrap">{formatValue(val)}</p>
+              <p className="text-[9px] text-th-negative mt-0.5 whitespace-nowrap">{formatValue(val)}</p>
             )}
-            <p className="text-[10px] text-gray-400 mt-auto pt-1 font-medium">{year}</p>
+            <p className="text-[10px] text-th-text-3 mt-auto pt-1 font-medium">{year}</p>
           </div>
         );
       })}
@@ -764,16 +764,16 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
       {yTicks.map((tick, i) => (
         <g key={i}>
-          <line x1={padding.left} y1={tick.y} x2={width - padding.right} y2={tick.y} stroke="#f3f4f6" strokeWidth="1" />
-          <text x={padding.left - 6} y={tick.y + 3} textAnchor="end" className="text-[9px] fill-gray-300">
+          <line x1={padding.left} y1={tick.y} x2={width - padding.right} y2={tick.y} stroke="var(--border-light)" strokeWidth="1" />
+          <text x={padding.left - 6} y={tick.y + 3} textAnchor="end" className="text-[9px] fill-th-text-4">
             ${tick.price >= 1000 ? (tick.price / 1000).toFixed(0) + "k" : tick.price.toFixed(0)}
           </text>
         </g>
       ))}
       <path d={fillD} fill={isUp ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)"} />
-      <path d={pathD} fill="none" stroke={isUp ? "#10b981" : "#ef4444"} strokeWidth="1.5" />
+      <path d={pathD} fill="none" stroke={isUp ? "var(--positive)" : "var(--negative)"} strokeWidth="1.5" />
       {dateLabels.map((dl, i) => (
-        <text key={i} x={dl.x} y={height - 5} textAnchor="middle" className="text-[9px] fill-gray-300">
+        <text key={i} x={dl.x} y={height - 5} textAnchor="middle" className="text-[9px] fill-th-text-4">
           {dl.label}
         </text>
       ))}
@@ -803,27 +803,27 @@ function PriceTargetCard({ label, target, currentPrice, color }: {
     : null;
 
   const colorMap = {
-    emerald: { bg: "bg-emerald-50", border: "border-emerald-100", accent: "text-emerald-600" },
-    blue: { bg: "bg-blue-50", border: "border-blue-100", accent: "text-blue-600" },
-    red: { bg: "bg-red-50", border: "border-red-100", accent: "text-red-600" },
+    emerald: { bg: "bg-th-positive-bg", border: "border-th-positive-border", accent: "text-th-positive" },
+    blue: { bg: "bg-th-accent-bg", border: "border-th-accent-border", accent: "text-th-accent" },
+    red: { bg: "bg-th-negative-bg", border: "border-th-negative-border", accent: "text-th-negative" },
   };
   const c = colorMap[color];
 
   return (
     <div className={`p-4 rounded-xl border ${c.bg} ${c.border}`}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-gray-500">{label}</span>
-        <span className="text-[10px] font-medium text-gray-400">{target.probability}% prob.</span>
+        <span className="text-xs font-semibold text-th-text-3">{label}</span>
+        <span className="text-[10px] font-medium text-th-text-3">{target.probability}% prob.</span>
       </div>
       <p className={`text-xl font-bold ${c.accent}`}>
         ${target.targetPrice.toFixed(2)}
       </p>
       {upside != null && (
-        <p className={`text-xs font-medium mt-1 ${upside >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+        <p className={`text-xs font-medium mt-1 ${upside >= 0 ? "text-th-positive" : "text-th-negative"}`}>
           {upside >= 0 ? "+" : ""}{upside.toFixed(1)}% from current
         </p>
       )}
-      <p className="text-xs text-gray-500 mt-2 leading-relaxed">{target.rationale}</p>
+      <p className="text-xs text-th-text-3 mt-2 leading-relaxed">{target.rationale}</p>
     </div>
   );
 }
@@ -841,27 +841,27 @@ function PriceRangeBar({ currentPrice, bear, base, bull }: {
 
   return (
     <div className="relative h-12">
-      <div className="absolute top-4 left-0 right-0 h-2 bg-gray-100 rounded-full">
+      <div className="absolute top-4 left-0 right-0 h-2 bg-th-skeleton rounded-full">
         <div
           className="absolute h-full bg-gradient-to-r from-red-200 via-blue-200 to-emerald-200 rounded-full"
           style={{ left: `${pos(bear)}%`, width: `${pos(bull) - pos(bear)}%` }}
         />
       </div>
       <div className="absolute top-2" style={{ left: `${pos(bear)}%`, transform: "translateX(-50%)" }}>
-        <div className="w-2 h-6 bg-red-400 rounded-full" />
-        <p className="text-[9px] text-red-400 mt-1 whitespace-nowrap">${bear.toFixed(0)}</p>
+        <div className="w-2 h-6 bg-th-negative rounded-full" />
+        <p className="text-[9px] text-th-negative mt-1 whitespace-nowrap">${bear.toFixed(0)}</p>
       </div>
       <div className="absolute top-2" style={{ left: `${pos(base)}%`, transform: "translateX(-50%)" }}>
         <div className="w-2 h-6 bg-blue-400 rounded-full" />
-        <p className="text-[9px] text-blue-400 mt-1 whitespace-nowrap">${base.toFixed(0)}</p>
+        <p className="text-[9px] text-th-accent mt-1 whitespace-nowrap">${base.toFixed(0)}</p>
       </div>
       <div className="absolute top-2" style={{ left: `${pos(bull)}%`, transform: "translateX(-50%)" }}>
-        <div className="w-2 h-6 bg-emerald-400 rounded-full" />
-        <p className="text-[9px] text-emerald-400 mt-1 whitespace-nowrap">${bull.toFixed(0)}</p>
+        <div className="w-2 h-6 bg-th-positive-bar rounded-full" />
+        <p className="text-[9px] text-th-positive mt-1 whitespace-nowrap">${bull.toFixed(0)}</p>
       </div>
       <div className="absolute top-1" style={{ left: `${pos(currentPrice)}%`, transform: "translateX(-50%)" }}>
-        <div className="w-3 h-3 bg-gray-900 rounded-full border-2 border-white shadow" />
-        <p className="text-[9px] font-bold text-gray-900 mt-4 whitespace-nowrap">${currentPrice.toFixed(0)} now</p>
+        <div className="w-3 h-3 bg-th-nav-active rounded-full border-2 border-white shadow" />
+        <p className="text-[9px] font-bold text-th-text mt-4 whitespace-nowrap">${currentPrice.toFixed(0)} now</p>
       </div>
     </div>
   );

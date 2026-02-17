@@ -18,9 +18,9 @@ interface LeaderboardProps {
 }
 
 function returnColor(value: number, benchmark: number): string {
-  if (value < 0) return "text-red-500";
-  if (value < benchmark) return "text-amber-500";
-  return "text-emerald-600";
+  if (value < 0) return "text-th-negative";
+  if (value < benchmark) return "text-th-warning";
+  return "text-th-positive";
 }
 
 export default function Leaderboard({ onSelectStrategy, refreshKey }: LeaderboardProps) {
@@ -58,8 +58,8 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
       onClick={() => setSortField(field)}
       className={`text-right font-medium text-xs uppercase tracking-wider transition-colors ${
         sortField === field
-          ? "text-blue-600"
-          : "text-gray-400 hover:text-gray-600"
+          ? "text-th-accent"
+          : "text-th-text-3 hover:text-th-text-2"
       }`}
     >
       {label}
@@ -70,10 +70,10 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
   if (loading) {
     return (
       <div className="w-full max-w-3xl mx-auto mt-16">
-        <div className="h-8 w-48 bg-gray-100 rounded animate-pulse mb-6" />
+        <div className="h-8 w-48 bg-th-skeleton rounded animate-pulse mb-6" />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-gray-50 rounded-xl animate-pulse" />
+            <div key={i} className="h-16 bg-th-inset rounded-xl animate-pulse" />
           ))}
         </div>
       </div>
@@ -84,19 +84,19 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
 
   return (
     <div className="w-full max-w-3xl mx-auto mt-12 sm:mt-20">
-      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
+      <h2 className="text-xl sm:text-2xl font-bold text-th-text mb-2">
         Top Performing Strategies
       </h2>
-      <p className="text-sm sm:text-base text-gray-400 mb-6">
+      <p className="text-sm sm:text-base text-th-text-3 mb-6">
         Click any strategy to test it yourself
       </p>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+      <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto">
         <div className="min-w-[480px]">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 border-b border-gray-100 items-center">
-            <div className="col-span-5 text-xs font-medium text-gray-400 uppercase tracking-wider">
+          <div className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 border-b border-th-border-light items-center">
+            <div className="col-span-5 text-xs font-medium text-th-text-3 uppercase tracking-wider">
               Strategy
             </div>
             <div className="col-span-2 text-right hidden md:block">
@@ -118,18 +118,18 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
             <button
               key={entry.id}
               onClick={() => onSelectStrategy(entry.description)}
-              className="w-full grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0 items-center min-h-[44px]"
+              className="w-full grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 sm:py-4 hover:bg-th-hover transition-colors text-left border-b border-th-border-light last:border-0 items-center min-h-[44px]"
             >
               <div className="col-span-5">
                 <div className="flex items-start gap-2 sm:gap-3">
-                  <span className="text-sm font-medium text-gray-300 w-5 mt-0.5 flex-shrink-0">
+                  <span className="text-sm font-medium text-th-text-4 w-5 mt-0.5 flex-shrink-0">
                     {index + 1}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate sm:whitespace-normal">
+                    <p className="text-sm font-semibold text-th-text truncate sm:whitespace-normal">
                       {entry.name}
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 hidden sm:block">
+                    <p className="text-xs text-th-text-3 mt-0.5 line-clamp-2 hidden sm:block">
                       {entry.description}
                     </p>
                   </div>

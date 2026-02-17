@@ -47,9 +47,9 @@ interface AnalysisResult {
 
 // ── Sector colors for allocation chart ──
 const SECTOR_COLORS: Record<string, string> = {
-  Technology: "bg-blue-500",
-  Healthcare: "bg-emerald-500",
-  Financial: "bg-amber-500",
+  Technology: "bg-th-accent",
+  Healthcare: "bg-th-positive-bar",
+  Financial: "bg-th-warning",
   Energy: "bg-orange-500",
   Consumer: "bg-pink-500",
   Industrials: "bg-gray-500",
@@ -57,8 +57,8 @@ const SECTOR_COLORS: Record<string, string> = {
   "Real Estate": "bg-purple-500",
   Utilities: "bg-teal-500",
   "Communication Services": "bg-indigo-500",
-  Unknown: "bg-gray-300",
-  Other: "bg-gray-400",
+  Unknown: "bg-gray-400",
+  Other: "bg-gray-500",
 };
 
 // ── Sub-components ──
@@ -85,14 +85,14 @@ function HoldingEntryRow({
         value={holding.symbol}
         onChange={(e) => onUpdate({ ...holding, symbol: e.target.value.toUpperCase() })}
         placeholder="AAPL"
-        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm font-mono bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 uppercase"
+        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm font-mono bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border uppercase"
       />
       <input
         type="number"
         value={holding.shares || ""}
         onChange={(e) => onUpdate({ ...holding, shares: Number(e.target.value) || 0 })}
         placeholder="Shares"
-        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
+        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
       />
       <input
         type="number"
@@ -100,11 +100,11 @@ function HoldingEntryRow({
         onChange={(e) => onUpdate({ ...holding, costBasis: Number(e.target.value) || undefined })}
         placeholder="Avg cost"
         step="0.01"
-        className="w-24 sm:w-28 px-2 sm:px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
+        className="w-24 sm:w-28 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
       />
       <button
         onClick={onRemove}
-        className="p-2 sm:p-1.5 text-gray-300 hover:text-red-500 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+        className="p-2 sm:p-1.5 text-th-text-4 hover:text-th-negative transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
         title="Remove"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -122,7 +122,7 @@ function SectorBar({ breakdown }: { breakdown: SectorBreakdown[] }) {
         {breakdown.map((s) => (
           <div
             key={s.sector}
-            className={`${SECTOR_COLORS[s.sector] || "bg-gray-300"} transition-all`}
+            className={`${SECTOR_COLORS[s.sector] || "bg-gray-400"} transition-all`}
             style={{ width: `${Math.max(s.pct * 100, 1)}%` }}
             title={`${s.sector}: ${(s.pct * 100).toFixed(1)}%`}
           />
@@ -131,8 +131,8 @@ function SectorBar({ breakdown }: { breakdown: SectorBreakdown[] }) {
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
         {breakdown.map((s) => (
           <div key={s.sector} className="flex items-center gap-1.5">
-            <div className={`w-2.5 h-2.5 rounded-sm ${SECTOR_COLORS[s.sector] || "bg-gray-300"}`} />
-            <span className="text-xs text-gray-500">
+            <div className={`w-2.5 h-2.5 rounded-sm ${SECTOR_COLORS[s.sector] || "bg-gray-400"}`} />
+            <span className="text-xs text-th-text-3">
               {s.sector} {(s.pct * 100).toFixed(1)}%
             </span>
           </div>
@@ -260,16 +260,16 @@ export default function PortfolioAnalyzer() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
+    <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Portfolio Analyzer</h1>
-        <p className="mt-2 text-sm sm:text-base text-gray-400">
+        <h1 className="text-2xl sm:text-3xl font-bold text-th-text tracking-tight">Portfolio Analyzer</h1>
+        <p className="mt-2 text-sm sm:text-base text-th-text-3">
           Enter your holdings for a full analysis with diversification, risk assessment, and AI-powered recommendations.
         </p>
 
         {/* Screenshot upload zone */}
-        <div className="mt-6 sm:mt-8 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
+        <div className="mt-6 sm:mt-8 bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
           <input
             ref={fileInputRef}
             type="file"
@@ -280,30 +280,30 @@ export default function PortfolioAnalyzer() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={imageLoading}
-            className="w-full border-2 border-dashed border-gray-200 rounded-xl p-6 hover:border-blue-300 hover:bg-blue-50/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
+            className="w-full border-2 border-dashed border-th-border rounded-xl p-6 hover:border-th-accent-border hover:bg-th-accent-bg transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
           >
             {imageLoading ? (
               <div className="flex flex-col items-center gap-2">
-                <svg className="animate-spin w-8 h-8 text-blue-500" viewBox="0 0 24 24" fill="none">
+                <svg className="animate-spin w-8 h-8 text-th-accent" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <p className="text-sm font-medium text-blue-600">Reading your portfolio screenshot...</p>
+                <p className="text-sm font-medium text-th-accent">Reading your portfolio screenshot...</p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                  <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <div className="w-10 h-10 rounded-full bg-th-accent-bg flex items-center justify-center group-hover:bg-th-accent-muted transition-colors">
+                  <svg className="w-5 h-5 text-th-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
                   </svg>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-700">Upload a screenshot of your portfolio</p>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-sm font-semibold text-th-text-2">Upload a screenshot of your portfolio</p>
+                  <p className="text-xs text-th-text-3 mt-1">
                     Skip manual entry &mdash; AI will extract your tickers, shares, and cost basis automatically
                   </p>
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-th-text-3 mt-1">
                   Use your brokerage&apos;s &quot;Holdings&quot; or &quot;Positions&quot; view showing tickers and shares.
                 </p>
               </div>
@@ -312,19 +312,19 @@ export default function PortfolioAnalyzer() {
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 border-t border-gray-100" />
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">or enter manually</span>
-            <div className="flex-1 border-t border-gray-100" />
+            <div className="flex-1 border-t border-th-border-light" />
+            <span className="text-xs font-medium text-th-text-3 uppercase tracking-wider">or enter manually</span>
+            <div className="flex-1 border-t border-th-border-light" />
           </div>
 
           {/* Manual entry */}
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Your Holdings</h2>
+          <h2 className="text-sm font-semibold text-th-text-2 mb-3">Your Holdings</h2>
 
           {/* Column headers */}
           <div className="flex items-center gap-2 sm:gap-3 mb-2 pl-0">
-            <span className="w-20 sm:w-24 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Ticker</span>
-            <span className="w-20 sm:w-24 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Shares</span>
-            <span className="w-24 sm:w-28 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Avg Cost</span>
+            <span className="w-20 sm:w-24 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Ticker</span>
+            <span className="w-20 sm:w-24 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Shares</span>
+            <span className="w-24 sm:w-28 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Avg Cost</span>
           </div>
 
           {/* Holdings list */}
@@ -341,7 +341,7 @@ export default function PortfolioAnalyzer() {
 
           <button
             onClick={addHolding}
-            className="mt-3 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 transition-colors"
+            className="mt-3 flex items-center gap-1.5 text-sm text-th-accent hover:text-th-accent transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -350,27 +350,27 @@ export default function PortfolioAnalyzer() {
           </button>
 
           {/* Profile (optional) */}
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+          <div className="mt-6 pt-4 border-t border-th-border-light">
+            <p className="text-xs font-medium text-th-text-3 uppercase tracking-wider mb-3">
               Optional: About you (for personalized advice)
             </p>
             <div className="flex flex-wrap items-start gap-4">
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Age</label>
+                <label className="text-xs text-th-text-3 mb-1 block">Age</label>
                 <input
                   type="number"
                   value={profile.age || ""}
                   onChange={(e) => setProfile({ ...profile, age: Number(e.target.value) || undefined })}
                   placeholder="30"
-                  className="w-20 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
+                  className="w-20 px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Est. net worth</label>
+                <label className="text-xs text-th-text-3 mb-1 block">Est. net worth</label>
                 <select
                   value={profile.netWorth || ""}
                   onChange={(e) => setProfile({ ...profile, netWorth: e.target.value || undefined })}
-                  className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 text-gray-700"
+                  className="px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border text-th-text-2"
                 >
                   <option value="">Select...</option>
                   <option value="Under $25K">Under $25K</option>
@@ -383,11 +383,11 @@ export default function PortfolioAnalyzer() {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Risk tolerance</label>
+                <label className="text-xs text-th-text-3 mb-1 block">Risk tolerance</label>
                 <select
                   value={profile.riskTolerance || ""}
                   onChange={(e) => setProfile({ ...profile, riskTolerance: e.target.value || undefined })}
-                  className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 text-gray-700"
+                  className="px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border text-th-text-2"
                 >
                   <option value="">Select...</option>
                   <option value="conservative">Conservative</option>
@@ -402,7 +402,7 @@ export default function PortfolioAnalyzer() {
           <button
             onClick={analyze}
             disabled={loading || holdings.every((h) => !h.symbol.trim() || h.shares <= 0)}
-            className="mt-6 w-full py-3 px-6 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+            className="mt-6 w-full py-3 px-6 text-sm font-semibold text-white bg-th-accent rounded-xl hover:bg-th-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
@@ -418,7 +418,7 @@ export default function PortfolioAnalyzer() {
           </button>
 
           {error && (
-            <p className="mt-3 text-sm text-red-500 text-center">{error}</p>
+            <p className="mt-3 text-sm text-th-negative text-center">{error}</p>
           )}
         </div>
 
@@ -427,25 +427,25 @@ export default function PortfolioAnalyzer() {
           <div className="mt-8 space-y-6 animate-in fade-in duration-500">
             {/* Summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
-                <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Total Value</p>
-                <p className="text-lg sm:text-2xl font-bold text-gray-900 mt-1">
+              <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider">Total Value</p>
+                <p className="text-lg sm:text-2xl font-bold text-th-text mt-1">
                   {formatCurrency(result.summary.totalValue)}
                 </p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
-                <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Holdings</p>
-                <p className="text-lg sm:text-2xl font-bold text-gray-900 mt-1">{result.summary.holdingCount}</p>
+              <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider">Holdings</p>
+                <p className="text-lg sm:text-2xl font-bold text-th-text mt-1">{result.summary.holdingCount}</p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
-                <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Portfolio Beta</p>
-                <p className="text-lg sm:text-2xl font-bold text-gray-900 mt-1">{result.summary.weightedBeta.toFixed(2)}</p>
+              <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider">Portfolio Beta</p>
+                <p className="text-lg sm:text-2xl font-bold text-th-text mt-1">{result.summary.weightedBeta.toFixed(2)}</p>
               </div>
               {result.summary.totalGainLoss !== null && (
-                <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
-                  <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Total Gain/Loss</p>
+                <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
+                  <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider">Total Gain/Loss</p>
                   <p className={`text-lg sm:text-2xl font-bold mt-1 ${
-                    result.summary.totalGainLoss >= 0 ? "text-emerald-600" : "text-red-500"
+                    result.summary.totalGainLoss >= 0 ? "text-th-positive" : "text-th-negative"
                   }`}>
                     {result.summary.totalGainLoss >= 0 ? "+" : ""}
                     {formatCurrency(result.summary.totalGainLoss)}
@@ -455,17 +455,17 @@ export default function PortfolioAnalyzer() {
             </div>
 
             {/* Sector allocation */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Sector Allocation</h3>
+            <div className="bg-th-surface rounded-2xl border border-th-border-light p-6">
+              <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
               <SectorBar breakdown={result.summary.sectorBreakdown} />
             </div>
 
             {/* Holdings table */}
-            <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
-              <div className="px-4 sm:px-6 py-3 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-700">Holdings Detail</h3>
+            <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto">
+              <div className="px-4 sm:px-6 py-3 border-b border-th-border-light">
+                <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
               </div>
-              <div className="min-w-[600px] divide-y divide-gray-50">
+              <div className="min-w-[600px] divide-y divide-th-border-light">
                 {result.holdings.map((h) => {
                   const score = stockScores.get(h.symbol);
                   return (
@@ -474,26 +474,26 @@ export default function PortfolioAnalyzer() {
                       <StockLogo ticker={h.symbol} sector={h.sector} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-semibold text-gray-900">{h.symbol}</p>
+                          <p className="text-sm font-semibold text-th-text">{h.symbol}</p>
                           {score !== undefined && (
                             <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
-                              score >= 75 ? "bg-emerald-50 text-emerald-600" :
-                              score >= 50 ? "bg-blue-50 text-blue-600" :
-                              score >= 25 ? "bg-amber-50 text-amber-600" :
-                              "bg-red-50 text-red-500"
+                              score >= 75 ? "bg-th-positive-bg text-th-positive" :
+                              score >= 50 ? "bg-th-accent-bg text-th-accent" :
+                              score >= 25 ? "bg-th-warning-bg text-th-warning" :
+                              "bg-th-negative-bg text-th-negative"
                             }`}>{score}</span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-400 truncate">{h.name}</p>
+                        <p className="text-xs text-th-text-3 truncate">{h.name}</p>
                       </div>
                     </div>
                     <div className="col-span-2 text-right">
-                      <p className="text-sm text-gray-600">{h.shares} shares</p>
-                      <p className="text-xs text-gray-400">${h.currentPrice.toFixed(2)}</p>
+                      <p className="text-sm text-th-text-2">{h.shares} shares</p>
+                      <p className="text-xs text-th-text-3">${h.currentPrice.toFixed(2)}</p>
                     </div>
                     <div className="col-span-2 text-right">
-                      <p className="text-sm font-medium text-gray-900">{formatCurrency(h.currentValue)}</p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-sm font-medium text-th-text">{formatCurrency(h.currentValue)}</p>
+                      <p className="text-xs text-th-text-3">
                         {result.summary.totalValue > 0
                           ? `${((h.currentValue / result.summary.totalValue) * 100).toFixed(1)}%`
                           : ""}
@@ -502,19 +502,19 @@ export default function PortfolioAnalyzer() {
                     <div className="col-span-2 text-right">
                       {h.gainLoss !== null ? (
                         <>
-                          <p className={`text-sm font-medium ${h.gainLoss >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                          <p className={`text-sm font-medium ${h.gainLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
                             {h.gainLoss >= 0 ? "+" : ""}{formatCurrency(h.gainLoss)}
                           </p>
-                          <p className={`text-xs ${(h.gainLossPct ?? 0) >= 0 ? "text-emerald-500" : "text-red-400"}`}>
+                          <p className={`text-xs ${(h.gainLossPct ?? 0) >= 0 ? "text-th-positive" : "text-th-negative"}`}>
                             {(h.gainLossPct ?? 0) >= 0 ? "+" : ""}{((h.gainLossPct ?? 0) * 100).toFixed(1)}%
                           </p>
                         </>
                       ) : (
-                        <span className="text-xs text-gray-300">No cost basis</span>
+                        <span className="text-xs text-th-text-4">No cost basis</span>
                       )}
                     </div>
                     <div className="col-span-3 text-right">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
                         {h.sector}
                       </span>
                     </div>
@@ -526,21 +526,21 @@ export default function PortfolioAnalyzer() {
 
             {/* AI Analysis */}
             {result.aiAnalysis && (
-              <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <div className="bg-th-surface rounded-2xl border border-th-border-light p-6">
+                <h3 className="text-sm font-semibold text-th-text-2 mb-3 flex items-center gap-2">
                   AI Analysis
-                  <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                  <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
                     Beta
                   </span>
                 </h3>
-                <div className="text-sm text-gray-600 leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_strong]:text-gray-800 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-gray-800 [&_h2]:mt-3 [&_h2]:mb-1 whitespace-pre-line">
+                <div className="text-sm text-th-text-2 leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_strong]:text-th-text [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-th-text [&_h2]:mt-3 [&_h2]:mb-1 whitespace-pre-line">
                   {result.aiAnalysis}
                 </div>
               </div>
             )}
 
             {/* Price note */}
-            <p className="text-xs text-gray-300 text-center">{result.priceNote}</p>
+            <p className="text-xs text-th-text-4 text-center">{result.priceNote}</p>
           </div>
         )}
       </div>

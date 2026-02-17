@@ -27,7 +27,7 @@ export default function Tooltip({
     <span className="group/tip relative inline-flex cursor-help">
       {children}
       <span
-        className={`absolute left-1/2 -translate-x-1/2 ${posClass} hidden group-hover/tip:block z-30 ${width} px-2.5 py-1.5 text-[11px] leading-relaxed font-normal normal-case tracking-normal text-white bg-gray-800 rounded-lg shadow-lg pointer-events-none`}
+        className={`absolute left-1/2 -translate-x-1/2 ${posClass} hidden group-hover/tip:block z-30 ${width} px-2.5 py-1.5 text-[11px] leading-relaxed font-normal normal-case tracking-normal text-white bg-th-tooltip-bg rounded-lg shadow-lg pointer-events-none`}
       >
         {content}
       </span>

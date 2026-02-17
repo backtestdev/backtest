@@ -9,16 +9,16 @@ import { useState, useCallback } from "react";
  */
 
 const SECTOR_COLORS: Record<string, { bg: string; text: string }> = {
-  Technology:              { bg: "bg-blue-100",    text: "text-blue-700" },
-  Healthcare:              { bg: "bg-emerald-100", text: "text-emerald-700" },
-  Financial:               { bg: "bg-amber-100",   text: "text-amber-700" },
-  "Financial Services":    { bg: "bg-amber-100",   text: "text-amber-700" },
+  Technology:              { bg: "bg-th-accent-muted",    text: "text-th-accent-text" },
+  Healthcare:              { bg: "bg-th-positive-bg", text: "text-th-positive-text" },
+  Financial:               { bg: "bg-th-warning-bg",   text: "text-th-warning-text" },
+  "Financial Services":    { bg: "bg-th-warning-bg",   text: "text-th-warning-text" },
   Energy:                  { bg: "bg-orange-100",  text: "text-orange-700" },
   Consumer:                { bg: "bg-pink-100",    text: "text-pink-700" },
   "Consumer Cyclical":     { bg: "bg-pink-100",    text: "text-pink-700" },
   "Consumer Defensive":    { bg: "bg-rose-100",    text: "text-rose-700" },
-  Industrials:             { bg: "bg-gray-100",    text: "text-gray-700" },
-  "Basic Materials":       { bg: "bg-yellow-100",  text: "text-yellow-700" },
+  Industrials:             { bg: "bg-th-skeleton",    text: "text-th-text-2" },
+  "Basic Materials":       { bg: "bg-th-warning-bg",  text: "text-th-warning-text" },
   "Real Estate":           { bg: "bg-purple-100",  text: "text-purple-700" },
   Utilities:               { bg: "bg-teal-100",    text: "text-teal-700" },
   Communication:           { bg: "bg-indigo-100",  text: "text-indigo-700" },
@@ -82,7 +82,7 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
         width={px}
         height={px}
         loading="lazy"
-        className={`rounded-md object-contain flex-shrink-0 bg-white border border-gray-100 ${dims}`}
+        className={`rounded-md object-contain flex-shrink-0 bg-th-surface border border-th-border-light ${dims}`}
         onError={markFailed}
         onLoad={handleLoad}
       />

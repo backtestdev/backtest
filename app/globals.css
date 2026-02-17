@@ -2,8 +2,166 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design token system — Bloomberg-terminal-inspired, refined for readability.
+ * All semantic colors are defined here; components reference them via Tailwind
+ * utilities mapped in tailwind.config.ts (e.g. bg-th-surface, text-th-text).
+ */
+
+:root {
+  /* ── Page backgrounds ── */
+  --bg: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-inset: #f1f5f9;
+  --bg-overlay: rgba(0, 0, 0, 0.2);
+
+  /* ── Text ── */
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #94a3b8;
+  --text-4: #cbd5e1;
+
+  /* ── Borders ── */
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+
+  /* ── Accent (primary action) ── */
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-bg: #eff6ff;
+  --accent-muted: #dbeafe;
+  --accent-text: #1e40af;
+  --accent-border: #93c5fd;
+
+  /* ── Positive / green ── */
+  --positive: #059669;
+  --positive-bg: #ecfdf5;
+  --positive-border: #a7f3d0;
+  --positive-text: #065f46;
+  --positive-bar: #34d399;
+
+  /* ── Negative / red ── */
+  --negative: #dc2626;
+  --negative-bg: #fef2f2;
+  --negative-border: #fecaca;
+  --negative-text: #991b1b;
+
+  /* ── Warning / amber ── */
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+  --warning-text: #92400e;
+
+  /* ── Navigation ── */
+  --nav-active: #0f172a;
+  --nav-active-text: #ffffff;
+
+  /* ── Misc UI ── */
+  --skeleton: #f1f5f9;
+  --bar-bg: #e2e8f0;
+  --tooltip-bg: #1e293b;
+  --tooltip-text: #f8fafc;
+  --focus-ring: #dbeafe;
+  --focus-border: #3b82f6;
+
+  /* ── Score tier colors ── */
+  --score-high: #059669;
+  --score-mid: #2563eb;
+  --score-low: #d97706;
+  --score-vlow: #dc2626;
+  --score-high-bg: #ecfdf5;
+  --score-mid-bg: #eff6ff;
+  --score-low-bg: #fffbeb;
+  --score-vlow-bg: #fef2f2;
+}
+
+.dark {
+  /* ── Page backgrounds ── */
+  --bg: #080a11;
+  --bg-surface: #111827;
+  --bg-hover: #1e293b;
+  --bg-inset: #0c0f17;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* ── Text ── */
+  --text: #f1f5f9;
+  --text-2: #94a3b8;
+  --text-3: #64748b;
+  --text-4: #334155;
+
+  /* ── Borders ── */
+  --border: #1e293b;
+  --border-light: #1e293b;
+
+  /* ── Accent ── */
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-bg: rgba(59, 130, 246, 0.1);
+  --accent-muted: rgba(59, 130, 246, 0.15);
+  --accent-text: #93c5fd;
+  --accent-border: #1e3a5f;
+
+  /* ── Positive ── */
+  --positive: #34d399;
+  --positive-bg: rgba(52, 211, 153, 0.1);
+  --positive-border: #065f46;
+  --positive-text: #6ee7b7;
+  --positive-bar: #10b981;
+
+  /* ── Negative ── */
+  --negative: #f87171;
+  --negative-bg: rgba(248, 113, 113, 0.1);
+  --negative-border: #7f1d1d;
+  --negative-text: #fca5a5;
+
+  /* ── Warning ── */
+  --warning: #fbbf24;
+  --warning-bg: rgba(251, 191, 36, 0.1);
+  --warning-border: #78350f;
+  --warning-text: #fde68a;
+
+  /* ── Navigation ── */
+  --nav-active: #1e293b;
+  --nav-active-text: #f1f5f9;
+
+  /* ── Misc UI ── */
+  --skeleton: #1e293b;
+  --bar-bg: #334155;
+  --tooltip-bg: #0f172a;
+  --tooltip-text: #e2e8f0;
+  --focus-ring: rgba(59, 130, 246, 0.2);
+  --focus-border: #3b82f6;
+
+  /* ── Score tier colors ── */
+  --score-high: #34d399;
+  --score-mid: #60a5fa;
+  --score-low: #fbbf24;
+  --score-vlow: #f87171;
+  --score-high-bg: rgba(52, 211, 153, 0.1);
+  --score-mid-bg: rgba(59, 130, 246, 0.1);
+  --score-low-bg: rgba(251, 191, 36, 0.1);
+  --score-vlow-bg: rgba(248, 113, 113, 0.1);
+}
+
 body {
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* Smooth theme transitions for key properties */
+body,
+body * {
+  transition-property: background-color, border-color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease-out;
+}
+
+/* Opt out of transition for performance-sensitive elements */
+.no-transition,
+.no-transition * {
+  transition: none !important;
 }
 
 @layer utilities {

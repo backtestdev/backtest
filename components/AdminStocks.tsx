@@ -267,27 +267,27 @@ export default function AdminStocks() {
     : null;
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-6 py-16">
+    <div className="min-h-screen bg-th-bg px-6 py-16">
       <div className="max-w-xl mx-auto">
-        <a href="/" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+        <a href="/" className="text-sm text-th-text-3 hover:text-th-text-2 transition-colors">
           &larr; Back
         </a>
 
-        <h1 className="text-2xl font-bold text-gray-900 mt-4">Stock Database</h1>
-        <p className="text-sm text-gray-400 mt-1">Manage the stock data used for backtesting.</p>
+        <h1 className="text-2xl font-bold text-th-text mt-4">Stock Database</h1>
+        <p className="text-sm text-th-text-3 mt-1">Manage the stock data used for backtesting.</p>
 
         {/* Status card */}
-        <div className="mt-8 bg-white rounded-2xl border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Current Status</h2>
+        <div className="mt-8 bg-th-surface rounded-2xl border border-th-border p-6">
+          <h2 className="text-sm font-semibold text-th-text-3 uppercase tracking-wide">Current Status</h2>
           {loading ? (
-            <p className="mt-3 text-gray-400 text-sm">Loading...</p>
+            <p className="mt-3 text-th-text-3 text-sm">Loading...</p>
           ) : status?.error ? (
             <div className="mt-3">
-              <p className="text-amber-700 text-sm">{status.error}</p>
+              <p className="text-th-warning-text text-sm">{status.error}</p>
               <button
                 onClick={handleInitDb}
                 disabled={anyBusy}
-                className="mt-3 px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                className="mt-3 px-4 py-2 text-sm bg-th-nav-active text-white rounded-lg hover:bg-th-hover disabled:opacity-50 transition-colors"
               >
                 Initialize Tables
               </button>
@@ -296,38 +296,38 @@ export default function AdminStocks() {
             <div className="mt-3 space-y-3">
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Database</dt>
-                  <dd className={status?.configured ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
+                  <dt className="text-th-text-3">Database</dt>
+                  <dd className={status?.configured ? "text-th-positive font-medium" : "text-th-negative font-medium"}>
                     {status?.configured ? "Connected" : "Not configured"}
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Total stocks</dt>
-                  <dd className="text-gray-900 font-medium">{status?.stockCount?.toLocaleString() ?? "—"}</dd>
+                  <dt className="text-th-text-3">Total stocks</dt>
+                  <dd className="text-th-text font-medium">{status?.stockCount?.toLocaleString() ?? "—"}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Enriched (have metrics)</dt>
-                  <dd className="text-gray-900 font-medium">
+                  <dt className="text-th-text-3">Enriched (have metrics)</dt>
+                  <dd className="text-th-text font-medium">
                     {status?.enrichedCount != null
                       ? `${status.enrichedCount.toLocaleString()} / ${status?.stockCount?.toLocaleString() ?? "?"} (${enrichPct ?? 0}%)`
                       : "—"}
                   </dd>
                 </div>
                 {status?.enrichedCount != null && status?.stockCount != null && (
-                  <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className="w-full bg-th-skeleton rounded-full h-2">
                     <div
-                      className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                      className="bg-th-positive-bar h-2 rounded-full transition-all duration-500"
                       style={{ width: `${enrichPct ?? 0}%` }}
                     />
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">With revenue history</dt>
-                  <dd className="text-gray-900 font-medium">{status?.historyCount?.toLocaleString() ?? "—"}</dd>
+                  <dt className="text-th-text-3">With revenue history</dt>
+                  <dd className="text-th-text font-medium">{status?.historyCount?.toLocaleString() ?? "—"}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Last refresh</dt>
-                  <dd className="text-gray-900 font-medium">
+                  <dt className="text-th-text-3">Last refresh</dt>
+                  <dd className="text-th-text font-medium">
                     {status?.lastPopulate
                       ? new Date(status.lastPopulate).toLocaleString()
                       : status?.lastRefresh
@@ -336,8 +336,8 @@ export default function AdminStocks() {
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Next batch starts at</dt>
-                  <dd className="text-gray-900 font-medium">
+                  <dt className="text-th-text-3">Next batch starts at</dt>
+                  <dd className="text-th-text font-medium">
                     {status?.enrichOffset != null && status?.stockCount
                       ? `Stock #${status.enrichOffset} of ${status.stockCount}`
                       : "—"}
@@ -349,21 +349,21 @@ export default function AdminStocks() {
         </div>
 
         {/* Admin secret */}
-        <div className="mt-6 bg-white rounded-2xl border border-gray-200 p-6">
-          <label className="block text-xs text-gray-500 mb-1">Admin secret (leave blank if not configured)</label>
+        <div className="mt-6 bg-th-surface rounded-2xl border border-th-border p-6">
+          <label className="block text-xs text-th-text-3 mb-1">Admin secret (leave blank if not configured)</label>
           <input
             type="password"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
             placeholder="Optional"
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors"
+            className="w-full px-3 py-2 text-sm border border-th-border rounded-lg focus:outline-none focus:ring-2 focus:ring-th-focus-ring0/20 focus:border-th-focus-border transition-colors"
           />
         </div>
 
         {/* Main refresh controls */}
-        <div className="mt-6 bg-white rounded-2xl border border-blue-200 p-6">
-          <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wide">Refresh Stocks</h2>
-          <p className="text-xs text-gray-400 mt-1">
+        <div className="mt-6 bg-th-surface rounded-2xl border border-th-accent-border p-6">
+          <h2 className="text-sm font-semibold text-th-accent uppercase tracking-wide">Refresh Stocks</h2>
+          <p className="text-xs text-th-text-3 mt-1">
             Updates screener data for all stocks, then enriches detailed metrics (ratios, key metrics,
             income statements, quotes) starting from where the last run left off. Each run processes
             as many stocks as possible within a 4-minute window.
@@ -373,7 +373,7 @@ export default function AdminStocks() {
             <button
               onClick={handleRefreshAll}
               disabled={anyBusy}
-              className="flex-1 px-4 py-3 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 px-4 py-3 text-sm font-medium bg-th-accent text-white rounded-xl hover:bg-th-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {refreshingAll ? (
                 <span className="flex items-center justify-center gap-2">
@@ -390,7 +390,7 @@ export default function AdminStocks() {
             <button
               onClick={handleRefresh}
               disabled={anyBusy}
-              className="px-4 py-3 text-sm font-medium bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-3 text-sm font-medium bg-th-skeleton text-th-text-2 rounded-xl hover:bg-th-bar disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {refreshing ? "Running..." : "Run 1 Batch"}
             </button>
@@ -399,13 +399,13 @@ export default function AdminStocks() {
           {refreshingAll && (
             <button
               onClick={handleStopRefreshAll}
-              className="mt-2 w-full px-3 py-2 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+              className="mt-2 w-full px-3 py-2 text-xs font-medium text-th-negative bg-th-negative-bg rounded-lg hover:bg-th-negative-bg transition-colors"
             >
               Stop after current batch
             </button>
           )}
 
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="text-xs text-th-text-3 mt-3">
             <strong>Refresh All</strong> chains runs automatically until every stock is enriched.
             <strong> Run 1 Batch</strong> processes a single batch (~200 stocks) and stops.
           </p>
@@ -413,20 +413,20 @@ export default function AdminStocks() {
 
         {/* Refresh All progress */}
         {refreshAllProgress && refreshingAll && (
-          <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-6">
+          <div className="mt-4 rounded-2xl border border-th-accent-border bg-th-accent-bg p-6">
             <div className="text-sm">
-              <p className="font-medium text-blue-800">
+              <p className="font-medium text-th-accent-text">
                 Refreshing... Run {refreshAllProgress.runsCompleted} of ~{refreshAllProgress.totalRuns || "?"}
               </p>
               {refreshAllProgress.totalRuns > 0 && (
-                <div className="mt-2 w-full bg-blue-100 rounded-full h-2">
+                <div className="mt-2 w-full bg-th-accent-muted rounded-full h-2">
                   <div
-                    className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                    className="bg-th-accent h-2 rounded-full transition-all duration-500"
                     style={{ width: `${Math.round((refreshAllProgress.runsCompleted / refreshAllProgress.totalRuns) * 100)}%` }}
                   />
                 </div>
               )}
-              <dl className="mt-3 space-y-1 text-blue-700">
+              <dl className="mt-3 space-y-1 text-th-accent-text">
                 <div className="flex justify-between">
                   <dt>Last batch</dt>
                   <dd className="font-medium font-mono">{refreshAllProgress.currentBatch}</dd>
@@ -438,13 +438,13 @@ export default function AdminStocks() {
                 {refreshAllProgress.totalNoData > 0 && (
                   <div className="flex justify-between">
                     <dt>No data (FMP has no info)</dt>
-                    <dd className="font-medium text-amber-600">{refreshAllProgress.totalNoData}</dd>
+                    <dd className="font-medium text-th-warning">{refreshAllProgress.totalNoData}</dd>
                   </div>
                 )}
                 {refreshAllProgress.totalFailed > 0 && (
                   <div className="flex justify-between">
                     <dt>Errors</dt>
-                    <dd className="font-medium text-red-600">{refreshAllProgress.totalFailed}</dd>
+                    <dd className="font-medium text-th-negative">{refreshAllProgress.totalFailed}</dd>
                   </div>
                 )}
               </dl>
@@ -455,14 +455,14 @@ export default function AdminStocks() {
         {/* Refresh result (single batch or final result) */}
         {result && !refreshingAll && (
           <div className={`mt-4 rounded-2xl border p-6 ${
-            result.success ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+            result.success ? "bg-th-positive-bg border-th-positive-border" : "bg-th-negative-bg border-th-negative-border"
           }`}>
             {result.success ? (
               <div className="text-sm">
-                <p className="font-medium text-emerald-800">Refresh complete</p>
-                {result.message && <p className="text-emerald-700 mt-1">{result.message}</p>}
+                <p className="font-medium text-th-positive-text">Refresh complete</p>
+                {result.message && <p className="text-th-positive-text mt-1">{result.message}</p>}
                 {result.stocks !== undefined && (
-                  <dl className="mt-3 space-y-1 text-emerald-700">
+                  <dl className="mt-3 space-y-1 text-th-positive-text">
                     <div className="flex justify-between">
                       <dt>Screener stocks</dt>
                       <dd className="font-medium">{result.stocks?.toLocaleString()}</dd>
@@ -474,13 +474,13 @@ export default function AdminStocks() {
                     {(result.noData ?? 0) > 0 && (
                       <div className="flex justify-between">
                         <dt>No data (FMP has no info)</dt>
-                        <dd className="font-medium text-amber-600">{result.noData}</dd>
+                        <dd className="font-medium text-th-warning">{result.noData}</dd>
                       </div>
                     )}
                     {(result.enrichFailed ?? 0) > 0 && (
                       <div className="flex justify-between">
                         <dt>Errors</dt>
-                        <dd className="font-medium text-red-600">{result.enrichFailed}</dd>
+                        <dd className="font-medium text-th-negative">{result.enrichFailed}</dd>
                       </div>
                     )}
                     {(result.runsRemaining ?? 0) > 0 && (
@@ -494,12 +494,12 @@ export default function AdminStocks() {
                 {/* Enrich issues */}
                 {result.enrichIssues && result.enrichIssues.length > 0 && (
                   <details className="mt-3">
-                    <summary className="text-amber-600 cursor-pointer text-xs font-medium">
+                    <summary className="text-th-warning cursor-pointer text-xs font-medium">
                       Issues ({result.enrichIssues.length} stocks)
                     </summary>
                     <div className="mt-2 max-h-48 overflow-y-auto text-xs space-y-0.5 font-mono">
                       {result.enrichIssues.map((issue, i) => (
-                        <div key={i} className={issue.status === 'error' ? 'text-red-600' : issue.status === 'no_data' ? 'text-amber-600' : 'text-gray-500'}>
+                        <div key={i} className={issue.status === 'error' ? 'text-th-negative' : issue.status === 'no_data' ? 'text-th-warning' : 'text-th-text-3'}>
                           <span className="font-medium">{issue.symbol}</span> [{issue.status}] {issue.detail}
                         </div>
                       ))}
@@ -509,9 +509,9 @@ export default function AdminStocks() {
               </div>
             ) : (
               <div className="text-sm">
-                <p className="font-medium text-red-800">Refresh failed</p>
-                <p className="text-red-700 mt-1">{result.error}</p>
-                {result.details && <p className="text-red-600 text-xs mt-2">{result.details}</p>}
+                <p className="font-medium text-th-negative-text">Refresh failed</p>
+                <p className="text-th-negative-text mt-1">{result.error}</p>
+                {result.details && <p className="text-th-negative text-xs mt-2">{result.details}</p>}
               </div>
             )}
           </div>
@@ -519,12 +519,12 @@ export default function AdminStocks() {
 
         {/* Refresh All final result with accumulated issues */}
         {refreshAllProgress && !refreshingAll && refreshAllProgress.runsCompleted > 0 && (
-          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+          <div className="mt-4 rounded-2xl border border-th-positive-border bg-th-positive-bg p-6">
             <div className="text-sm">
-              <p className="font-medium text-emerald-800">
+              <p className="font-medium text-th-positive-text">
                 Full refresh complete — {refreshAllProgress.runsCompleted} runs
               </p>
-              <dl className="mt-3 space-y-1 text-emerald-700">
+              <dl className="mt-3 space-y-1 text-th-positive-text">
                 <div className="flex justify-between">
                   <dt>Total enriched</dt>
                   <dd className="font-medium">{refreshAllProgress.totalEnriched.toLocaleString()}</dd>
@@ -532,24 +532,24 @@ export default function AdminStocks() {
                 {refreshAllProgress.totalNoData > 0 && (
                   <div className="flex justify-between">
                     <dt>No data (FMP has no info)</dt>
-                    <dd className="font-medium text-amber-600">{refreshAllProgress.totalNoData}</dd>
+                    <dd className="font-medium text-th-warning">{refreshAllProgress.totalNoData}</dd>
                   </div>
                 )}
                 {refreshAllProgress.totalFailed > 0 && (
                   <div className="flex justify-between">
                     <dt>Errors</dt>
-                    <dd className="font-medium text-red-600">{refreshAllProgress.totalFailed}</dd>
+                    <dd className="font-medium text-th-negative">{refreshAllProgress.totalFailed}</dd>
                   </div>
                 )}
               </dl>
               {refreshAllProgress.allIssues.length > 0 && (
                 <details className="mt-3">
-                  <summary className="text-amber-600 cursor-pointer text-xs font-medium">
+                  <summary className="text-th-warning cursor-pointer text-xs font-medium">
                     All issues ({refreshAllProgress.allIssues.length} stocks)
                   </summary>
                   <div className="mt-2 max-h-64 overflow-y-auto text-xs space-y-0.5 font-mono">
                     {refreshAllProgress.allIssues.map((issue, i) => (
-                      <div key={i} className={issue.status === 'error' ? 'text-red-600' : issue.status === 'no_data' ? 'text-amber-600' : 'text-gray-500'}>
+                      <div key={i} className={issue.status === 'error' ? 'text-th-negative' : issue.status === 'no_data' ? 'text-th-warning' : 'text-th-text-3'}>
                         <span className="font-medium">{issue.symbol}</span> [{issue.status}] {issue.detail}
                       </div>
                     ))}
@@ -561,9 +561,9 @@ export default function AdminStocks() {
         )}
 
         {/* Historical prices refresh */}
-        <div className="mt-6 bg-white rounded-2xl border border-purple-200 p-6">
+        <div className="mt-6 bg-th-surface rounded-2xl border border-purple-200 p-6">
           <h2 className="text-sm font-semibold text-purple-600 uppercase tracking-wide">Historical Prices</h2>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-th-text-3 mt-1">
             Fetches 20 years of monthly price data from Yahoo Finance for all stocks and computes
             annual returns used for backtesting charts and performance metrics. Also populates
             the S&amp;P 500 (SPY) benchmark. No API key required.
@@ -591,12 +591,12 @@ export default function AdminStocks() {
         {/* Price refresh result */}
         {priceResult && (
           <div className={`mt-4 rounded-2xl border p-6 ${
-            priceResult.success ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+            priceResult.success ? "bg-th-positive-bg border-th-positive-border" : "bg-th-negative-bg border-th-negative-border"
           }`}>
             {priceResult.success ? (
               <div className="text-sm">
-                <p className="font-medium text-emerald-800">Historical prices updated</p>
-                <dl className="mt-3 space-y-1 text-emerald-700">
+                <p className="font-medium text-th-positive-text">Historical prices updated</p>
+                <dl className="mt-3 space-y-1 text-th-positive-text">
                   {priceResult.symbols && (
                     <>
                       <div className="flex justify-between">
@@ -610,7 +610,7 @@ export default function AdminStocks() {
                       {priceResult.symbols.failed > 0 && (
                         <div className="flex justify-between">
                           <dt>Failed</dt>
-                          <dd className="font-medium text-amber-600">{priceResult.symbols.failed}</dd>
+                          <dd className="font-medium text-th-warning">{priceResult.symbols.failed}</dd>
                         </div>
                       )}
                     </>
@@ -632,10 +632,10 @@ export default function AdminStocks() {
                 </dl>
                 {priceResult.log && priceResult.log.length > 0 && (
                   <details className="mt-3">
-                    <summary className="text-emerald-600 cursor-pointer text-xs font-medium">
+                    <summary className="text-th-positive cursor-pointer text-xs font-medium">
                       Log ({priceResult.log.length} entries)
                     </summary>
-                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-emerald-700 space-y-0.5 font-mono">
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-th-positive-text space-y-0.5 font-mono">
                       {priceResult.log.map((line, i) => (
                         <div key={i}>{line}</div>
                       ))}
@@ -645,13 +645,13 @@ export default function AdminStocks() {
               </div>
             ) : (
               <div className="text-sm">
-                <p className="font-medium text-red-800">Price refresh failed</p>
-                <p className="text-red-700 mt-1">{priceResult.error}</p>
-                {priceResult.details && <p className="text-red-600 text-xs mt-2">{priceResult.details}</p>}
+                <p className="font-medium text-th-negative-text">Price refresh failed</p>
+                <p className="text-th-negative-text mt-1">{priceResult.error}</p>
+                {priceResult.details && <p className="text-th-negative text-xs mt-2">{priceResult.details}</p>}
                 {priceResult.log && priceResult.log.length > 0 && (
                   <details className="mt-3">
-                    <summary className="text-red-600 cursor-pointer text-xs">Log ({priceResult.log.length} entries)</summary>
-                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-red-700 space-y-0.5 font-mono">
+                    <summary className="text-th-negative cursor-pointer text-xs">Log ({priceResult.log.length} entries)</summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-th-negative-text space-y-0.5 font-mono">
                       {priceResult.log.map((line, i) => (
                         <div key={i}>{line}</div>
                       ))}
@@ -664,9 +664,9 @@ export default function AdminStocks() {
         )}
 
         {/* Cleanup controls */}
-        <div className="mt-6 bg-white rounded-2xl border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Purge Non-Companies</h2>
-          <p className="text-xs text-gray-400 mt-1">
+        <div className="mt-6 bg-th-surface rounded-2xl border border-th-border p-6">
+          <h2 className="text-sm font-semibold text-th-text-3 uppercase tracking-wide">Purge Non-Companies</h2>
+          <p className="text-xs text-th-text-3 mt-1">
             Removes mutual funds, indexes, ETFs, SPACs, trusts, preferred securities, and other
             non-operating-company entries from the database.
           </p>
@@ -674,7 +674,7 @@ export default function AdminStocks() {
           <button
             onClick={handleCleanup}
             disabled={anyBusy}
-            className="mt-4 w-full px-4 py-3 text-sm font-medium bg-gray-700 text-white rounded-xl hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="mt-4 w-full px-4 py-3 text-sm font-medium bg-th-nav-active text-white rounded-xl hover:bg-th-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {cleaning ? (
               <span className="flex items-center justify-center gap-2">
@@ -693,18 +693,18 @@ export default function AdminStocks() {
         {/* Cleanup result */}
         {cleanupResult && (
           <div className={`mt-4 rounded-2xl border p-6 ${
-            cleanupResult.success ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+            cleanupResult.success ? "bg-th-positive-bg border-th-positive-border" : "bg-th-negative-bg border-th-negative-border"
           }`}>
             {cleanupResult.success ? (
               <div className="text-sm">
-                <p className="font-medium text-emerald-800">
+                <p className="font-medium text-th-positive-text">
                   {cleanupResult.deleted === 0
                     ? "Database is clean — no non-companies found"
                     : `Purged ${cleanupResult.deleted} non-company entries`}
                 </p>
                 {(cleanupResult.deleted ?? 0) > 0 && (
                   <>
-                    <dl className="mt-3 space-y-1 text-emerald-700">
+                    <dl className="mt-3 space-y-1 text-th-positive-text">
                       <div className="flex justify-between">
                         <dt>Before</dt>
                         <dd className="font-medium">{cleanupResult.before?.toLocaleString()}</dd>
@@ -716,8 +716,8 @@ export default function AdminStocks() {
                     </dl>
                     {cleanupResult.breakdown && (
                       <details className="mt-3">
-                        <summary className="text-emerald-600 cursor-pointer text-xs">Breakdown by reason</summary>
-                        <dl className="mt-2 space-y-1 text-emerald-700 text-xs">
+                        <summary className="text-th-positive cursor-pointer text-xs">Breakdown by reason</summary>
+                        <dl className="mt-2 space-y-1 text-th-positive-text text-xs">
                           {cleanupResult.breakdown.etf > 0 && (
                             <div className="flex justify-between"><dt>ETF flag</dt><dd>{cleanupResult.breakdown.etf}</dd></div>
                           )}
@@ -738,8 +738,8 @@ export default function AdminStocks() {
                     )}
                     {cleanupResult.deletedSymbols && cleanupResult.deletedSymbols.length > 0 && (
                       <details className="mt-2">
-                        <summary className="text-emerald-600 cursor-pointer text-xs">Deleted symbols ({cleanupResult.deletedSymbols.length})</summary>
-                        <div className="mt-2 max-h-48 overflow-y-auto text-xs text-emerald-700 space-y-0.5">
+                        <summary className="text-th-positive cursor-pointer text-xs">Deleted symbols ({cleanupResult.deletedSymbols.length})</summary>
+                        <div className="mt-2 max-h-48 overflow-y-auto text-xs text-th-positive-text space-y-0.5">
                           {cleanupResult.deletedSymbols.map((s) => (
                             <div key={s.symbol}><span className="font-medium">{s.symbol}</span> — {s.name}</div>
                           ))}
@@ -751,9 +751,9 @@ export default function AdminStocks() {
               </div>
             ) : (
               <div className="text-sm">
-                <p className="font-medium text-red-800">Cleanup failed</p>
-                <p className="text-red-700 mt-1">{cleanupResult.error}</p>
-                {cleanupResult.details && <p className="text-red-600 text-xs mt-2">{cleanupResult.details}</p>}
+                <p className="font-medium text-th-negative-text">Cleanup failed</p>
+                <p className="text-th-negative-text mt-1">{cleanupResult.error}</p>
+                {cleanupResult.details && <p className="text-th-negative text-xs mt-2">{cleanupResult.details}</p>}
               </div>
             )}
           </div>
@@ -761,21 +761,21 @@ export default function AdminStocks() {
 
         {/* Full DB Reset — secondary option */}
         <details className="mt-6">
-          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+          <summary className="text-xs text-th-text-3 cursor-pointer hover:text-th-text-2">
             Advanced: Full Database Reset
           </summary>
-          <div className="mt-3 bg-white rounded-2xl border border-amber-200 p-6">
-            <h2 className="text-sm font-semibold text-amber-600 uppercase tracking-wide">Full Database Reset</h2>
-            <p className="text-xs text-gray-400 mt-1">
+          <div className="mt-3 bg-th-surface rounded-2xl border border-th-warning-border p-6">
+            <h2 className="text-sm font-semibold text-th-warning uppercase tracking-wide">Full Database Reset</h2>
+            <p className="text-xs text-th-text-3 mt-1">
               Drops and recreates the stocks table from scratch. Only enriches the top ~200 stocks by market cap
-              in a single run. <strong className="text-amber-600">All existing enrichment is lost.</strong> Only use
+              in a single run. <strong className="text-th-warning">All existing enrichment is lost.</strong> Only use
               for initial setup or if the database is corrupted.
             </p>
 
             <button
               onClick={handleBulkRefresh}
               disabled={anyBusy}
-              className="mt-4 w-full px-4 py-3 text-sm font-medium bg-amber-600 text-white rounded-xl hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="mt-4 w-full px-4 py-3 text-sm font-medium bg-th-warning text-white rounded-xl hover:bg-th-warning disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {bulkRefreshing ? (
                 <span className="flex items-center justify-center gap-2">
@@ -795,13 +795,13 @@ export default function AdminStocks() {
         {/* Bulk reset result */}
         {bulkResult && (
           <div className={`mt-4 rounded-2xl border p-6 ${
-            bulkResult.success ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+            bulkResult.success ? "bg-th-positive-bg border-th-positive-border" : "bg-th-negative-bg border-th-negative-border"
           }`}>
             {bulkResult.success ? (
               <div className="text-sm">
-                <p className="font-medium text-emerald-800">Reset complete</p>
+                <p className="font-medium text-th-positive-text">Reset complete</p>
                 {bulkResult.enrichment && (
-                  <dl className="mt-3 space-y-1 text-emerald-700">
+                  <dl className="mt-3 space-y-1 text-th-positive-text">
                     <div className="flex justify-between">
                       <dt>Enriched</dt>
                       <dd className="font-medium">{bulkResult.enrichment.enriched.toLocaleString()} / {bulkResult.enrichment.total.toLocaleString()}</dd>
@@ -809,25 +809,25 @@ export default function AdminStocks() {
                     {bulkResult.enrichment.failed > 0 && (
                       <div className="flex justify-between">
                         <dt>Failed</dt>
-                        <dd className="font-medium text-amber-700">{bulkResult.enrichment.failed}</dd>
+                        <dd className="font-medium text-th-warning-text">{bulkResult.enrichment.failed}</dd>
                       </div>
                     )}
                     {(bulkResult.enrichment.noData ?? 0) > 0 && (
                       <div className="flex justify-between">
                         <dt>No data</dt>
-                        <dd className="font-medium text-amber-600">{bulkResult.enrichment.noData}</dd>
+                        <dd className="font-medium text-th-warning">{bulkResult.enrichment.noData}</dd>
                       </div>
                     )}
                     {bulkResult.enrichment.skipped > 0 && (
                       <div className="flex justify-between">
                         <dt>Skipped (timeout)</dt>
-                        <dd className="font-medium text-gray-500">{bulkResult.enrichment.skipped.toLocaleString()}</dd>
+                        <dd className="font-medium text-th-text-3">{bulkResult.enrichment.skipped.toLocaleString()}</dd>
                       </div>
                     )}
                   </dl>
                 )}
                 {bulkResult.verification && (
-                  <dl className="mt-3 space-y-1 text-emerald-700">
+                  <dl className="mt-3 space-y-1 text-th-positive-text">
                     <div className="flex justify-between">
                       <dt>Total stocks</dt>
                       <dd className="font-medium">{bulkResult.verification.total.toLocaleString()}</dd>
@@ -848,12 +848,12 @@ export default function AdminStocks() {
                 )}
                 {bulkResult.enrichIssues && bulkResult.enrichIssues.length > 0 && (
                   <details className="mt-3">
-                    <summary className="text-amber-600 cursor-pointer text-xs font-medium">
+                    <summary className="text-th-warning cursor-pointer text-xs font-medium">
                       Issues ({bulkResult.enrichIssues.length} stocks)
                     </summary>
                     <div className="mt-2 max-h-48 overflow-y-auto text-xs space-y-0.5 font-mono">
                       {bulkResult.enrichIssues.map((issue, i) => (
-                        <div key={i} className={issue.status === 'error' ? 'text-red-600' : issue.status === 'no_data' ? 'text-amber-600' : 'text-gray-500'}>
+                        <div key={i} className={issue.status === 'error' ? 'text-th-negative' : issue.status === 'no_data' ? 'text-th-warning' : 'text-th-text-3'}>
                           <span className="font-medium">{issue.symbol}</span> [{issue.status}] {issue.detail}
                         </div>
                       ))}
@@ -862,8 +862,8 @@ export default function AdminStocks() {
                 )}
                 {bulkResult.log && bulkResult.log.length > 0 && (
                   <details className="mt-3">
-                    <summary className="text-emerald-600 cursor-pointer text-xs">Log ({bulkResult.log.length} entries)</summary>
-                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-emerald-700 space-y-0.5 font-mono">
+                    <summary className="text-th-positive cursor-pointer text-xs">Log ({bulkResult.log.length} entries)</summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-th-positive-text space-y-0.5 font-mono">
                       {bulkResult.log.map((line, i) => (
                         <div key={i}>{line}</div>
                       ))}
@@ -873,13 +873,13 @@ export default function AdminStocks() {
               </div>
             ) : (
               <div className="text-sm">
-                <p className="font-medium text-red-800">Reset failed</p>
-                <p className="text-red-700 mt-1">{bulkResult.error}</p>
-                {bulkResult.details && <p className="text-red-600 text-xs mt-2">{bulkResult.details}</p>}
+                <p className="font-medium text-th-negative-text">Reset failed</p>
+                <p className="text-th-negative-text mt-1">{bulkResult.error}</p>
+                {bulkResult.details && <p className="text-th-negative text-xs mt-2">{bulkResult.details}</p>}
                 {bulkResult.log && bulkResult.log.length > 0 && (
                   <details className="mt-3">
-                    <summary className="text-red-600 cursor-pointer text-xs">Log ({bulkResult.log.length} entries)</summary>
-                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-red-700 space-y-0.5 font-mono">
+                    <summary className="text-th-negative cursor-pointer text-xs">Log ({bulkResult.log.length} entries)</summary>
+                    <div className="mt-2 max-h-48 overflow-y-auto text-xs text-th-negative-text space-y-0.5 font-mono">
                       {bulkResult.log.map((line, i) => (
                         <div key={i}>{line}</div>
                       ))}

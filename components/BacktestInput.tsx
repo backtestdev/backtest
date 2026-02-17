@@ -85,22 +85,22 @@ function ParsingBadge({ method }: { method: ParsingMethod }) {
   switch (method) {
     case "ai":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-th-positive-bg text-th-positive-text border border-th-positive-border">
+          <span className="w-1.5 h-1.5 rounded-full bg-th-positive-bar" />
           Parsed with AI
         </span>
       );
     case "fallback":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-th-warning-bg text-th-warning-text border border-th-warning-border">
+          <span className="w-1.5 h-1.5 rounded-full bg-th-warning" />
           Using rule-based parsing
         </span>
       );
     case "failed":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-red-50 text-red-700 border border-red-200">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-th-negative-bg text-th-negative-text border border-th-negative-border">
+          <span className="w-1.5 h-1.5 rounded-full bg-th-negative" />
           Parsing failed - showing all stocks
         </span>
       );
@@ -112,15 +112,15 @@ function ParsingBadge({ method }: { method: ParsingMethod }) {
 function DataSourceBadge({ source, count }: { source: "fmp" | "hardcoded"; count?: number }) {
   if (source === "fmp") {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-th-accent-bg text-th-accent-text border border-th-accent-border">
+        <span className="w-1.5 h-1.5 rounded-full bg-th-accent" />
         Live data{count ? ` (${count.toLocaleString()} stocks)` : ""}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-gray-50 text-gray-600 border border-gray-200">
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-th-inset text-th-text-2 border border-th-border">
+      <span className="w-1.5 h-1.5 rounded-full bg-th-text-3" />
       Sample data{count ? ` (${count} stocks)` : ""}
     </span>
   );
@@ -414,7 +414,7 @@ export default function BacktestInput({
     <div className="w-full max-w-3xl mx-auto">
       {/* Strategy cards */}
       <div className="mb-6">
-        <p className="text-sm text-gray-400 text-center mb-3">
+        <p className="text-sm text-th-text-3 text-center mb-3">
           Try a strategy
         </p>
         <StrategyChips onSelect={handleChipSelect} onCreateOwn={handleCreateOwn} />
@@ -432,7 +432,7 @@ export default function BacktestInput({
             onBlur={() => setIsFocused(false)}
             onKeyDown={handleKeyDown}
             placeholder=""
-            className="w-full h-28 sm:h-32 px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg text-gray-900 bg-white border-2 border-gray-200 rounded-2xl resize-none focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all duration-200"
+            className="w-full h-28 sm:h-32 px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg text-th-text bg-th-surface border-2 border-th-border rounded-2xl resize-none focus:outline-none focus:border-th-focus-border focus:ring-4 focus:ring-th-focus-ring transition-all duration-200"
             disabled={isLoading}
           />
 
@@ -442,9 +442,9 @@ export default function BacktestInput({
               className="absolute inset-0 px-4 sm:px-6 py-3 sm:py-4 pointer-events-none"
               aria-hidden="true"
             >
-              <span className="text-base sm:text-lg text-gray-300">
+              <span className="text-base sm:text-lg text-th-text-4">
                 {animatedText}
-                <span className="inline-block w-0.5 h-5 bg-gray-300 align-text-bottom ml-0.5 animate-pulse" />
+                <span className="inline-block w-0.5 h-5 bg-th-text-4 align-text-bottom ml-0.5 animate-pulse" />
               </span>
             </div>
           )}
@@ -453,13 +453,13 @@ export default function BacktestInput({
           {suggestions.length > 0 && isFocused && (
             <div
               ref={suggestionsRef}
-              className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden"
+              className="absolute left-0 right-0 top-full mt-1 bg-th-surface border border-th-border rounded-xl shadow-lg z-20 overflow-hidden"
             >
-              <div className="px-3 py-1.5 border-b border-gray-100">
-                <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+              <div className="px-3 py-1.5 border-b border-th-border-light">
+                <span className="text-[10px] font-medium text-th-text-3 uppercase tracking-wider">
                   Metrics
                 </span>
-                <span className="text-[10px] text-gray-300 ml-2">
+                <span className="text-[10px] text-th-text-4 ml-2">
                   Tab to insert
                 </span>
               </div>
@@ -474,16 +474,16 @@ export default function BacktestInput({
                   onMouseEnter={() => setSelectedIndex(i)}
                   className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors ${
                     i === selectedIndex
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-700 hover:bg-gray-50"
+                      ? "bg-th-accent-bg text-th-accent-text"
+                      : "text-th-text-2 hover:bg-th-hover"
                   }`}
                 >
                   <span className="text-sm font-medium">{metric.label}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                       i === selectedIndex
-                        ? "bg-blue-100 text-blue-600"
-                        : "bg-gray-100 text-gray-400"
+                        ? "bg-th-accent-muted text-th-accent"
+                        : "bg-th-skeleton text-th-text-3"
                     }`}
                   >
                     {metric.category}
@@ -497,7 +497,7 @@ export default function BacktestInput({
         <button
           type="submit"
           disabled={!strategy.trim() || isLoading}
-          className="w-full py-3 sm:py-4 px-6 sm:px-8 text-base sm:text-lg font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-3"
+          className="w-full py-3 sm:py-4 px-6 sm:px-8 text-base sm:text-lg font-semibold text-white bg-th-accent rounded-xl hover:bg-th-accent-hover focus:outline-none focus:ring-4 focus:ring-th-focus-ring disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-3"
         >
           {isLoading ? (
             <>
@@ -524,8 +524,8 @@ export default function BacktestInput({
       {/* Warnings */}
       {warnings && warnings.length > 0 && parsingMethod === "fallback" && (
         <div className="mt-3 max-w-2xl mx-auto">
-          <details className="text-xs text-amber-600">
-            <summary className="cursor-pointer hover:text-amber-700">View parsing details</summary>
+          <details className="text-xs text-th-warning">
+            <summary className="cursor-pointer hover:text-th-warning-text">View parsing details</summary>
             <ul className="mt-1 space-y-0.5 pl-4 list-disc">
               {warnings.map((w, i) => (
                 <li key={i}>{w}</li>
@@ -538,13 +538,13 @@ export default function BacktestInput({
       {/* Stock source details */}
       {dataSource === "hardcoded" && stockSourceError && (
         <div className="mt-3 max-w-2xl mx-auto">
-          <details className="text-xs text-gray-600">
-            <summary className="cursor-pointer hover:text-gray-700">View stock source details</summary>
+          <details className="text-xs text-th-text-2">
+            <summary className="cursor-pointer hover:text-th-text">View stock source details</summary>
             <div className="mt-1 pl-4">
-              <p className="text-amber-600">
+              <p className="text-th-warning">
                 <strong>Using fallback data source:</strong> {stockSourceError}
               </p>
-              <p className="mt-1 text-gray-500">
+              <p className="mt-1 text-th-text-3">
                 The backtest is using a hardcoded dataset of {stockUniverseSize} stocks instead of live FMP data.
               </p>
             </div>

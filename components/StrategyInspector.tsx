@@ -246,39 +246,39 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="mt-6">
       <Collapsible.Trigger asChild>
-        <button className="w-full flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors min-h-[44px]">
+        <button className="w-full flex items-center justify-between bg-th-surface rounded-2xl border border-th-border-light px-4 sm:px-6 py-4 hover:bg-th-hover transition-colors min-h-[44px]">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <svg
-              className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${open ? "rotate-90" : ""}`}
+              className={`w-5 h-5 text-th-text-3 transition-transform duration-200 flex-shrink-0 ${open ? "rotate-90" : ""}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
-            <h3 className="text-sm sm:text-lg font-semibold text-gray-900 truncate">View &amp; Edit Strategy Criteria</h3>
+            <h3 className="text-sm sm:text-lg font-semibold text-th-text truncate">View &amp; Edit Strategy Criteria</h3>
           </div>
-          <span className="text-xs sm:text-sm text-gray-400 flex-shrink-0 ml-2">{edited.metrics.length} filter{edited.metrics.length !== 1 ? "s" : ""}</span>
+          <span className="text-xs sm:text-sm text-th-text-3 flex-shrink-0 ml-2">{edited.metrics.length} filter{edited.metrics.length !== 1 ? "s" : ""}</span>
         </button>
       </Collapsible.Trigger>
 
       <Collapsible.Content className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out">
-        <div className="bg-white rounded-b-2xl border border-t-0 border-gray-100 px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        <div className="bg-th-surface rounded-b-2xl border border-t-0 border-th-border-light px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
 
           {/* Side-by-side comparison header */}
           {hasEdits && (
             <div className="flex items-center gap-2 text-sm">
-              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-medium">Original (from AI)</span>
-              <span className="text-gray-300">vs</span>
-              <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded font-medium">Your Adjustments</span>
+              <span className="px-2 py-0.5 bg-th-accent-bg text-th-accent-text rounded font-medium">Original (from AI)</span>
+              <span className="text-th-text-4">vs</span>
+              <span className="px-2 py-0.5 bg-th-warning-bg text-th-warning-text rounded font-medium">Your Adjustments</span>
             </div>
           )}
 
           {/* Metrics filters - query builder style */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Filters</h4>
+              <h4 className="text-sm font-semibold text-th-text-2 uppercase tracking-wider">Filters</h4>
               <button
                 onClick={addMetric}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                className="text-xs font-medium text-th-accent hover:text-th-accent flex items-center gap-1"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -299,14 +299,14 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                 <div
                   key={i}
                   className={`flex flex-wrap items-center gap-2 p-3 rounded-xl border ${
-                    isChanged ? "border-amber-200 bg-amber-50/50" : "border-gray-100 bg-gray-50/50"
+                    isChanged ? "border-th-warning-border bg-th-warning-bg/50" : "border-th-border-light bg-th-bg"
                   }`}
                 >
                   {/* Metric name */}
                   <select
                     value={metric.name}
                     onChange={(e) => updateMetric(i, "name", e.target.value)}
-                    className="w-full sm:w-auto px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                    className="w-full sm:w-auto px-3 py-2 sm:py-1.5 text-sm border border-th-border rounded-lg bg-th-surface focus:outline-none focus:border-th-focus-border"
                   >
                     {Object.entries(METRIC_LABELS).map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
@@ -317,7 +317,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                   <select
                     value={metric.operator}
                     onChange={(e) => updateMetric(i, "operator", e.target.value)}
-                    className="px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 font-mono"
+                    className="px-3 py-2 sm:py-1.5 text-sm border border-th-border rounded-lg bg-th-surface focus:outline-none focus:border-th-focus-border font-mono"
                   >
                     {OPERATOR_OPTIONS.map((op) => (
                       <option key={op} value={op}>{op}</option>
@@ -329,19 +329,19 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                     type="number"
                     value={metric.value}
                     onChange={(e) => updateMetric(i, "value", Number(e.target.value))}
-                    className="w-20 sm:w-24 px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                    className="w-20 sm:w-24 px-3 py-2 sm:py-1.5 text-sm border border-th-border rounded-lg bg-th-surface focus:outline-none focus:border-th-focus-border"
                     step="any"
                   />
 
                   {/* Between end value */}
                   {metric.operator === "between" && (
                     <>
-                      <span className="text-sm text-gray-400">and</span>
+                      <span className="text-sm text-th-text-3">and</span>
                       <input
                         type="number"
                         value={metric.valueEnd ?? ""}
                         onChange={(e) => updateMetric(i, "valueEnd", Number(e.target.value))}
-                        className="w-24 px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                        className="w-24 px-3 py-1.5 text-sm border border-th-border rounded-lg bg-th-surface focus:outline-none focus:border-th-focus-border"
                         step="any"
                       />
                     </>
@@ -349,7 +349,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
 
                   {/* Original value indicator */}
                   {isChanged && original && (
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-th-text-3">
                       was: {formatMetricValue(original.name, original.value)}
                     </span>
                   )}
@@ -357,7 +357,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                   {/* Remove button */}
                   <button
                     onClick={() => removeMetric(i)}
-                    className="ml-auto p-1 text-gray-300 hover:text-red-500 transition-colors"
+                    className="ml-auto p-1 text-th-text-4 hover:text-th-negative transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -370,27 +370,27 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
 
           {/* Market cap range */}
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Market Cap Range</h4>
+            <h4 className="text-sm font-semibold text-th-text-2 uppercase tracking-wider">Market Cap Range</h4>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-500">Min ($B)</label>
+                <label className="text-sm text-th-text-3">Min ($B)</label>
                 <input
                   type="number"
                   value={edited.market_cap.min ?? ""}
                   onChange={(e) => updateMarketCap("min", e.target.value)}
                   placeholder="Any"
-                  className="w-24 sm:w-28 px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                  className="w-24 sm:w-28 px-3 py-2 sm:py-1.5 text-sm border border-th-border rounded-lg bg-th-surface focus:outline-none focus:border-th-focus-border"
                 />
               </div>
-              <span className="text-gray-300 hidden sm:inline">—</span>
+              <span className="text-th-text-4 hidden sm:inline">—</span>
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-500">Max ($B)</label>
+                <label className="text-sm text-th-text-3">Max ($B)</label>
                 <input
                   type="number"
                   value={edited.market_cap.max ?? ""}
                   onChange={(e) => updateMarketCap("max", e.target.value)}
                   placeholder="Any"
-                  className="w-24 sm:w-28 px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                  className="w-24 sm:w-28 px-3 py-2 sm:py-1.5 text-sm border border-th-border rounded-lg bg-th-surface focus:outline-none focus:border-th-focus-border"
                 />
               </div>
             </div>
@@ -398,7 +398,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
 
           {/* Sector filters */}
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Sectors</h4>
+            <h4 className="text-sm font-semibold text-th-text-2 uppercase tracking-wider">Sectors</h4>
             <div className="flex flex-wrap gap-2">
               {Object.keys(SECTOR_MAP).map((sector) => {
                 const isIncluded = edited.sectors.include.includes(sector);
@@ -409,8 +409,8 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                       onClick={() => toggleSector(sector, "include")}
                       className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                         isIncluded
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                          : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                          ? "bg-th-positive-bg border-th-positive-border text-th-positive-text"
+                          : "bg-th-surface border-th-border text-th-text-3 hover:border-th-border"
                       }`}
                     >
                       {sector}
@@ -418,7 +418,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                     {isExcluded && (
                       <button
                         onClick={() => toggleSector(sector, "exclude")}
-                        className="text-xs text-red-400 hover:text-red-600"
+                        className="text-xs text-th-negative hover:text-th-negative"
                         title="Click to remove exclusion"
                       >
                         excluded
@@ -428,15 +428,15 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                 );
               })}
             </div>
-            <p className="text-xs text-gray-400">Click to include a sector. Unselected sectors are not filtered.</p>
+            <p className="text-xs text-th-text-3">Click to include a sector. Unselected sectors are not filtered.</p>
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+          <div className="flex items-center gap-3 pt-2 border-t border-th-border-light">
             <button
               onClick={handleUpdate}
               disabled={isLoading}
-              className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-5 py-2.5 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {isLoading ? (
                 <>
@@ -453,7 +453,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
             {hasEdits && (
               <button
                 onClick={resetEdits}
-                className="px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                className="px-4 py-2.5 text-sm font-medium text-th-text-3 hover:text-th-text transition-colors"
               >
                 Reset to Original
               </button>
