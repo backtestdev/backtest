@@ -246,41 +246,75 @@ export async function GET(request: NextRequest) {
   const latestRatios = ratios[0] || null;
   const latestIncome = income[0] || null;
   const prevIncome = income[1] || null;
-  const mktCap = profile.marketCap || profile.mktCap || latestMetrics?.marketCap || null;
+  const mktCap = profile.marketCap ?? profile.mktCap ?? latestMetrics?.marketCap ?? null;
 
   const revenueGrowth =
     latestIncome && prevIncome && prevIncome.revenue > 0
       ? ((latestIncome.revenue - prevIncome.revenue) / prevIncome.revenue)
       : null;
 
-  // Build fundamentals response (always returned)
+  // Helper: null-safe pick (preserves 0 values, only nullifies undefined/null)
+  const nn = (v: number | undefined | null): number | null =>
+    v != null ? v : null;
+
+  // Supplement FMP live data with DB data for any missing fields
+  let dbRow: Record<string, unknown> | null = null;
+  const sql = getDb();
+  if (sql) {
+    try {
+      const rows = await sql`
+        SELECT market_cap, price, beta,
+               price_to_earnings_ratio, price_to_book_ratio, return_on_equity,
+               return_on_invested_capital, net_profit_margin, revenue_growth_yoy,
+               earnings_growth, dividend_yield, debt_to_equity_ratio, current_ratio,
+               ev_to_sales, ev_to_ebitda, free_cash_flow_per_share, enterprise_value,
+               earnings_yield, profit_margin, free_cash_flow_yield,
+               consecutive_earnings_growth, revenue_growth_positive_3yr_count
+        FROM stocks WHERE symbol = ${ticker}
+      `;
+      dbRow = rows.length > 0 ? (rows[0] as Record<string, unknown>) : null;
+    } catch { /* DB not available */ }
+  }
+
+  const dbNum = (col: string): number | null => {
+    if (!dbRow || dbRow[col] == null) return null;
+    return Number(dbRow[col]);
+  };
+
+  // Build fundamentals — FMP first, DB fallback for missing fields
   const fundamentals = {
-    price: profile.price,
-    marketCap: mktCap,
+    price: nn(profile.price) ?? dbNum("price"),
+    marketCap: mktCap ?? dbNum("market_cap"),
     sector: profile.sector,
     industry: profile.industry,
-    beta: profile.beta,
+    beta: nn(profile.beta) ?? dbNum("beta"),
     ipoDate: profile.ipoDate,
     exchange: profile.exchange,
-    revenue: latestIncome?.revenue || null,
-    revenueGrowth,
-    grossMargin: latestIncome?.grossProfitRatio || null,
-    operatingMargin: latestIncome?.operatingIncomeRatio || null,
-    netMargin: latestIncome?.netIncomeRatio || latestRatios?.netProfitMargin || null,
-    eps: latestIncome?.epsDiluted || null,
-    ebitda: latestIncome?.ebitda || null,
-    netIncome: latestIncome?.netIncome || null,
-    peRatio: latestRatios?.priceToEarningsRatio || null,
-    pbRatio: latestRatios?.priceToBookRatio || null,
-    evToSales: latestMetrics?.evToSales || null,
-    evToEbitda: latestMetrics?.evToEBITDA || null,
-    roe: latestMetrics?.returnOnEquity || null,
-    roic: latestMetrics?.returnOnInvestedCapital || null,
-    debtToEquity: latestRatios?.debtToEquityRatio || null,
-    currentRatio: latestRatios?.currentRatio || latestMetrics?.currentRatio || null,
-    dividendYield: latestRatios?.dividendYield || null,
-    fcfPerShare: latestRatios?.freeCashFlowPerShare || null,
-    enterpriseValue: latestMetrics?.enterpriseValue || null,
+    revenue: nn(latestIncome?.revenue),
+    revenueGrowth: revenueGrowth ?? dbNum("revenue_growth_yoy"),
+    grossMargin: nn(latestIncome?.grossProfitRatio),
+    operatingMargin: nn(latestIncome?.operatingIncomeRatio),
+    netMargin: nn(latestIncome?.netIncomeRatio) ?? nn(latestRatios?.netProfitMargin) ?? dbNum("net_profit_margin"),
+    eps: nn(latestIncome?.epsDiluted),
+    ebitda: nn(latestIncome?.ebitda),
+    netIncome: nn(latestIncome?.netIncome),
+    peRatio: nn(latestRatios?.priceToEarningsRatio) ?? dbNum("price_to_earnings_ratio"),
+    pbRatio: nn(latestRatios?.priceToBookRatio) ?? dbNum("price_to_book_ratio"),
+    evToSales: nn(latestMetrics?.evToSales) ?? dbNum("ev_to_sales"),
+    evToEbitda: nn(latestMetrics?.evToEBITDA) ?? dbNum("ev_to_ebitda"),
+    roe: nn(latestMetrics?.returnOnEquity) ?? dbNum("return_on_equity"),
+    roic: nn(latestMetrics?.returnOnInvestedCapital) ?? dbNum("return_on_invested_capital"),
+    debtToEquity: nn(latestRatios?.debtToEquityRatio) ?? dbNum("debt_to_equity_ratio"),
+    currentRatio: nn(latestRatios?.currentRatio) ?? nn(latestMetrics?.currentRatio) ?? dbNum("current_ratio"),
+    dividendYield: nn(latestRatios?.dividendYield) ?? dbNum("dividend_yield"),
+    fcfPerShare: nn(latestRatios?.freeCashFlowPerShare) ?? dbNum("free_cash_flow_per_share"),
+    enterpriseValue: nn(latestMetrics?.enterpriseValue) ?? dbNum("enterprise_value"),
+    // Extra fields from DB for research page
+    earningsYield: dbNum("earnings_yield"),
+    earningsGrowth: dbNum("earnings_growth"),
+    profitMargin: nn(latestIncome?.netIncomeRatio) ?? dbNum("profit_margin"),
+    fcfYield: dbNum("free_cash_flow_yield"),
+    consecutiveEarningsGrowth: dbNum("consecutive_earnings_growth"),
   };
 
   // Revenue + earnings trend for charts
@@ -295,7 +329,6 @@ export async function GET(request: NextRequest) {
 
   // Historical prices for chart (from DB)
   let priceHistory: { date: string; price: number }[] = [];
-  const sql = getDb();
   if (sql) {
     try {
       const priceRows = await sql`
@@ -348,6 +381,7 @@ Rules:
 - Risk factors should be concise (1 sentence each)
 - Base recommendation on the probability-weighted expected return vs current price
 - Use STRONG_BUY for >20% expected upside, BUY for 10-20%, HOLD for -10% to 10%, SELL for -10% to -20%, STRONG_SELL for >20% downside
+- CRITICAL: The probability-weighted target must be CONSISTENT with the recommendation. If recommending SELL or STRONG_SELL, the weighted average target MUST be below the current price. If recommending BUY or STRONG_BUY, it MUST be above.
 - Do NOT include any text outside the JSON object`,
             },
             {

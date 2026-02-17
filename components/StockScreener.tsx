@@ -262,7 +262,6 @@ export default function StockScreener() {
       className={`group/hdr relative font-medium text-xs uppercase tracking-wider transition-colors ${
         sortField === field ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
       } ${className}`}
-      title={HEADER_TOOLTIPS[field]}
     >
       {label}
       {sortField === field && (sortDir === "desc" ? " \u2193" : " \u2191")}
@@ -432,7 +431,7 @@ export default function StockScreener() {
             <div className="col-span-1 text-right hidden md:block">
               <SortHeader field="roe" label="ROE" className="text-right" />
             </div>
-            <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:block group/hdr relative cursor-help" title={HEADER_TOOLTIPS.de}>
+            <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:block group/hdr relative cursor-help">
               D/E
               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
                 {HEADER_TOOLTIPS.de}
