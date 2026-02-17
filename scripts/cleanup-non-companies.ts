@@ -15,6 +15,7 @@
  */
 
 import { neon } from "@neondatabase/serverless";
+import { NON_COMPANY_PATTERN } from "../lib/stockFilters";
 
 const DATABASE_URL = process.env.DATABASE_URL || "";
 if (!DATABASE_URL) {
@@ -24,34 +25,8 @@ if (!DATABASE_URL) {
 
 const sql = neon(DATABASE_URL);
 
-// ---------------------------------------------------------------------------
-// Non-company name patterns (PostgreSQL POSIX regex, case-insensitive)
-// ---------------------------------------------------------------------------
-
-const NAME_PATTERNS = [
-  `\\y(ETF|ETN)\\y`,
-  `Exchange.Traded`,
-  `\\yFunds?\\y`,
-  `\\y(Money Market)\\y`,
-  `Closed.End`,
-  `\\y(Acquisition Corp|Blank Check|SPAC|Special Purpose)\\y`,
-  `\\y(Statutory Trust|Capital Trust|Investment Trust)\\y`,
-  `Trust [IVX]+\\y`,
-  `Depositary (Shares?|Receipt)`,
-  `Preferred (Shares?|Stock|Securities)`,
-  `\\d+\\.?\\d*% `,
-  `Fixed.Income`,
-  `\\yRights\\y$`,
-  `\\yWarrants?\\y$`,
-  `\\yUnits?$`,
-  `\\ySenior Notes?\\y`,
-  `Notes Due`,
-  `\\ySubordinated\\y`,
-  `\\yDebentures?\\y`,
-  `L\\.P\\.?$`,
-];
-
-const COMBINED_PATTERN = NAME_PATTERNS.join("|");
+// Use shared pattern from lib/stockFilters.ts
+const COMBINED_PATTERN = NON_COMPANY_PATTERN;
 
 async function main() {
   console.log("=== Non-Company Cleanup ===\n");

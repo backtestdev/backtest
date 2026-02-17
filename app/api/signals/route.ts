@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,8 @@ const ANALYZABLE_METRICS: { column: string; label: string; expectedDirection: "h
   { column: "price_to_book", label: "Price / Book", expectedDirection: "lower" },
   { column: "peg_ratio", label: "PEG Ratio", expectedDirection: "lower" },
   { column: "ev_to_ebitda", label: "EV / EBITDA", expectedDirection: "lower" },
-  { column: "price_to_fair_value", label: "Price / Fair Value", expectedDirection: "lower" },
-  { column: "earnings_yield", label: "Earnings Yield", expectedDirection: "higher" },
+  // Removed: price_to_fair_value (overlaps with price_to_book — both measure price vs intrinsic value)
+  // Removed: earnings_yield (inverse of P/E — identical signal, different direction)
   // Profitability — higher quality = better
   { column: "roe", label: "Return on Equity", expectedDirection: "higher" },
   { column: "roic", label: "Return on Invested Capital", expectedDirection: "higher" },
@@ -65,7 +66,7 @@ const ANALYZABLE_METRICS: { column: string; label: string; expectedDirection: "h
   { column: "consecutive_earnings_growth", label: "Consecutive Earnings Growth (Yrs)", expectedDirection: "higher" },
   // Cash Flow — higher = better
   { column: "free_cash_flow_yield", label: "FCF Yield", expectedDirection: "higher" },
-  { column: "free_cash_flow_per_share", label: "FCF / Share", expectedDirection: "higher" },
+  // Removed: free_cash_flow_per_share (absolute metric — FCF Yield is normalized by price and more useful)
   // Market — both directions have academic support
   { column: "market_cap", label: "Market Cap ($B)", expectedDirection: "either" },
   { column: "beta", label: "Beta", expectedDirection: "either" },
@@ -111,6 +112,8 @@ export async function GET(request: NextRequest) {
              s.consecutive_net_income_growth_years AS consecutive_earnings_growth
       FROM stocks s
       WHERE s.market_cap IS NOT NULL AND s.market_cap > 0.1
+        AND s.is_etf IS NOT TRUE
+        AND s.company_name !~* ${NON_COMPANY_PATTERN}
     `;
 
     const returnRows = await sql`
