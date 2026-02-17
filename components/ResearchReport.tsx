@@ -242,7 +242,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50/50 px-6 py-12">
+      <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-gray-200 rounded-lg animate-pulse" />
@@ -263,15 +263,15 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-gray-50/50 px-6 py-12">
+      <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
         <div className="max-w-4xl mx-auto">
-          <Link href="/research" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6 transition-colors">
+          <Link href="/research" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6 transition-colors min-h-[44px]">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
             Back
           </Link>
-          <div className="bg-white rounded-2xl border border-red-100 p-8 text-center">
+          <div className="bg-white rounded-2xl border border-red-100 p-6 sm:p-8 text-center">
             <p className="text-red-500 font-medium">{error || "No data available"}</p>
             <p className="text-sm text-gray-400 mt-2">Check that the ticker is valid and data sources are configured.</p>
           </div>
@@ -300,10 +300,10 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
     : [];
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-6 py-12">
+    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-4xl mx-auto">
         {/* Back link */}
-        <Link href="/research" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6 transition-colors">
+        <Link href="/research" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4 sm:mb-6 transition-colors min-h-[44px]">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
           </svg>
@@ -311,12 +311,13 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
         </Link>
 
         {/* Header with recommendation gauge + backtest score */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-4">
-          <div className="flex items-start gap-4">
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
+          <div className="flex flex-col sm:flex-row items-start gap-4">
+            <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
             <StockLogo ticker={data.ticker} sector={f.sector || undefined} size="md" />
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold text-gray-900">{data.ticker}</h1>
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{data.ticker}</h1>
                 {f.price != null && (
                   <span className="text-xl font-bold text-gray-700">${f.price.toFixed(2)}</span>
                 )}
@@ -345,10 +346,11 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                 )}
               </div>
             </div>
+            </div>
 
             {/* Recommendation gauge */}
             {report && recConfig && (
-              <div className="flex-shrink-0 w-44">
+              <div className="flex-shrink-0 w-full sm:w-44">
                 <RecommendationGauge
                   recommendation={report.recommendation}
                   label={recConfig.label}
@@ -384,9 +386,9 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
         </div>
 
         {/* Key Metrics — focused set with distribution bars */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-4">
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Key Metrics</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 sm:gap-x-6 gap-y-3 sm:gap-y-4">
             {KEY_METRICS.map((m) => {
               const val = m.getValue(f);
               return (
@@ -413,7 +415,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Price Chart */}
         {filteredPriceHistory.length > 10 && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-900">Price History</h2>
               <div className="flex items-center gap-1">
@@ -439,7 +441,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
         {/* Revenue & Earnings Charts */}
         {data.revenueTrend && data.revenueTrend.length > 1 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <div className="bg-white rounded-2xl border border-gray-100 p-6">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
               <h2 className="text-sm font-semibold text-gray-900 mb-4">Revenue</h2>
               <VerticalBarChart
                 data={data.revenueTrend}
@@ -448,7 +450,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                 formatValue={(v) => formatCurrency(v)}
               />
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 p-6">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
               <h2 className="text-sm font-semibold text-gray-900 mb-4">Net Income</h2>
               <VerticalBarChart
                 data={data.revenueTrend}
@@ -463,7 +465,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Auth gate for AI report */}
         {!isSignedIn && !report && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-8 mb-4 text-center">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-6 sm:p-8 mb-4 text-center">
             <svg className="w-10 h-10 text-blue-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
             </svg>
@@ -481,7 +483,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Price Targets — Bear (left) → Base (center) → Bull (right) */}
         {report && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
             <h2 className="text-sm font-semibold text-gray-900 mb-4">Price Targets</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <PriceTargetCard
@@ -519,7 +521,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 
         {/* Risk Factors */}
         {report && report.riskFactors.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mb-4">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">Risk Factors</h2>
             <div className="space-y-2">
               {report.riskFactors.map((risk, i) => (

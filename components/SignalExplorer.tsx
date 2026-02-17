@@ -182,10 +182,10 @@ export default function SignalExplorer() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50/50 px-6 py-16">
+      <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-12 sm:py-16">
         <div className="max-w-4xl mx-auto">
           <div className="h-10 w-64 bg-gray-100 rounded-lg animate-pulse mb-4" />
-          <div className="h-5 w-96 bg-gray-100 rounded animate-pulse mb-8" />
+          <div className="h-5 w-full max-w-sm sm:w-96 bg-gray-100 rounded animate-pulse mb-8" />
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="h-20 bg-white rounded-xl animate-pulse" />
@@ -207,11 +207,11 @@ export default function SignalExplorer() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-6 py-12">
+    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Signal Explorer</h1>
-        <p className="mt-2 text-gray-400 max-w-2xl">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Signal Explorer</h1>
+        <p className="mt-2 text-sm sm:text-base text-gray-400 max-w-2xl">
           Which metrics predict stock outperformance? We split {data.stockCount.toLocaleString()} stocks
           into quintiles by each metric and compare their average annual returns over {data.yearsAnalyzed} years.
         </p>
@@ -291,7 +291,7 @@ export default function SignalExplorer() {
 
         {/* Composite signal card */}
         {compositeSignal && (
-          <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-5">
+          <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">Combined Signal</h3>
@@ -308,7 +308,7 @@ export default function SignalExplorer() {
                 <p className="text-[9px] text-gray-400">spread / yr</p>
               </div>
             </div>
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
               {compositeSignal.quintiles.map((q) => {
                 const isWinner = compositeSignal.direction === "higher_better"
                   ? q.quintile === 5
@@ -316,17 +316,17 @@ export default function SignalExplorer() {
                 return (
                   <div
                     key={q.quintile}
-                    className={`text-center p-3 rounded-lg ${
+                    className={`text-center p-2 sm:p-3 rounded-lg ${
                       isWinner ? "bg-emerald-50 border border-emerald-200" : "bg-white border border-gray-100"
                     }`}
                   >
-                    <p className="text-xs font-medium text-gray-400">Q{q.quintile}</p>
-                    <p className={`text-lg font-bold mt-1 ${
+                    <p className="text-[10px] sm:text-xs font-medium text-gray-400">Q{q.quintile}</p>
+                    <p className={`text-sm sm:text-lg font-bold mt-0.5 sm:mt-1 ${
                       q.avgReturn >= 0 ? "text-emerald-600" : "text-red-500"
                     }`}>
                       {(q.avgReturn * 100).toFixed(1)}%
                     </p>
-                    <p className="text-[10px] text-gray-400">avg/yr</p>
+                    <p className="text-[9px] sm:text-[10px] text-gray-400">avg/yr</p>
                   </div>
                 );
               })}
@@ -378,7 +378,7 @@ export default function SignalExplorer() {
         )}
 
         {/* Signal table header */}
-        <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+        <div className="hidden sm:grid grid-cols-12 gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
           <div className="col-span-1">#</div>
           <div className="col-span-3">Metric</div>
           <div className="col-span-6">Quintile Returns (Q1=Low, Q5=High)</div>
@@ -415,61 +415,95 @@ export default function SignalExplorer() {
                   </button>
                   <button
                     onClick={() => setExpandedSignal(isExpanded ? null : signal.metric)}
-                    className={`flex-1 grid grid-cols-12 gap-2 items-center px-3 py-3 bg-white rounded-xl border transition-colors text-left cursor-pointer ${
+                    className={`flex-1 px-3 py-3 bg-white rounded-xl border transition-colors text-left cursor-pointer min-h-[44px] ${
                       isSelected ? "border-blue-200 bg-blue-50/30" : "border-gray-100 hover:border-gray-200"
                     }`}
                   >
-                    <div className="col-span-1">
-                      <span className="text-sm font-medium text-gray-300">{index + 1}</span>
-                    </div>
-                    <div className="col-span-3">
-                      <p className="text-sm font-semibold text-gray-900">{signal.label}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        {signal.direction === "higher_better" ? "Higher is better" : "Lower is better"}
-                      </p>
-                    </div>
-                    <div className="col-span-6">
-                      <div className="flex items-end gap-1 h-10">
+                    {/* Mobile layout */}
+                    <div className="sm:hidden">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-300">{index + 1}</span>
+                          <p className="text-sm font-semibold text-gray-900">{signal.label}</p>
+                        </div>
+                        <span className={`text-sm font-bold ${
+                          signal.spread > 0.05 ? "text-emerald-600" : signal.spread > 0.02 ? "text-blue-600" : "text-gray-400"
+                        }`}>
+                          {(signal.spread * 100).toFixed(1)}%/yr
+                        </span>
+                      </div>
+                      <div className="flex items-end gap-1 h-8">
                         {signal.quintiles.map((q) => {
                           const height = Math.max(15, ((q.avgReturn - minReturn) / range) * 100);
                           const isWinner = signal.direction === "higher_better"
                             ? q.quintile === 5
                             : q.quintile === 1;
                           return (
-                            <div
-                              key={q.quintile}
-                              className="flex-1 flex flex-col items-center gap-0.5"
-                            >
-                              <span className="text-[9px] text-gray-400">
-                                {(q.avgReturn * 100).toFixed(1)}%
-                              </span>
+                            <div key={q.quintile} className="flex-1 flex flex-col items-center gap-0.5">
+                              <span className="text-[8px] text-gray-400">{(q.avgReturn * 100).toFixed(0)}%</span>
                               <div
-                                className={`w-full rounded-sm transition-all ${
-                                  isWinner ? "bg-emerald-400" : "bg-gray-200"
-                                }`}
+                                className={`w-full rounded-sm transition-all ${isWinner ? "bg-emerald-400" : "bg-gray-200"}`}
                                 style={{ height: `${height}%`, minHeight: "4px" }}
                               />
-                              <span className="text-[9px] text-gray-300">Q{q.quintile}</span>
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                    <div className="col-span-2 text-right">
-                      <span className={`text-sm font-bold ${
-                        signal.spread > 0.05 ? "text-emerald-600" : signal.spread > 0.02 ? "text-blue-600" : "text-gray-400"
-                      }`}>
-                        {(signal.spread * 100).toFixed(1)}%
-                      </span>
-                      <p className="text-[9px] text-gray-300">per year</p>
+                    {/* Desktop layout */}
+                    <div className="hidden sm:grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-1">
+                        <span className="text-sm font-medium text-gray-300">{index + 1}</span>
+                      </div>
+                      <div className="col-span-3">
+                        <p className="text-sm font-semibold text-gray-900">{signal.label}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {signal.direction === "higher_better" ? "Higher is better" : "Lower is better"}
+                        </p>
+                      </div>
+                      <div className="col-span-6">
+                        <div className="flex items-end gap-1 h-10">
+                          {signal.quintiles.map((q) => {
+                            const height = Math.max(15, ((q.avgReturn - minReturn) / range) * 100);
+                            const isWinner = signal.direction === "higher_better"
+                              ? q.quintile === 5
+                              : q.quintile === 1;
+                            return (
+                              <div
+                                key={q.quintile}
+                                className="flex-1 flex flex-col items-center gap-0.5"
+                              >
+                                <span className="text-[9px] text-gray-400">
+                                  {(q.avgReturn * 100).toFixed(1)}%
+                                </span>
+                                <div
+                                  className={`w-full rounded-sm transition-all ${
+                                    isWinner ? "bg-emerald-400" : "bg-gray-200"
+                                  }`}
+                                  style={{ height: `${height}%`, minHeight: "4px" }}
+                                />
+                                <span className="text-[9px] text-gray-300">Q{q.quintile}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className={`text-sm font-bold ${
+                          signal.spread > 0.05 ? "text-emerald-600" : signal.spread > 0.02 ? "text-blue-600" : "text-gray-400"
+                        }`}>
+                          {(signal.spread * 100).toFixed(1)}%
+                        </span>
+                        <p className="text-[9px] text-gray-300">per year</p>
+                      </div>
                     </div>
                   </button>
                 </div>
 
                 {/* Expanded detail */}
                 {isExpanded && (
-                  <div className="mt-1 ml-6 mb-2 bg-gray-50 rounded-lg p-4">
-                    <div className="grid grid-cols-5 gap-3">
+                  <div className="mt-1 ml-0 sm:ml-6 mb-2 bg-gray-50 rounded-lg p-3 sm:p-4">
+                    <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
                       {signal.quintiles.map((q) => {
                         const isWinner = signal.direction === "higher_better"
                           ? q.quintile === 5
@@ -477,26 +511,26 @@ export default function SignalExplorer() {
                         return (
                           <div
                             key={q.quintile}
-                            className={`text-center p-3 rounded-lg ${
+                            className={`text-center p-2 sm:p-3 rounded-lg ${
                               isWinner ? "bg-emerald-50 border border-emerald-200" : "bg-white border border-gray-100"
                             }`}
                           >
-                            <p className="text-xs font-medium text-gray-400">
-                              Quintile {q.quintile}
+                            <p className="text-[10px] sm:text-xs font-medium text-gray-400">
+                              <span className="hidden sm:inline">Quintile </span>Q{q.quintile}
                             </p>
-                            <p className="text-[10px] text-gray-300">
+                            <p className="text-[9px] text-gray-300 hidden sm:block">
                               {q.quintile === 1 ? "(lowest)" : q.quintile === 5 ? "(highest)" : ""}
                             </p>
-                            <p className={`text-lg font-bold mt-1 ${
+                            <p className={`text-sm sm:text-lg font-bold mt-0.5 sm:mt-1 ${
                               q.avgReturn >= 0 ? "text-emerald-600" : "text-red-500"
                             }`}>
                               {(q.avgReturn * 100).toFixed(1)}%
                             </p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">
+                            <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
                               avg/yr
                             </p>
-                            <p className="text-[10px] text-gray-300 mt-1">
-                              {q.stockCount} stocks
+                            <p className="text-[9px] sm:text-[10px] text-gray-300 mt-0.5 sm:mt-1">
+                              {q.stockCount}
                             </p>
                           </div>
                         );

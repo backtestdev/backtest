@@ -34,17 +34,17 @@ export default function ResultsChart({ data, period }: ResultsChartProps) {
   if (!data || data.length === 0) return null;
 
   const isSinglePoint = data.length === 1;
-  const tickFontSize = data.length > 18 ? 10 : data.length > 12 ? 11 : 12;
+  const tickFontSize = data.length > 18 ? 9 : data.length > 12 ? 10 : 11;
 
   return (
-    <div className="w-full bg-white rounded-2xl border border-gray-100 p-6 mt-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-1">
+    <div className="w-full bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 mt-6">
+      <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">
         Growth of $10,000
       </h3>
-      <p className="text-sm text-gray-400 mb-6">
+      <p className="text-xs sm:text-sm text-gray-400 mb-4 sm:mb-6">
         Strategy performance vs S&amp;P 500{period === "1yr" ? ` (${data[0]?.date})` : " over time"}
       </p>
-      <div className="h-80">
+      <div className="h-56 sm:h-72 md:h-80">
         <ResponsiveContainer width="100%" height="100%">
           {isSinglePoint ? (
             <BarChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }} barGap={8}>

@@ -118,16 +118,16 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   })();
 
   return (
-    <div className="w-full max-w-3xl mx-auto mt-10 animate-in fade-in duration-500">
+    <div className="w-full max-w-3xl mx-auto mt-8 sm:mt-10 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Results</h2>
-          <p className="text-gray-500 mt-1">{result.description}</p>
+      <div className="flex items-start sm:items-center justify-between gap-4 mb-6">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Results</h2>
+          <p className="text-gray-500 mt-1 text-sm sm:text-base break-words">{result.description}</p>
         </div>
-        <div className="text-right">
+        <div className="text-right flex-shrink-0">
           <span className="text-sm text-gray-400">Matched</span>
-          <p className="text-2xl font-bold text-gray-900">{result.matchedStockCount}</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{result.matchedStockCount}</p>
           <span className="text-sm text-gray-400">stocks</span>
         </div>
       </div>
@@ -152,29 +152,29 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
       </details>
 
       {/* Time horizon cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {result.timeHorizons.map((horizon) => (
           <button
             key={horizon.period}
             onClick={() => handlePeriodClick(horizon.period)}
-            className={`bg-white rounded-2xl border-2 p-5 text-center transition-all duration-150 cursor-pointer ${
+            className={`bg-white rounded-2xl border-2 p-3 sm:p-5 text-center transition-all duration-150 cursor-pointer ${
               selectedPeriod === horizon.period
                 ? "border-blue-500 ring-4 ring-blue-50"
                 : "border-gray-100 hover:border-gray-200"
             }`}
           >
-            <p className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">
+            <p className="text-xs sm:text-sm font-medium text-gray-400 uppercase tracking-wide mb-1 sm:mb-2">
               {horizon.period}
             </p>
             <p
-              className={`text-3xl font-bold ${
+              className={`text-2xl sm:text-3xl font-bold ${
                 horizon.outperforms ? "text-emerald-600" : "text-red-500"
               }`}
             >
               {horizon.strategyReturn > 0 ? "+" : ""}
               {horizon.strategyReturn.toFixed(1)}%
             </p>
-            <p className="text-sm text-gray-400 mt-2">
+            <p className="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
               S&P 500: {horizon.benchmarkReturn > 0 ? "+" : ""}
               {horizon.benchmarkReturn.toFixed(1)}%
             </p>
@@ -211,12 +211,12 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
       )}
 
       {/* Matched stocks list - collapsible */}
-      <div className="mt-6 bg-white rounded-2xl border border-gray-100 p-6">
+      <div className="mt-6 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
         <button
           onClick={() => setStocksExpanded(!stocksExpanded)}
-          className="w-full flex items-center justify-between text-left"
+          className="w-full flex items-center justify-between text-left min-h-[44px]"
         >
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-900">
             {result.matchedStockCount} stocks matched your criteria
           </h3>
           <svg
@@ -285,8 +285,8 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
               Add to Leaderboard
             </button>
           ) : (
-            <div className="space-y-3 max-w-md mx-auto">
-              <div className="flex items-center gap-3">
+            <div className="space-y-3 max-w-md mx-auto px-4 sm:px-0">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                 <input
                   type="text"
                   value={leaderboardName}

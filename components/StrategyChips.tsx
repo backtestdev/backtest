@@ -25,19 +25,19 @@ const EXAMPLE_STRATEGIES = [
 
 export default function StrategyChips({ onSelect, onCreateOwn }: StrategyChipsProps) {
   return (
-    <div className="flex flex-wrap gap-2 justify-center">
+    <div className="flex flex-wrap gap-2 justify-center max-w-3xl mx-auto">
       {EXAMPLE_STRATEGIES.map((strategy) => (
         <button
           key={strategy.label}
           onClick={() => onSelect(strategy.query)}
-          className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100 hover:text-gray-900 hover:border-gray-300 transition-all duration-150 cursor-pointer"
+          className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100 hover:text-gray-900 hover:border-gray-300 transition-all duration-150 cursor-pointer"
         >
           {strategy.label}
         </button>
       ))}
       <button
         onClick={onCreateOwn}
-        className="px-4 py-2 text-sm font-medium text-gray-400 border-2 border-dashed border-gray-200 rounded-full hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all duration-150 cursor-pointer flex items-center gap-1.5"
+        className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-400 border-2 border-dashed border-gray-200 rounded-full hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all duration-150 cursor-pointer flex items-center gap-1.5"
       >
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />

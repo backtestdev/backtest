@@ -144,19 +144,20 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50/50">
       {/* Header */}
-      <header className="pt-16 pb-4 text-center">
-        <h1 className="text-5xl font-bold text-gray-900 tracking-tight">
+      <header className="pt-8 sm:pt-12 md:pt-16 pb-4 text-center px-4">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 tracking-tight">
           Backtest
         </h1>
-        <p className="mt-3 text-lg text-gray-400 max-w-lg mx-auto">
+        <p className="mt-3 text-base sm:text-lg text-gray-400 max-w-lg mx-auto">
           Test any stock market strategy using plain English.
-          <br />
+          <br className="hidden sm:block" />
+          <span className="sm:hidden"> </span>
           See how it would have performed over the last 20 years.
         </p>
       </header>
 
       {/* Main input section */}
-      <main className="px-6 py-8">
+      <main className="px-4 sm:px-6 py-6 sm:py-8">
         <BacktestInput
           onSubmit={runBacktest}
           isLoading={isLoading}

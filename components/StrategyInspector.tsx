@@ -246,22 +246,22 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="mt-6">
       <Collapsible.Trigger asChild>
-        <button className="w-full flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-6 py-4 hover:bg-gray-50 transition-colors">
-          <div className="flex items-center gap-3">
+        <button className="w-full flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors min-h-[44px]">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <svg
-              className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+              className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${open ? "rotate-90" : ""}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
-            <h3 className="text-lg font-semibold text-gray-900">View &amp; Edit Strategy Criteria</h3>
+            <h3 className="text-sm sm:text-lg font-semibold text-gray-900 truncate">View &amp; Edit Strategy Criteria</h3>
           </div>
-          <span className="text-sm text-gray-400">{edited.metrics.length} filter{edited.metrics.length !== 1 ? "s" : ""}</span>
+          <span className="text-xs sm:text-sm text-gray-400 flex-shrink-0 ml-2">{edited.metrics.length} filter{edited.metrics.length !== 1 ? "s" : ""}</span>
         </button>
       </Collapsible.Trigger>
 
       <Collapsible.Content className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out">
-        <div className="bg-white rounded-b-2xl border border-t-0 border-gray-100 px-6 py-6 space-y-6">
+        <div className="bg-white rounded-b-2xl border border-t-0 border-gray-100 px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
 
           {/* Side-by-side comparison header */}
           {hasEdits && (
@@ -306,7 +306,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                   <select
                     value={metric.name}
                     onChange={(e) => updateMetric(i, "name", e.target.value)}
-                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                    className="w-full sm:w-auto px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
                   >
                     {Object.entries(METRIC_LABELS).map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
@@ -317,7 +317,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                   <select
                     value={metric.operator}
                     onChange={(e) => updateMetric(i, "operator", e.target.value)}
-                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 font-mono"
+                    className="px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 font-mono"
                   >
                     {OPERATOR_OPTIONS.map((op) => (
                       <option key={op} value={op}>{op}</option>
@@ -329,7 +329,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                     type="number"
                     value={metric.value}
                     onChange={(e) => updateMetric(i, "value", Number(e.target.value))}
-                    className="w-24 px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                    className="w-20 sm:w-24 px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
                     step="any"
                   />
 
@@ -371,7 +371,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
           {/* Market cap range */}
           <div className="space-y-2">
             <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Market Cap Range</h4>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-500">Min ($B)</label>
                 <input
@@ -379,10 +379,10 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                   value={edited.market_cap.min ?? ""}
                   onChange={(e) => updateMarketCap("min", e.target.value)}
                   placeholder="Any"
-                  className="w-28 px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                  className="w-24 sm:w-28 px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
                 />
               </div>
-              <span className="text-gray-300">—</span>
+              <span className="text-gray-300 hidden sm:inline">—</span>
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-500">Max ($B)</label>
                 <input
@@ -390,7 +390,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                   value={edited.market_cap.max ?? ""}
                   onChange={(e) => updateMarketCap("max", e.target.value)}
                   placeholder="Any"
-                  className="w-28 px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                  className="w-24 sm:w-28 px-3 py-2 sm:py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
                 />
               </div>
             </div>
