@@ -361,11 +361,6 @@ export default function SignalExplorer() {
                       <div className="flex items-center gap-3 flex-shrink-0">
                         <span className="text-[10px] text-gray-400">{formatMarketCap(stock.marketCap)}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
-                        {stock.yearsOfData !== undefined && stock.yearsOfData < 3 && (
-                          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-purple-50 text-purple-600" title={`Recently listed — only ${stock.yearsOfData} year(s) of return data`}>
-                            New
-                          </span>
-                        )}
                         <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
                         </svg>
@@ -537,11 +532,6 @@ export default function SignalExplorer() {
                                 </div>
                                 <span className="text-[10px] text-gray-400">{formatMarketCap(stock.marketCap)}</span>
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
-                                {stock.yearsOfData !== undefined && stock.yearsOfData < 3 && (
-                                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-purple-50 text-purple-600" title={`Recently listed — only ${stock.yearsOfData} year(s) of return data`}>
-                                    New
-                                  </span>
-                                )}
                                 <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
                                 </svg>

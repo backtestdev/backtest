@@ -5,13 +5,27 @@ import { LeaderboardEntry } from "@/lib/types";
 
 type SortField = "return10yr" | "return20yr" | "return5yr" | "return1yr";
 
+interface Benchmarks {
+  return1yr: number;
+  return5yr: number;
+  return10yr: number;
+  return20yr: number;
+}
+
 interface LeaderboardProps {
   onSelectStrategy: (description: string) => void;
   refreshKey: number; // increment to trigger refresh
 }
 
+function returnColor(value: number, benchmark: number): string {
+  if (value < 0) return "text-red-500";
+  if (value < benchmark) return "text-amber-500";
+  return "text-emerald-600";
+}
+
 export default function Leaderboard({ onSelectStrategy, refreshKey }: LeaderboardProps) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [benchmarks, setBenchmarks] = useState<Benchmarks>({ return1yr: 0, return5yr: 0, return10yr: 0, return20yr: 0 });
   const [sortField, setSortField] = useState<SortField>("return10yr");
   const [loading, setLoading] = useState(true);
 
@@ -19,7 +33,13 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
     try {
       const res = await fetch("/api/leaderboard");
       const data = await res.json();
-      setEntries(data);
+      // Support both old array format and new {entries, benchmarks} format
+      if (Array.isArray(data)) {
+        setEntries(data);
+      } else {
+        setEntries(data.entries || []);
+        if (data.benchmarks) setBenchmarks(data.benchmarks);
+      }
     } catch {
       console.error("Failed to fetch leaderboard");
     } finally {
@@ -116,9 +136,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
             </div>
             <div className="col-span-2 text-right hidden md:block">
               <span
-                className={`text-sm font-semibold ${
-                  (entry.return20yr ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"
-                }`}
+                className={`text-sm font-semibold ${returnColor(entry.return20yr ?? 0, benchmarks.return20yr)}`}
               >
                 {(entry.return20yr ?? 0) >= 0 ? "+" : ""}
                 {(entry.return20yr ?? 0).toFixed(1)}%
@@ -126,9 +144,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
             </div>
             <div className="col-span-2 text-right">
               <span
-                className={`text-sm font-semibold ${
-                  entry.return10yr >= 0 ? "text-emerald-600" : "text-red-500"
-                }`}
+                className={`text-sm font-semibold ${returnColor(entry.return10yr, benchmarks.return10yr)}`}
               >
                 {entry.return10yr >= 0 ? "+" : ""}
                 {entry.return10yr.toFixed(1)}%
@@ -136,9 +152,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
             </div>
             <div className="col-span-2 text-right">
               <span
-                className={`text-sm font-semibold ${
-                  entry.return5yr >= 0 ? "text-emerald-600" : "text-red-500"
-                }`}
+                className={`text-sm font-semibold ${returnColor(entry.return5yr, benchmarks.return5yr)}`}
               >
                 {entry.return5yr >= 0 ? "+" : ""}
                 {entry.return5yr.toFixed(1)}%
@@ -146,9 +160,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey }: Leaderboar
             </div>
             <div className="col-span-2 md:col-span-1 text-right">
               <span
-                className={`text-sm font-semibold ${
-                  entry.return1yr >= 0 ? "text-emerald-600" : "text-red-500"
-                }`}
+                className={`text-sm font-semibold ${returnColor(entry.return1yr, benchmarks.return1yr)}`}
               >
                 {entry.return1yr >= 0 ? "+" : ""}
                 {entry.return1yr.toFixed(1)}%

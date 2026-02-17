@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { auth } from "@clerk/nextjs/server";
 import { getDb, generateParametersHash, generateQueryHash } from "@/lib/db";
 import { moderateText } from "@/lib/moderation";
+import { getSpyReturn } from "@/lib/stockData";
 
 const LEADERBOARD_PATH = path.join(process.cwd(), "data", "leaderboard.json");
 const MAX_ENTRIES = 20;
@@ -116,10 +117,19 @@ export async function GET() {
   try {
     const entries = await readLeaderboardDb();
     entries.sort((a, b) => b.return10yr - a.return10yr);
-    return NextResponse.json(entries.slice(0, MAX_ENTRIES));
+
+    // Compute S&P 500 benchmark returns for each time period
+    const benchmarks = {
+      return1yr: Math.round(getSpyReturn(1) * 10) / 10,
+      return5yr: Math.round(getSpyReturn(5) * 10) / 10,
+      return10yr: Math.round(getSpyReturn(10) * 10) / 10,
+      return20yr: Math.round(getSpyReturn(20) * 10) / 10,
+    };
+
+    return NextResponse.json({ entries: entries.slice(0, MAX_ENTRIES), benchmarks });
   } catch (error) {
     console.error("Leaderboard read error:", error);
-    return NextResponse.json([], { status: 200 });
+    return NextResponse.json({ entries: [], benchmarks: { return1yr: 0, return5yr: 0, return10yr: 0, return20yr: 0 } }, { status: 200 });
   }
 }
 
