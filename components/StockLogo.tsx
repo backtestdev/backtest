@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 /**
  * StockLogo — company logo from FMP with letter-avatar fallback.
- * Tries to load the real logo; on error, shows a sector-colored letter.
+ * Tries to load the real logo; falls back on error or if image looks like
+ * a placeholder (tiny dimensions / known-bad).
  */
 
 const SECTOR_COLORS: Record<string, { bg: string; text: string }> = {
@@ -40,8 +41,7 @@ function hashCode(s: string): number {
   return Math.abs(h);
 }
 
-// Track tickers that have already failed so we don't retry across re-renders.
-// Shared across all StockLogo instances.
+// Track tickers whose logos failed / were placeholders.
 const failedTickers = new Set<string>();
 
 interface StockLogoProps {
@@ -61,6 +61,19 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
     ? "w-6 h-6 text-[10px]"
     : "w-8 h-8 text-xs";
 
+  const markFailed = useCallback(() => {
+    failedTickers.add(ticker);
+    setImgFailed(true);
+  }, [ticker]);
+
+  // Detect placeholder images: FMP returns tiny or empty PNGs for unknown tickers
+  const handleLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalWidth <= 1 || img.naturalHeight <= 1) {
+      markFailed();
+    }
+  }, [markFailed]);
+
   if (!imgFailed) {
     return (
       <img
@@ -69,11 +82,9 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
         width={px}
         height={px}
         loading="lazy"
-        className={`rounded-md object-contain flex-shrink-0 bg-white ${dims}`}
-        onError={() => {
-          failedTickers.add(ticker);
-          setImgFailed(true);
-        }}
+        className={`rounded-md object-contain flex-shrink-0 bg-white border border-gray-100 ${dims}`}
+        onError={markFailed}
+        onLoad={handleLoad}
       />
     );
   }

@@ -94,11 +94,11 @@ export default function SignalExplorer() {
     fetchSignals();
   }, [period]);
 
-  // Filter signals: remove < 2% spread and apply search
+  // Filter signals: remove < 6% spread and apply search
   const filteredSignals = useMemo(() => {
     if (!data) return [];
     return data.signals
-      .filter((s) => s.spread >= 0.02)
+      .filter((s) => s.spread >= 0.06)
       .filter((s) => {
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase();
@@ -134,29 +134,28 @@ export default function SignalExplorer() {
     const direction: "higher_better" | "lower_better" =
       compositeQuintiles[4].avgReturn > compositeQuintiles[0].avgReturn ? "higher_better" : "lower_better";
 
-    // Composite top stocks: find stocks that appear across the most selected
-    // signals' winner quintiles, ranked by frequency then market cap.
-    const stockAppearances = new Map<string, { count: number; stock: TopStock }>();
+    // Composite top stocks: find stocks that appear across selected signals'
+    // winner quintiles. Track which specific signals each stock ranks in.
+    const stockAppearances = new Map<string, { labels: string[]; stock: TopStock }>();
     for (const sig of selected) {
       for (const stock of sig.topStocks) {
         const existing = stockAppearances.get(stock.symbol);
         if (existing) {
-          existing.count++;
-          // Keep the entry with the highest market cap data
+          existing.labels.push(sig.label);
           if (stock.marketCap > existing.stock.marketCap) {
             existing.stock = stock;
           }
         } else {
-          stockAppearances.set(stock.symbol, { count: 1, stock: { ...stock } });
+          stockAppearances.set(stock.symbol, { labels: [sig.label], stock: { ...stock } });
         }
       }
     }
     const compositeTopStocks = Array.from(stockAppearances.values())
-      .sort((a, b) => b.count - a.count || b.stock.marketCap - a.stock.marketCap)
+      .sort((a, b) => b.labels.length - a.labels.length || b.stock.marketCap - a.stock.marketCap)
       .slice(0, 5)
       .map((entry) => ({
         ...entry.stock,
-        signalCount: entry.count,
+        matchedSignals: entry.labels,
       }));
 
     return {
@@ -165,7 +164,6 @@ export default function SignalExplorer() {
       direction,
       labels: selected.map((s) => s.label),
       topStocks: compositeTopStocks,
-      totalSignals: selected.length,
     };
   }, [selectedMetrics, data]);
 
@@ -336,7 +334,7 @@ export default function SignalExplorer() {
             {compositeSignal.topStocks && compositeSignal.topStocks.length > 0 && (
               <div className="mt-4 pt-3 border-t border-blue-200/60">
                 <p className="text-xs font-semibold text-gray-500 mb-2">
-                  Stocks ranking across the most selected signals
+                  Top stocks across selected signals
                 </p>
                 <div className="space-y-1.5">
                   {compositeSignal.topStocks.map((stock) => (
@@ -351,11 +349,15 @@ export default function SignalExplorer() {
                           <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
                           <span className="text-xs text-gray-400 truncate">{stock.name}</span>
                         </div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {stock.matchedSignals.map((label) => (
+                            <span key={label} className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-blue-100/70 text-blue-700">
+                              {label.replace(/ \(.*\)/, "")}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                          {stock.signalCount}/{compositeSignal.totalSignals} signals
-                        </span>
                         <span className="text-[10px] text-gray-400">{formatMarketCap(stock.marketCap)}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
                         <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -553,7 +555,7 @@ export default function SignalExplorer() {
         {filteredSignals.length === 0 && (
           <div className="text-center py-12 text-gray-400">
             {searchQuery.trim()
-              ? `No signals matching "${searchQuery}" with spread above 2%.`
+              ? `No signals matching "${searchQuery}" with spread above 6%.`
               : "No signals found. Make sure the database is populated with stock data and annual returns."}
           </div>
         )}
