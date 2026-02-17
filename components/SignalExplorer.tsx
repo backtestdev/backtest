@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import StockLogo from "./StockLogo";
 
 interface Quintile {
@@ -339,9 +340,10 @@ export default function SignalExplorer() {
                 </p>
                 <div className="space-y-1.5">
                   {compositeSignal.topStocks.map((stock) => (
-                    <div
+                    <Link
                       key={stock.symbol}
-                      className="flex items-center gap-2 bg-white/80 rounded-lg px-3 py-2 border border-blue-100"
+                      href={`/research/${stock.symbol}`}
+                      className="flex items-center gap-2 bg-white/80 rounded-lg px-3 py-2 border border-blue-100 hover:border-blue-300 hover:bg-white transition-colors"
                     >
                       <StockLogo ticker={stock.symbol} sector={stock.sector} />
                       <div className="min-w-0 flex-1">
@@ -356,8 +358,11 @@ export default function SignalExplorer() {
                         </span>
                         <span className="text-[10px] text-gray-400">{formatMarketCap(stock.marketCap)}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
+                        <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                        </svg>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -503,9 +508,10 @@ export default function SignalExplorer() {
                         </p>
                         <div className="space-y-1.5">
                           {signal.topStocks.slice(0, 5).map((stock) => (
-                            <div
+                            <Link
                               key={stock.symbol}
-                              className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100"
+                              href={`/research/${stock.symbol}`}
+                              className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
                             >
                               <StockLogo ticker={stock.symbol} sector={stock.sector} />
                               <div className="min-w-0 flex-1">
@@ -523,8 +529,11 @@ export default function SignalExplorer() {
                                 </div>
                                 <span className="text-[10px] text-gray-400">{formatMarketCap(stock.marketCap)}</span>
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
+                                <svg className="w-3.5 h-3.5 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                                </svg>
                               </div>
-                            </div>
+                            </Link>
                           ))}
                         </div>
                       </div>
