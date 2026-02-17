@@ -79,20 +79,20 @@ function HoldingEntryRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3">
       <input
         type="text"
         value={holding.symbol}
         onChange={(e) => onUpdate({ ...holding, symbol: e.target.value.toUpperCase() })}
         placeholder="AAPL"
-        className="w-24 px-3 py-2 text-sm font-mono bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 uppercase"
+        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm font-mono bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 uppercase"
       />
       <input
         type="number"
         value={holding.shares || ""}
         onChange={(e) => onUpdate({ ...holding, shares: Number(e.target.value) || 0 })}
         placeholder="Shares"
-        className="w-24 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
+        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
       />
       <input
         type="number"
@@ -100,11 +100,11 @@ function HoldingEntryRow({
         onChange={(e) => onUpdate({ ...holding, costBasis: Number(e.target.value) || undefined })}
         placeholder="Avg cost"
         step="0.01"
-        className="w-28 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
+        className="w-24 sm:w-28 px-2 sm:px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400"
       />
       <button
         onClick={onRemove}
-        className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+        className="p-2 sm:p-1.5 text-gray-300 hover:text-red-500 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
         title="Remove"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -260,16 +260,16 @@ export default function PortfolioAnalyzer() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-6 py-12">
+    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Portfolio Analyzer</h1>
-        <p className="mt-2 text-gray-400">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Portfolio Analyzer</h1>
+        <p className="mt-2 text-sm sm:text-base text-gray-400">
           Enter your holdings for a full analysis with diversification, risk assessment, and AI-powered recommendations.
         </p>
 
         {/* Screenshot upload zone */}
-        <div className="mt-8 bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="mt-6 sm:mt-8 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
           <input
             ref={fileInputRef}
             type="file"
@@ -321,10 +321,10 @@ export default function PortfolioAnalyzer() {
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Your Holdings</h2>
 
           {/* Column headers */}
-          <div className="flex items-center gap-3 mb-2 pl-0">
-            <span className="w-24 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Ticker</span>
-            <span className="w-24 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Shares</span>
-            <span className="w-28 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Avg Cost (opt)</span>
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 pl-0">
+            <span className="w-20 sm:w-24 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Ticker</span>
+            <span className="w-20 sm:w-24 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Shares</span>
+            <span className="w-24 sm:w-28 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Avg Cost</span>
           </div>
 
           {/* Holdings list */}
@@ -426,25 +426,25 @@ export default function PortfolioAnalyzer() {
         {result && (
           <div className="mt-8 space-y-6 animate-in fade-in duration-500">
             {/* Summary cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">Total Value</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Total Value</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 mt-1">
                   {formatCurrency(result.summary.totalValue)}
                 </p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">Holdings</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{result.summary.holdingCount}</p>
+              <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Holdings</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 mt-1">{result.summary.holdingCount}</p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">Portfolio Beta</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{result.summary.weightedBeta.toFixed(2)}</p>
+              <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Portfolio Beta</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 mt-1">{result.summary.weightedBeta.toFixed(2)}</p>
               </div>
               {result.summary.totalGainLoss !== null && (
-                <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider">Total Gain/Loss</p>
-                  <p className={`text-2xl font-bold mt-1 ${
+                <div className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 text-center">
+                  <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Total Gain/Loss</p>
+                  <p className={`text-lg sm:text-2xl font-bold mt-1 ${
                     result.summary.totalGainLoss >= 0 ? "text-emerald-600" : "text-red-500"
                   }`}>
                     {result.summary.totalGainLoss >= 0 ? "+" : ""}
@@ -461,15 +461,15 @@ export default function PortfolioAnalyzer() {
             </div>
 
             {/* Holdings table */}
-            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <div className="px-6 py-3 border-b border-gray-100">
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+              <div className="px-4 sm:px-6 py-3 border-b border-gray-100">
                 <h3 className="text-sm font-semibold text-gray-700">Holdings Detail</h3>
               </div>
-              <div className="divide-y divide-gray-50">
+              <div className="min-w-[600px] divide-y divide-gray-50">
                 {result.holdings.map((h) => {
                   const score = stockScores.get(h.symbol);
                   return (
-                  <div key={h.symbol} className="grid grid-cols-12 gap-2 px-6 py-3 items-center">
+                  <div key={h.symbol} className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 items-center">
                     <div className="col-span-3 min-w-0 flex items-center gap-2">
                       <StockLogo ticker={h.symbol} sector={h.sector} />
                       <div className="min-w-0">

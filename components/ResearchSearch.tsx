@@ -16,15 +16,15 @@ export default function ResearchSearch() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-6 py-16">
+    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-12 sm:py-16">
       <div className="max-w-2xl mx-auto text-center">
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Equity Research</h1>
-        <p className="mt-2 text-gray-400 max-w-lg mx-auto">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Equity Research</h1>
+        <p className="mt-2 text-sm sm:text-base text-gray-400 max-w-lg mx-auto">
           Get an AI-powered research report for any stock. Includes fundamentals analysis,
           price targets, risk factors, and buy/hold/sell recommendations.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-8 flex items-center gap-3 max-w-md mx-auto">
+        <form onSubmit={handleSubmit} className="mt-6 sm:mt-8 flex items-center gap-2 sm:gap-3 max-w-md mx-auto">
           <input
             type="text"
             value={ticker}
@@ -48,7 +48,7 @@ export default function ResearchSearch() {
             <button
               key={t}
               onClick={() => router.push(`/research/${t}`)}
-              className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:text-blue-600 transition-colors"
+              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:text-blue-600 transition-colors min-h-[44px] sm:min-h-0"
             >
               {t}
             </button>

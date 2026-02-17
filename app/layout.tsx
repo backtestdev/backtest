@@ -32,17 +32,17 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body className={`${geistSans.variable} font-sans antialiased`}>
-          <nav className="flex justify-between items-center px-6 py-3 border-b border-gray-100">
+          <nav className="relative flex justify-between items-center px-4 sm:px-6 py-3 border-b border-gray-100">
             <Navigation />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <SignedOut>
                 <SignInButton mode="modal">
-                  <button className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <button className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                     Sign In
                   </button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                  <button className="px-3 sm:px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
                     Sign Up
                   </button>
                 </SignUpButton>

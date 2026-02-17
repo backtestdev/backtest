@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 
 const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode }[] = [
   {
@@ -59,34 +59,110 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
 
 export default function Navigation() {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when menu is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
 
   return (
-    <div className="flex items-center gap-1">
-      {NAV_ITEMS.map((item) => {
-        const isActive = item.href === "/"
-          ? pathname === "/"
-          : pathname.startsWith(item.href);
+    <>
+      {/* Desktop nav */}
+      <div className="hidden md:flex items-center gap-1">
+        {NAV_ITEMS.map((item) => {
+          const isActive = item.href === "/"
+            ? pathname === "/"
+            : pathname.startsWith(item.href);
 
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-              isActive
-                ? "bg-gray-900 text-white"
-                : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
-            }`}
-          >
-            {item.icon}
-            {item.label}
-            {item.beta && (
-              <span className="ml-0.5 text-[9px] font-semibold uppercase tracking-wider px-1 py-0.5 rounded bg-blue-100 text-blue-600">
-                Beta
-              </span>
-            )}
-          </Link>
-        );
-      })}
-    </div>
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                isActive
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+              }`}
+            >
+              {item.icon}
+              {item.label}
+              {item.beta && (
+                <span className="ml-0.5 text-[9px] font-semibold uppercase tracking-wider px-1 py-0.5 rounded bg-blue-100 text-blue-600">
+                  Beta
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        className="md:hidden flex items-center justify-center w-11 h-11 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+        aria-label={mobileOpen ? "Close menu" : "Open menu"}
+      >
+        {mobileOpen ? (
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        ) : (
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+        )}
+      </button>
+
+      {/* Mobile overlay + menu */}
+      {mobileOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/20 z-40"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="md:hidden fixed top-[57px] left-0 right-0 bg-white border-b border-gray-100 shadow-lg z-50 animate-in">
+            <nav className="flex flex-col px-4 py-3 gap-1">
+              {NAV_ITEMS.map((item) => {
+                const isActive = item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href);
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 text-base font-medium rounded-xl transition-colors ${
+                      isActive
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {item.icon}
+                    {item.label}
+                    {item.beta && (
+                      <span className="ml-auto text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">
+                        Beta
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        </>
+      )}
+    </>
   );
 }

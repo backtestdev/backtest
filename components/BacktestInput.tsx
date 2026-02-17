@@ -432,17 +432,17 @@ export default function BacktestInput({
             onBlur={() => setIsFocused(false)}
             onKeyDown={handleKeyDown}
             placeholder=""
-            className="w-full h-32 px-6 py-4 text-lg text-gray-900 bg-white border-2 border-gray-200 rounded-2xl resize-none focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all duration-200"
+            className="w-full h-28 sm:h-32 px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg text-gray-900 bg-white border-2 border-gray-200 rounded-2xl resize-none focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all duration-200"
             disabled={isLoading}
           />
 
           {/* Animated placeholder overlay */}
           {showPlaceholder && (
             <div
-              className="absolute inset-0 px-6 py-4 pointer-events-none"
+              className="absolute inset-0 px-4 sm:px-6 py-3 sm:py-4 pointer-events-none"
               aria-hidden="true"
             >
-              <span className="text-lg text-gray-300">
+              <span className="text-base sm:text-lg text-gray-300">
                 {animatedText}
                 <span className="inline-block w-0.5 h-5 bg-gray-300 align-text-bottom ml-0.5 animate-pulse" />
               </span>
@@ -497,7 +497,7 @@ export default function BacktestInput({
         <button
           type="submit"
           disabled={!strategy.trim() || isLoading}
-          className="w-full py-4 px-8 text-lg font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-3"
+          className="w-full py-3 sm:py-4 px-6 sm:px-8 text-base sm:text-lg font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-3"
         >
           {isLoading ? (
             <>

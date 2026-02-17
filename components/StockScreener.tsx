@@ -84,26 +84,26 @@ const PROFILE_METRICS: { key: keyof Stock; label: string; format: (v: number | n
 
 function StockProfileCard({ stock, onClose }: { stock: Stock; onClose: () => void }) {
   return (
-    <div className="mb-4 bg-white rounded-2xl border border-blue-100 p-5 animate-in fade-in duration-200">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <div className="flex items-center gap-2">
+    <div className="mb-4 bg-white rounded-2xl border border-blue-100 p-4 sm:p-5 animate-in fade-in duration-200">
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
             <StockLogo ticker={stock.symbol} sector={stock.sector} size="md" />
             <h3 className="text-lg font-bold text-gray-900">{stock.symbol}</h3>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
           </div>
-          <p className="text-sm text-gray-400 ml-10">{stock.name}</p>
+          <p className="text-sm text-gray-400 mt-1 sm:ml-10">{stock.name}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          <div className="text-right hidden sm:block">
             <p className="text-xs text-gray-400">Score</p>
             <ScoreBar score={stock.backtestScore} />
           </div>
-          <div className="text-right">
+          <div className="text-right hidden sm:block">
             <p className="text-xs text-gray-400">MCap</p>
             <p className="text-sm font-semibold text-gray-700">{formatMarketCap(stock.marketCap)}</p>
           </div>
-          <button onClick={onClose} className="p-1 text-gray-300 hover:text-gray-500 transition-colors" title="Close">
+          <button onClick={onClose} className="p-2 sm:p-1 text-gray-300 hover:text-gray-500 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center" title="Close">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -274,11 +274,11 @@ export default function StockScreener() {
   const totalPages = data ? Math.ceil(data.totalCount / data.perPage) : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-6 py-12">
+    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Stock Screener</h1>
-        <p className="mt-2 text-gray-400">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">Stock Screener</h1>
+        <p className="mt-2 text-sm sm:text-base text-gray-400">
           Every stock scored 1&ndash;100 based on earnings power, growth consistency, value, and quality factors.
         </p>
 
@@ -303,15 +303,15 @@ export default function StockScreener() {
                 <button
                   key={stock.symbol}
                   onClick={() => selectStock(stock)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
+                  className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 min-h-[44px]"
                 >
                   <div className="min-w-0 flex items-center gap-2">
                     <StockLogo ticker={stock.symbol} sector={stock.sector} />
                     <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
-                    <span className="text-xs text-gray-400 truncate">{stock.name}</span>
+                    <span className="text-xs text-gray-400 truncate hidden sm:inline">{stock.name}</span>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className="text-xs text-gray-400">{stock.sector}</span>
+                  <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                    <span className="text-xs text-gray-400 hidden sm:inline">{stock.sector}</span>
                     <ScoreBar score={stock.backtestScore} />
                   </div>
                 </button>
@@ -333,7 +333,7 @@ export default function StockScreener() {
         )}
 
         {/* Filters */}
-        <div className="mt-4 mb-4 flex flex-wrap items-center gap-3">
+        <div className="mt-4 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <select
             value={sector}
             onChange={(e) => { setSector(e.target.value); setPage(1); }}
@@ -345,7 +345,7 @@ export default function StockScreener() {
             ))}
           </select>
 
-          <span className="text-xs text-gray-300">|</span>
+          <span className="text-xs text-gray-300 hidden sm:inline">|</span>
 
           {/* Market cap range presets */}
           {([
@@ -358,7 +358,7 @@ export default function StockScreener() {
               key={preset.label}
               onClick={() => setCapFilter(preset.min, preset.max)}
               title={preset.title}
-              className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
+              className={`px-2.5 py-1.5 sm:py-1 text-xs rounded-lg border transition-all ${
                 isCapActive(preset.min, preset.max)
                   ? "bg-blue-50 border-blue-200 text-blue-700 font-medium"
                   : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
@@ -368,7 +368,7 @@ export default function StockScreener() {
             </button>
           ))}
 
-          <span className="text-xs text-gray-300">|</span>
+          <span className="text-xs text-gray-300 hidden sm:inline">|</span>
 
           {/* Quick min-cap filters */}
           {([
@@ -379,7 +379,7 @@ export default function StockScreener() {
               key={quick.label}
               onClick={() => setCapFilter(quick.min, 0)}
               title={quick.title}
-              className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
+              className={`px-2.5 py-1.5 sm:py-1 text-xs rounded-lg border transition-all ${
                 isCapActive(quick.min, 0)
                   ? "bg-blue-50 border-blue-200 text-blue-700 font-medium"
                   : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
@@ -407,7 +407,8 @@ export default function StockScreener() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+          <div className="min-w-[600px]">
           {/* Header */}
           <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center">
             <div className="col-span-3 text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -456,7 +457,7 @@ export default function StockScreener() {
             <button
               key={stock.symbol}
               onClick={() => selectStock(stock)}
-              className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-0 items-center hover:bg-blue-50/40 transition-colors text-left cursor-pointer"
+              className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-0 items-center hover:bg-blue-50/40 transition-colors text-left cursor-pointer min-h-[44px]"
             >
               <div className="col-span-3 min-w-0 flex items-center gap-2">
                 <StockLogo ticker={stock.symbol} sector={stock.sector} />
@@ -493,6 +494,7 @@ export default function StockScreener() {
               </div>
             </button>
           ))}
+          </div>
         </div>
 
         {/* Pagination */}
@@ -501,7 +503,7 @@ export default function StockScreener() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-2.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
             >
               Previous
             </button>
@@ -511,7 +513,7 @@ export default function StockScreener() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-2.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
             >
               Next
             </button>
