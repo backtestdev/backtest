@@ -126,6 +126,7 @@ export async function GET(request: NextRequest) {
   const sortDir = searchParams.get("dir") || "desc";
   const sectorFilter = searchParams.get("sector") || "";
   const search = (searchParams.get("search") || "").trim();
+  const tickersParam = (searchParams.get("tickers") || "").trim();
   const minMarketCap = Number(searchParams.get("minCap")) || 0;
   const maxMarketCap = Number(searchParams.get("maxCap")) || 0;
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
@@ -190,6 +191,18 @@ export async function GET(request: NextRequest) {
       currentRatio: stock.current_ratio !== null ? Number(stock.current_ratio) : null,
       backtestScore: scoreMap.get(stock.symbol as string) || 0,
     }));
+
+    // Batch ticker lookup — returns scores for specific tickers (no pagination)
+    if (tickersParam) {
+      const tickerSet = new Set(tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean));
+      const matched = filtered.filter((s) => tickerSet.has(s.symbol));
+      return NextResponse.json({
+        stocks: matched,
+        totalCount: matched.length,
+        page: 1,
+        perPage: matched.length,
+      });
+    }
 
     // Search filter
     if (search) {

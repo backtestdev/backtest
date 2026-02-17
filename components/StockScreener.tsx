@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import StockLogo from "./StockLogo";
 
 interface Stock {
   symbol: string;
@@ -87,10 +88,11 @@ function StockProfileCard({ stock, onClose }: { stock: Stock; onClose: () => voi
       <div className="flex items-start justify-between mb-3">
         <div>
           <div className="flex items-center gap-2">
+            <StockLogo ticker={stock.symbol} sector={stock.sector} size="md" />
             <h3 className="text-lg font-bold text-gray-900">{stock.symbol}</h3>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
           </div>
-          <p className="text-sm text-gray-400">{stock.name}</p>
+          <p className="text-sm text-gray-400 ml-10">{stock.name}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
@@ -304,9 +306,10 @@ export default function StockScreener() {
                   onClick={() => selectStock(stock)}
                   className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <StockLogo ticker={stock.symbol} sector={stock.sector} />
                     <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
-                    <span className="text-xs text-gray-400 ml-2 truncate">{stock.name}</span>
+                    <span className="text-xs text-gray-400 truncate">{stock.name}</span>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <span className="text-xs text-gray-400">{stock.sector}</span>
@@ -456,9 +459,12 @@ export default function StockScreener() {
               onClick={() => selectStock(stock)}
               className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-0 items-center hover:bg-blue-50/40 transition-colors text-left cursor-pointer"
             >
-              <div className="col-span-3 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{stock.symbol}</p>
-                <p className="text-xs text-gray-400 truncate">{stock.name}</p>
+              <div className="col-span-3 min-w-0 flex items-center gap-2">
+                <StockLogo ticker={stock.symbol} sector={stock.sector} />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{stock.symbol}</p>
+                  <p className="text-xs text-gray-400 truncate">{stock.name}</p>
+                </div>
               </div>
               <div className="col-span-2">
                 <ScoreBar score={stock.backtestScore} />

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import StockLogo from "./StockLogo";
 
 // ── Types ──
 
@@ -151,6 +152,31 @@ export default function PortfolioAnalyzer() {
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [stockScores, setStockScores] = useState<Map<string, number>>(new Map());
+
+  // Fetch backtest scores for portfolio holdings
+  useEffect(() => {
+    if (!result || result.holdings.length === 0) {
+      setStockScores(new Map());
+      return;
+    }
+    const tickers = result.holdings.map((h) => h.symbol);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/screener?tickers=${tickers.join(",")}`);
+        const json = await res.json();
+        if (!cancelled && json.stocks) {
+          const scores = new Map<string, number>();
+          for (const stock of json.stocks) {
+            scores.set(stock.symbol, stock.backtestScore);
+          }
+          setStockScores(scores);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [result]);
 
   const updateHolding = (index: number, h: Holding) => {
     const updated = [...holdings];
@@ -440,11 +466,26 @@ export default function PortfolioAnalyzer() {
                 <h3 className="text-sm font-semibold text-gray-700">Holdings Detail</h3>
               </div>
               <div className="divide-y divide-gray-50">
-                {result.holdings.map((h) => (
+                {result.holdings.map((h) => {
+                  const score = stockScores.get(h.symbol);
+                  return (
                   <div key={h.symbol} className="grid grid-cols-12 gap-2 px-6 py-3 items-center">
-                    <div className="col-span-3 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{h.symbol}</p>
-                      <p className="text-xs text-gray-400 truncate">{h.name}</p>
+                    <div className="col-span-3 min-w-0 flex items-center gap-2">
+                      <StockLogo ticker={h.symbol} sector={h.sector} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-gray-900">{h.symbol}</p>
+                          {score !== undefined && (
+                            <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
+                              score >= 75 ? "bg-emerald-50 text-emerald-600" :
+                              score >= 50 ? "bg-blue-50 text-blue-600" :
+                              score >= 25 ? "bg-amber-50 text-amber-600" :
+                              "bg-red-50 text-red-500"
+                            }`}>{score}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 truncate">{h.name}</p>
+                      </div>
                     </div>
                     <div className="col-span-2 text-right">
                       <p className="text-sm text-gray-600">{h.shares} shares</p>
@@ -478,7 +519,8 @@ export default function PortfolioAnalyzer() {
                       </span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

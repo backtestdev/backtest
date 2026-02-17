@@ -1,11 +1,20 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import StockLogo from "./StockLogo";
 
 interface Quintile {
   quintile: number;
   avgReturn: number;
   stockCount: number;
+}
+
+interface TopStock {
+  symbol: string;
+  name: string;
+  sector: string;
+  metricValue: number;
+  marketCap: number;
 }
 
 interface Signal {
@@ -16,6 +25,7 @@ interface Signal {
   direction: "higher_better" | "lower_better";
   yearsOfData: number;
   type: "static";
+  topStocks: TopStock[];
 }
 
 interface SignalData {
@@ -27,6 +37,34 @@ interface SignalData {
 }
 
 const PERIODS = [5, 10, 20] as const;
+
+// Format metric values for display based on metric type
+const PERCENTAGE_METRICS = new Set([
+  "earnings_yield", "roe", "roic", "return_on_assets", "profit_margin",
+  "gross_profit_margin", "operating_profit_margin", "revenue_growth",
+  "earnings_growth", "revenue_growth_3yr_avg", "dividend_yield",
+  "payout_ratio", "free_cash_flow_yield",
+]);
+
+function formatMetricValue(metric: string, value: number): string {
+  if (PERCENTAGE_METRICS.has(metric)) {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+  if (metric === "market_cap") {
+    const b = value / 1_000_000_000;
+    if (b >= 1000) return `$${(b / 1000).toFixed(1)}T`;
+    if (b >= 1) return `$${b.toFixed(1)}B`;
+    return `$${(b * 1000).toFixed(0)}M`;
+  }
+  if (metric === "consecutive_earnings_growth") return `${value}yr`;
+  return value.toFixed(1);
+}
+
+function formatMarketCap(b: number): string {
+  if (b >= 1000) return `$${(b / 1000).toFixed(1)}T`;
+  if (b >= 1) return `$${b.toFixed(1)}B`;
+  return `$${(b * 1000).toFixed(0)}M`;
+}
 
 export default function SignalExplorer() {
   const [data, setData] = useState<SignalData | null>(null);
@@ -397,6 +435,42 @@ export default function SignalExplorer() {
                         );
                       })}
                     </div>
+
+                    {/* Top stocks in the winner quintile */}
+                    {signal.topStocks && signal.topStocks.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">
+                          Top stocks with {signal.direction === "lower_better" ? "lowest" : "strongest"} {signal.label}
+                        </p>
+                        <div className="space-y-1.5">
+                          {signal.topStocks.map((stock) => (
+                            <div
+                              key={stock.symbol}
+                              className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100"
+                            >
+                              <StockLogo ticker={stock.symbol} sector={stock.sector} />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
+                                  <span className="text-xs text-gray-400 truncate">{stock.name}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 flex-shrink-0">
+                                <div className="text-right">
+                                  <p className="text-xs font-bold text-gray-700">
+                                    {formatMetricValue(signal.metric, stock.metricValue)}
+                                  </p>
+                                  <p className="text-[9px] text-gray-400">{signal.label}</p>
+                                </div>
+                                <span className="text-[10px] text-gray-400">{formatMarketCap(stock.marketCap)}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{stock.sector}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <p className="text-xs text-gray-400 mt-3 text-center">
                       Stocks with {signal.direction === "lower_better" ? "lower" : "higher"} {signal.label} values
                       have historically returned {(signal.spread * 100).toFixed(1)}% more per year on average.
