@@ -1,12 +1,7 @@
-import ResearchSearch from "@/components/ResearchSearch";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Equity Research - Backtest",
-  description: "AI-powered equity research reports for any stock",
-};
-
 export default function ResearchPage() {
-  return <ResearchSearch />;
+  redirect("/screener");
 }

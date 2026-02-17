@@ -1,4 +1,4 @@
-import ResearchReport from "@/components/ResearchReport";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -6,14 +6,6 @@ interface PageProps {
   params: { ticker: string };
 }
 
-export function generateMetadata({ params }: PageProps) {
-  const symbol = params.ticker.toUpperCase();
-  return {
-    title: `${symbol} Research Report - Backtest`,
-    description: `AI-powered equity research report for ${symbol}`,
-  };
-}
-
-export default function ResearchPage({ params }: PageProps) {
-  return <ResearchReport ticker={params.ticker.toUpperCase()} />;
+export default function ResearchTickerPage({ params }: PageProps) {
+  redirect(`/screener/${params.ticker.toUpperCase()}`);
 }

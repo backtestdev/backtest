@@ -25,6 +25,16 @@ function sectorName(raw: unknown): string {
   return SECTOR_DISPLAY[s] || s || "Other";
 }
 
+// Curated thematic groups — ticker-based for precision
+const THEMES: Record<string, string[]> = {
+  ai: ["NVDA", "MSFT", "GOOGL", "META", "AMD", "PLTR", "CRM", "SNOW", "AI", "PATH", "UPST", "AMZN", "ORCL", "IBM", "SMCI", "DELL", "AVGO"],
+  semiconductors: ["NVDA", "AMD", "INTC", "TSM", "AVGO", "QCOM", "TXN", "MRVL", "ASML", "LRCX", "KLAC", "AMAT", "MU", "ON", "NXPI", "ADI", "MCHP", "SWKS"],
+  data_centers: ["EQIX", "DLR", "VRT", "DELL", "HPE", "SMCI", "AMT", "CCI", "ANET", "FFIV"],
+  cybersecurity: ["CRWD", "PANW", "FTNT", "ZS", "S", "NET", "OKTA", "CYBR", "RPD", "TENB", "QLYS"],
+  cloud: ["AMZN", "MSFT", "GOOGL", "CRM", "SNOW", "DDOG", "NET", "MDB", "CFLT", "TWLO", "ZM", "HUBS", "NOW"],
+  ev: ["TSLA", "RIVN", "LCID", "NIO", "LI", "XPEV", "GM", "F", "TM", "BYDDF"],
+};
+
 // Factor weights for Backtest Score (multi-factor model)
 // Emphasizes: earnings yield (profit/mcap), earnings growth & consistency
 const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: number }[] = [
@@ -88,9 +98,6 @@ function computeBacktestScore(stocks: Record<string, unknown>[]): Map<string, nu
   // Size-confidence dampener: multiply raw scores before normalization so
   // small-cap stocks are pushed down proportionally but the 1-100 range stays
   // intact after min-max rescaling.
-  // Curve: confidence = min(1.0, 0.70 + 0.10 * log10(mcapB))
-  //   $0.3B → 0.65, $1B → 0.70, $5B → 0.77, $10B → 0.80,
-  //   $50B → 0.87, $100B → 0.90, $1T → 1.0
   const mcapLookup = new Map<string, number>();
   for (const stock of stocks) {
     mcapLookup.set(stock.symbol as string, Number(stock.market_cap || 0) / 1_000_000_000);
@@ -126,6 +133,8 @@ export async function GET(request: NextRequest) {
   const sortBy = searchParams.get("sort") || "backtest_score";
   const sortDir = searchParams.get("dir") || "desc";
   const sectorFilter = searchParams.get("sector") || "";
+  const industryFilter = searchParams.get("industry") || "";
+  const themeFilter = searchParams.get("theme") || "";
   const search = (searchParams.get("search") || "").trim();
   const tickersParam = (searchParams.get("tickers") || "").trim();
   const minMarketCap = Number(searchParams.get("minCap")) || 0;
@@ -135,7 +144,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const allStocks = await sql`
-      SELECT symbol, company_name AS name, sector,
+      SELECT symbol, company_name AS name, sector, industry,
              price_to_earnings_ratio AS pe_ratio,
              price_to_book_ratio AS price_to_book,
              price_to_earnings_growth_ratio AS peg_ratio,
@@ -178,6 +187,7 @@ export async function GET(request: NextRequest) {
       symbol: stock.symbol as string,
       name: stock.name as string,
       sector: sectorName(stock.sector),
+      industry: String(stock.industry || ""),
       marketCap: (Number(stock.market_cap) || 0) / 1_000_000_000,
       peRatio: stock.pe_ratio !== null && Number(stock.pe_ratio) > 0 ? Number(stock.pe_ratio) : null,
       roe: stock.roe !== null ? Number(stock.roe) : null,
@@ -219,6 +229,18 @@ export async function GET(request: NextRequest) {
     if (sectorFilter) {
       filtered = filtered.filter((s) => s.sector.toLowerCase() === sectorFilter.toLowerCase());
     }
+
+    // Industry filter
+    if (industryFilter) {
+      filtered = filtered.filter((s) => s.industry.toLowerCase() === industryFilter.toLowerCase());
+    }
+
+    // Theme filter — curated ticker lists
+    if (themeFilter && THEMES[themeFilter]) {
+      const themeTickers = new Set(THEMES[themeFilter]);
+      filtered = filtered.filter((s) => themeTickers.has(s.symbol));
+    }
+
     if (minMarketCap > 0) {
       filtered = filtered.filter((s) => s.marketCap >= minMarketCap);
     }
@@ -250,12 +272,16 @@ export async function GET(request: NextRequest) {
     // Unique sectors for filter dropdown
     const sectors = Array.from(new Set(allStocks.map((s) => sectorName(s.sector)).filter((s) => s !== "Other"))).sort();
 
+    // Unique industries for autocomplete
+    const industries = Array.from(new Set(allStocks.map((s) => String(s.industry || "")).filter(Boolean))).sort();
+
     return NextResponse.json({
       stocks: paginated,
       totalCount,
       page,
       perPage,
       sectors,
+      industries,
     });
   } catch (error) {
     console.error("Screener error:", error);
