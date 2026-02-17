@@ -24,41 +24,51 @@ interface QuintileResult {
   topStocks: TopStock[];
 }
 
-// Metrics to analyze — only numeric, filterable ones that are commonly populated
-const ANALYZABLE_METRICS: { column: string; label: string }[] = [
-  // Valuation
-  { column: "pe_ratio", label: "P/E Ratio" },
-  { column: "price_to_book", label: "Price / Book" },
-  { column: "peg_ratio", label: "PEG Ratio" },
-  { column: "ev_to_ebitda", label: "EV / EBITDA" },
-  { column: "price_to_fair_value", label: "Price / Fair Value" },
-  { column: "earnings_yield", label: "Earnings Yield" },
-  // Profitability
-  { column: "roe", label: "Return on Equity" },
-  { column: "roic", label: "Return on Invested Capital" },
-  { column: "return_on_assets", label: "Return on Assets" },
-  { column: "profit_margin", label: "Profit Margin" },
-  { column: "gross_profit_margin", label: "Gross Margin" },
-  { column: "operating_profit_margin", label: "Operating Margin" },
-  // Growth
-  { column: "revenue_growth", label: "Revenue Growth (YoY)" },
-  { column: "earnings_growth", label: "Earnings Growth (YoY)" },
-  { column: "revenue_growth_3yr_avg", label: "Revenue Growth (3yr Avg)" },
-  // Dividends
-  { column: "dividend_yield", label: "Dividend Yield" },
-  { column: "payout_ratio", label: "Payout Ratio" },
-  // Leverage
-  { column: "debt_to_equity", label: "Debt / Equity" },
-  { column: "current_ratio", label: "Current Ratio" },
-  { column: "interest_coverage_ratio", label: "Interest Coverage" },
+// Metrics to analyze — only numeric, filterable ones that are commonly populated.
+// `expectedDirection` filters out signals whose computed direction contradicts
+// financial intuition. With static (non-point-in-time) analysis, many "lower is
+// better" results for quality/cash-flow metrics are artifacts of growth stocks
+// dominating returns via survivorship bias. We keep only signals that would hold
+// up if the analysis were point-in-time.
+//
+//   "higher" = only show if higher_better  (profitability, quality, growth, cash flow)
+//   "lower"  = only show if lower_better   (valuation multiples, leverage)
+//   "either" = show regardless              (beta, market cap — both directions documented)
+//
+const ANALYZABLE_METRICS: { column: string; label: string; expectedDirection: "higher" | "lower" | "either" }[] = [
+  // Valuation — lower multiples = better value
+  { column: "pe_ratio", label: "P/E Ratio", expectedDirection: "lower" },
+  { column: "price_to_book", label: "Price / Book", expectedDirection: "lower" },
+  { column: "peg_ratio", label: "PEG Ratio", expectedDirection: "lower" },
+  { column: "ev_to_ebitda", label: "EV / EBITDA", expectedDirection: "lower" },
+  { column: "price_to_fair_value", label: "Price / Fair Value", expectedDirection: "lower" },
+  { column: "earnings_yield", label: "Earnings Yield", expectedDirection: "higher" },
+  // Profitability — higher quality = better
+  { column: "roe", label: "Return on Equity", expectedDirection: "higher" },
+  { column: "roic", label: "Return on Invested Capital", expectedDirection: "higher" },
+  { column: "return_on_assets", label: "Return on Assets", expectedDirection: "higher" },
+  { column: "profit_margin", label: "Profit Margin", expectedDirection: "higher" },
+  { column: "gross_profit_margin", label: "Gross Margin", expectedDirection: "higher" },
+  { column: "operating_profit_margin", label: "Operating Margin", expectedDirection: "higher" },
+  // Growth — higher growth = better (momentum)
+  { column: "revenue_growth", label: "Revenue Growth (YoY)", expectedDirection: "higher" },
+  { column: "earnings_growth", label: "Earnings Growth (YoY)", expectedDirection: "higher" },
+  { column: "revenue_growth_3yr_avg", label: "Revenue Growth (3yr Avg)", expectedDirection: "higher" },
+  // Dividends — higher yield = value signal
+  { column: "dividend_yield", label: "Dividend Yield", expectedDirection: "higher" },
+  // Payout ratio omitted: ambiguous signal (low payout = reinvestment OR unprofitable)
+  // Leverage — lower debt = safer
+  { column: "debt_to_equity", label: "Debt / Equity", expectedDirection: "lower" },
+  { column: "current_ratio", label: "Current Ratio", expectedDirection: "higher" },
+  { column: "interest_coverage_ratio", label: "Interest Coverage", expectedDirection: "higher" },
   // Earnings consistency
-  { column: "consecutive_earnings_growth", label: "Consecutive Earnings Growth (Yrs)" },
-  // Cash Flow
-  { column: "free_cash_flow_yield", label: "FCF Yield" },
-  { column: "free_cash_flow_per_share", label: "FCF / Share" },
-  // Market
-  { column: "market_cap", label: "Market Cap ($B)" },
-  { column: "beta", label: "Beta" },
+  { column: "consecutive_earnings_growth", label: "Consecutive Earnings Growth (Yrs)", expectedDirection: "higher" },
+  // Cash Flow — higher = better
+  { column: "free_cash_flow_yield", label: "FCF Yield", expectedDirection: "higher" },
+  { column: "free_cash_flow_per_share", label: "FCF / Share", expectedDirection: "higher" },
+  // Market — both directions have academic support
+  { column: "market_cap", label: "Market Cap ($B)", expectedDirection: "either" },
+  { column: "beta", label: "Beta", expectedDirection: "either" },
 ];
 
 export async function GET(request: NextRequest) {
@@ -198,6 +208,13 @@ export async function GET(request: NextRequest) {
       const q5Avg = quintiles[4].avgReturn;
       const spread = q1Avg - q5Avg;
       const direction: "higher_better" | "lower_better" = spread < 0 ? "higher_better" : "lower_better";
+
+      // Skip signals where the computed direction contradicts financial intuition.
+      // These are almost always artifacts of static (non-point-in-time) analysis.
+      if (metric.expectedDirection !== "either") {
+        const expected = metric.expectedDirection === "higher" ? "higher_better" : "lower_better";
+        if (direction !== expected) continue;
+      }
 
       // Top stocks from the winner quintile, sorted by metric value (most extreme first).
       // Winner = Q5 for higher_better (highest values), Q1 for lower_better (lowest values).
