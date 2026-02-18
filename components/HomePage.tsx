@@ -150,13 +150,13 @@ export default function HomePage() {
           AI-Powered Strategy Testing
         </div>
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-th-text tracking-tight">
-          Backtest
+          Backtest AI Tool
         </h1>
         <p className="mt-3 text-base sm:text-lg text-th-text-3 max-w-lg mx-auto leading-relaxed">
           Test any stock market strategy using plain English.
           <br className="hidden sm:block" />
           <span className="sm:hidden"> </span>
-          See how it would have performed over the last 20 years.
+          See how it would have performed over the last 10 years.
         </p>
       </header>
 

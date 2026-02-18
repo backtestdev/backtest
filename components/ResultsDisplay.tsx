@@ -29,7 +29,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>("10yr");
   const isTickerMode = !!(result.parsedParams?.tickers && result.parsedParams.tickers.length > 0);
   const [stocksExpanded, setStocksExpanded] = useState(true);
   const [stockPage, setStockPage] = useState(1);
@@ -38,8 +38,8 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   // Score data for matched stocks
   const [stockScores, setStockScores] = useState<Map<string, { score: number; sector: string; name: string }>>(new Map());
 
-  // Reset page when results change
-  useEffect(() => { setStockPage(1); }, [result.matchedStocks]);
+  // Reset page and period when results change
+  useEffect(() => { setStockPage(1); setSelectedPeriod("10yr"); }, [result.matchedStocks]);
 
   useEffect(() => {
     if (result.matchedStocks.length === 0) return;
