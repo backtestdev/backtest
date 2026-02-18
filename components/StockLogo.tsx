@@ -94,7 +94,7 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
           width={px}
           height={px}
           loading="lazy"
-          className={`absolute inset-0 w-full h-full rounded-md object-contain${imgReady ? " bg-gray-200 dark:bg-gray-700 ring-1 ring-black/10 dark:ring-white/15" : ""}`}
+          className={`absolute inset-0 w-full h-full rounded-md object-contain${imgReady ? " bg-white dark:bg-gray-800 [filter:drop-shadow(0_0_0.5px_rgba(0,0,0,0.3))] dark:[filter:drop-shadow(0_0_0.5px_rgba(255,255,255,0.3))]" : ""}`}
           onError={markFailed}
           onLoad={handleLoad}
         />
