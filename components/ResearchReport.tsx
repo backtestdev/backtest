@@ -410,28 +410,19 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                 : quality === "good" ? "Good"
                 : quality === "fair" ? "Fair"
                 : quality === "weak" ? "Poor" : "";
-              const cardStyle = quality === "strong"
-                ? "bg-emerald-50 dark:bg-emerald-950/20 border-t-emerald-500 border-emerald-200 dark:border-emerald-800/40"
-                : quality === "good"
-                ? "bg-blue-50 dark:bg-blue-950/20 border-t-blue-500 border-blue-200 dark:border-blue-800/40"
-                : quality === "fair"
-                ? "bg-amber-50 dark:bg-amber-950/20 border-t-amber-500 border-amber-200 dark:border-amber-800/40"
-                : quality === "weak"
-                ? "bg-red-50 dark:bg-red-950/20 border-t-red-500 border-red-200 dark:border-red-800/40"
-                : "bg-white dark:bg-[#1a1f2e] border-t-th-border border-th-border-light";
               const qualityColor = quality === "strong" ? "text-emerald-600 dark:text-emerald-400"
                 : quality === "good" ? "text-blue-600 dark:text-blue-400"
                 : quality === "fair" ? "text-amber-600 dark:text-amber-400"
                 : quality === "weak" ? "text-red-600 dark:text-red-400" : "";
               return (
-                <div key={m.key} className="min-w-0">
+                <div key={m.key} className="min-w-0 [&>*]:w-full [&>*]:block">
                   <Tooltip content={m.tooltip} position="bottom" width="w-64">
-                    <div className={`flex flex-col items-center text-center p-4 rounded-xl border border-t-[3px] shadow-sm h-full ${cardStyle}`}>
+                    <div className="flex flex-col items-center text-center p-4 rounded-xl bg-th-inset border border-th-border-light w-full h-full">
                       <span className="text-[10px] text-th-text-3 uppercase tracking-wider">{m.label}</span>
-                      <p className={`text-2xl font-bold mt-2 mb-1.5 ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
+                      <p className="text-2xl font-bold mt-2 mb-1.5 text-th-text">
                         {val != null ? m.format(val) : "N/A"}
                       </p>
-                      <span className={`text-[10px] font-semibold ${qualityColor}`}>{qualityLabel || "\u00A0"}</span>
+                      <span className={`text-[11px] font-bold ${qualityColor}`}>{qualityLabel || "\u00A0"}</span>
                     </div>
                   </Tooltip>
                 </div>
@@ -576,26 +567,6 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
 }
 
 // ── Metric color helpers ─────────────────────────────────────────────
-
-function getMetricColor(
-  value: number,
-  direction: "higher" | "lower" | "neutral",
-  benchmarks?: [number, number, number],
-): string {
-  if (!benchmarks || direction === "neutral") return "text-th-text";
-  const [low, mid, high] = benchmarks;
-  if (direction === "higher") {
-    if (value >= high) return "text-th-positive";
-    if (value >= mid) return "text-th-text";
-    if (value >= low) return "text-th-warning";
-    return "text-th-negative";
-  }
-  // "lower" — low is good
-  if (value <= low) return "text-th-positive";
-  if (value <= mid) return "text-th-text";
-  if (value <= high) return "text-th-warning";
-  return "text-th-negative";
-}
 
 function getMetricQuality(
   value: number,
