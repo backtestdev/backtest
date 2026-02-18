@@ -19,9 +19,9 @@ const geistSans = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Backtest - Test Stock Market Strategies",
+  title: "Backtest AI Tool - Test Stock Market Strategies",
   description:
-    "Test any stock market investment strategy using plain English. See how it would have performed over the last 20 years.",
+    "Test any stock market investment strategy using plain English. See how it would have performed over the last 10 years.",
 };
 
 export default function RootLayout({
