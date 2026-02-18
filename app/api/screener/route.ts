@@ -33,6 +33,10 @@ const THEMES: Record<string, string[]> = {
   cybersecurity: ["CRWD", "PANW", "FTNT", "ZS", "S", "NET", "OKTA", "CYBR", "RPD", "TENB", "QLYS"],
   cloud: ["AMZN", "MSFT", "GOOGL", "CRM", "SNOW", "DDOG", "NET", "MDB", "CFLT", "TWLO", "ZM", "HUBS", "NOW"],
   ev: ["TSLA", "RIVN", "LCID", "NIO", "LI", "XPEV", "GM", "F", "TM", "BYDDF"],
+  biotech: ["ABBV", "AMGN", "GILD", "REGN", "VRTX", "MRNA", "BMY", "BIIB", "ILMN", "ALNY", "SGEN", "DXCM", "INCY", "BGNE", "PCVX"],
+  fintech: ["SQ", "PYPL", "SOFI", "AFRM", "COIN", "HOOD", "NU", "FI", "GPN", "FIS", "FISV", "TOST", "BILL", "FOUR", "RPAY"],
+  defense: ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BWXT", "TDG", "HWM", "KTOS", "RKLB"],
+  clean_energy: ["ENPH", "SEDG", "FSLR", "RUN", "PLUG", "BE", "NEE", "AES", "CWEN", "NOVA", "ARRY", "SHLS", "DQ"],
 };
 
 // Factor weights for Backtest Score (multi-factor model)

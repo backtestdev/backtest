@@ -198,6 +198,17 @@ const RECOMMENDATION_CONFIG: Record<string, {
   STRONG_SELL: { label: "Strong Sell", angle: 8 },
 };
 
+// ── Format recommendation strings for display ──────────────────────
+
+function formatRecommendationText(text: string): string {
+  return text
+    .replace(/\bSTRONG_BUY\b/g, "Strong Buy")
+    .replace(/\bSTRONG_SELL\b/g, "Strong Sell")
+    .replace(/\bBUY\b/g, "Buy")
+    .replace(/\bSELL\b/g, "Sell")
+    .replace(/\bHOLD\b/g, "Hold");
+}
+
 // ── Main component ───────────────────────────────────────────────────
 
 export default function ResearchReport({ ticker }: { ticker: string }) {
@@ -375,11 +386,11 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
           {/* Executive Summary + Thesis */}
           {report && (
             <div className="mt-4 pt-4 border-t border-th-border-light">
-              <p className="text-sm sm:text-base text-th-text-2 leading-relaxed">{report.executiveSummary}</p>
+              <p className="text-sm sm:text-base text-th-text-2 leading-relaxed">{formatRecommendationText(report.executiveSummary)}</p>
               {report.recommendationRationale && (
                 <div className="mt-3 p-3 rounded-xl bg-th-inset border border-th-border-light">
                   <p className="text-xs font-semibold text-th-accent uppercase tracking-wider mb-1">Investment Thesis</p>
-                  <p className="text-sm text-th-text leading-relaxed">{report.recommendationRationale}</p>
+                  <p className="text-sm text-th-text leading-relaxed">{formatRecommendationText(report.recommendationRationale)}</p>
                 </div>
               )}
             </div>
@@ -395,27 +406,26 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
               const quality = val != null && m.benchmarks && m.direction !== "neutral"
                 ? getMetricQuality(val, m.direction, m.benchmarks)
                 : null;
-              const borderColor = quality === "strong" ? "border-l-emerald-500"
-                : quality === "good" ? "border-l-blue-500"
-                : quality === "fair" ? "border-l-amber-500"
-                : quality === "weak" ? "border-l-red-500"
-                : "border-l-th-border-light";
               const qualityLabel = quality === "strong" ? "Excellent"
                 : quality === "good" ? "Good"
                 : quality === "fair" ? "Fair"
-                : quality === "weak" ? "Poor" : "\u00A0";
-              const qualityColor = quality === "strong" ? "text-th-positive"
-                : quality === "good" ? "text-th-accent"
-                : quality === "fair" ? "text-th-warning"
-                : quality === "weak" ? "text-th-negative" : "text-transparent";
+                : quality === "weak" ? "Poor" : "";
+              const qualityColor = quality === "strong" ? "text-th-positive bg-th-positive-bg"
+                : quality === "good" ? "text-th-accent bg-th-accent-bg"
+                : quality === "fair" ? "text-th-warning bg-th-warning-bg"
+                : quality === "weak" ? "text-th-negative bg-th-negative-bg" : "";
               return (
                 <Tooltip key={m.key} content={m.tooltip} position="bottom" width="w-64">
-                  <div className={`flex flex-col justify-between p-3 rounded-lg bg-th-inset border border-th-border-light border-l-[3px] ${borderColor} h-[88px]`}>
-                    <span className="text-[10px] text-th-text-3 uppercase tracking-wider leading-tight">{m.label}</span>
-                    <p className={`text-xl font-bold ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
+                  <div className="flex flex-col items-center text-center p-4 rounded-xl bg-th-inset border border-th-border-light">
+                    <span className="text-[10px] text-th-text-3 uppercase tracking-wider">{m.label}</span>
+                    <p className={`text-2xl font-bold mt-2 mb-2 ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
                       {val != null ? m.format(val) : "N/A"}
                     </p>
-                    <span className={`text-[10px] font-semibold ${qualityColor}`}>{qualityLabel}</span>
+                    {qualityLabel ? (
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${qualityColor}`}>{qualityLabel}</span>
+                    ) : (
+                      <span className="text-[10px] py-0.5">&nbsp;</span>
+                    )}
                   </div>
                 </Tooltip>
               );

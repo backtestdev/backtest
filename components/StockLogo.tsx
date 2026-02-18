@@ -91,7 +91,7 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
           width={px}
           height={px}
           loading="lazy"
-          className="absolute inset-0 w-full h-full rounded-md object-contain bg-white"
+          className="absolute inset-0 w-full h-full rounded-md object-contain"
           onError={markFailed}
           onLoad={handleLoad}
         />

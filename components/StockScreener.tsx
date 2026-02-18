@@ -37,8 +37,6 @@ interface ScreenerData {
 
 type SortField = "backtest_score" | "market_cap" | "pe_ratio" | "roe" | "earnings_yield" | "earnings_growth" | "revenue_growth" | "dividend_yield";
 
-const POPULAR_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM"];
-
 const THEME_BUTTONS = [
   { id: "ai", label: "AI" },
   { id: "semiconductors", label: "Chips" },
@@ -46,6 +44,10 @@ const THEME_BUTTONS = [
   { id: "cybersecurity", label: "Cybersecurity" },
   { id: "cloud", label: "Cloud" },
   { id: "ev", label: "EVs" },
+  { id: "biotech", label: "Biotech" },
+  { id: "fintech", label: "Fintech" },
+  { id: "defense", label: "Defense" },
+  { id: "clean_energy", label: "Clean Energy" },
 ];
 
 function formatMarketCap(b: number): string {
@@ -373,22 +375,8 @@ export default function StockScreener() {
           )}
         </div>
 
-        {/* Popular stocks */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-xs text-th-text-4">Popular:</span>
-          {POPULAR_TICKERS.map((t) => (
-            <button
-              key={t}
-              onClick={() => navigateToStock(t)}
-              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-th-text-3 bg-th-surface border border-th-border rounded-lg hover:border-th-accent-border hover:text-th-accent transition-colors min-h-[44px] sm:min-h-0"
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
         {/* Theme buttons */}
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           <span className="text-xs text-th-text-4">Themes:</span>
           {THEME_BUTTONS.map((t) => (
             <button
@@ -444,20 +432,20 @@ export default function StockScreener() {
           <span className="text-xs text-th-text-4 hidden sm:inline">|</span>
 
           {([
-            { label: ">$10B", min: 10, title: "Market cap above $10B" },
-            { label: ">$100B", min: 100, title: "Market cap above $100B" },
-          ] as const).map((quick) => (
+            { label: "Russell 2000", min: 0.3, max: 4, title: "Small-cap stocks (~$300M – $4B)" },
+            { label: "S&P 500", min: 15, max: 0, title: "Large-cap stocks ($15B+)" },
+          ] as const).map((idx) => (
             <button
-              key={quick.label}
-              onClick={() => setCapFilter(quick.min, 0)}
-              title={quick.title}
+              key={idx.label}
+              onClick={() => setCapFilter(idx.min, idx.max)}
+              title={idx.title}
               className={`px-2.5 py-1.5 sm:py-1 text-xs rounded-lg border transition-all ${
-                isCapActive(quick.min, 0)
+                isCapActive(idx.min, idx.max)
                   ? "bg-th-accent-bg border-th-accent-border text-th-accent-text font-medium"
                   : "bg-th-surface border-th-border text-th-text-3 hover:border-th-border hover:text-th-text"
               }`}
             >
-              {quick.label}
+              {idx.label}
             </button>
           ))}
 
