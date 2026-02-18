@@ -78,7 +78,8 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
   }, [markFailed]);
 
   // Layered approach: letter avatar is always rendered as the base layer.
-  // Once the real logo loads successfully, we add bg-white so it looks clean.
+  // The sector-colored background shows through transparent areas of the logo,
+  // giving white/light logos natural contrast without needing a separate bg.
   // If FMP returns a bad image, imgFailed=true removes the img entirely.
   return (
     <span
@@ -94,7 +95,7 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
           width={px}
           height={px}
           loading="lazy"
-          className={`absolute inset-0 w-full h-full rounded-md object-contain${imgReady ? " bg-white dark:bg-gray-800 [filter:drop-shadow(0_0_0.5px_rgba(0,0,0,0.3))] dark:[filter:drop-shadow(0_0_0.5px_rgba(255,255,255,0.3))]" : ""}`}
+          className={`absolute inset-0 w-full h-full rounded-md object-contain p-px${imgReady ? "" : " opacity-0"}`}
           onError={markFailed}
           onLoad={handleLoad}
         />
