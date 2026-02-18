@@ -9,6 +9,7 @@ import {
   SignedOut,
 } from "@clerk/nextjs";
 import Navigation from "@/components/Navigation";
+import ThemeProvider from "@/components/ThemeProvider";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -30,29 +31,38 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
+      <html lang="en" suppressHydrationWarning>
+        <head>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `try{var t=localStorage.getItem("theme");var d=t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme:dark)").matches);if(d)document.documentElement.classList.add("dark")}catch(e){}`,
+            }}
+          />
+        </head>
         <body className={`${geistSans.variable} font-sans antialiased`}>
-          <nav className="relative flex justify-between items-center px-4 sm:px-6 py-3 border-b border-gray-100">
-            <Navigation />
-            <div className="flex items-center gap-2 sm:gap-3">
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                    Sign In
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button className="px-3 sm:px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                    Sign Up
-                  </button>
-                </SignUpButton>
-              </SignedOut>
-              <SignedIn>
-                <UserButton />
-              </SignedIn>
-            </div>
-          </nav>
-          {children}
+          <ThemeProvider>
+            <nav className="sticky top-0 z-50 relative flex justify-between items-center px-4 sm:px-6 py-3 border-b border-th-border-light bg-th-surface/95 backdrop-blur-sm shadow-sm">
+              <Navigation />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <SignedOut>
+                  <SignInButton mode="modal">
+                    <button className="px-3 sm:px-4 py-2 text-sm font-medium text-th-text-2 hover:text-th-text border border-th-border rounded-lg hover:bg-th-hover transition-colors">
+                      Sign In
+                    </button>
+                  </SignInButton>
+                  <SignUpButton mode="modal">
+                    <button className="px-3 sm:px-4 py-2 text-sm font-medium text-white bg-th-accent rounded-lg hover:bg-th-accent-hover transition-colors">
+                      Sign Up
+                    </button>
+                  </SignUpButton>
+                </SignedOut>
+                <SignedIn>
+                  <UserButton />
+                </SignedIn>
+              </div>
+            </nav>
+            {children}
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

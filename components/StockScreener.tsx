@@ -37,8 +37,6 @@ interface ScreenerData {
 
 type SortField = "backtest_score" | "market_cap" | "pe_ratio" | "roe" | "earnings_yield" | "earnings_growth" | "revenue_growth" | "dividend_yield";
 
-const POPULAR_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM"];
-
 const THEME_BUTTONS = [
   { id: "ai", label: "AI" },
   { id: "semiconductors", label: "Chips" },
@@ -46,6 +44,10 @@ const THEME_BUTTONS = [
   { id: "cybersecurity", label: "Cybersecurity" },
   { id: "cloud", label: "Cloud" },
   { id: "ev", label: "EVs" },
+  { id: "biotech", label: "Biotech" },
+  { id: "fintech", label: "Fintech" },
+  { id: "defense", label: "Defense" },
+  { id: "clean_energy", label: "Clean Energy" },
 ];
 
 function formatMarketCap(b: number): string {
@@ -65,14 +67,14 @@ function formatNum(v: number | null, decimals = 1): string {
 }
 
 function ScoreBar({ score }: { score: number }) {
-  const color = score >= 75 ? "bg-emerald-500" : score >= 50 ? "bg-blue-500" : score >= 25 ? "bg-amber-400" : "bg-red-400";
+  const color = score >= 75 ? "bg-th-positive-bar" : score >= 50 ? "bg-th-accent" : score >= 25 ? "bg-th-warning" : "bg-th-negative";
   return (
     <div className="flex items-center gap-2">
-      <div className="w-12 h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div className="w-12 h-2 bg-th-skeleton rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${score}%` }} />
       </div>
       <span className={`text-sm font-bold ${
-        score >= 75 ? "text-emerald-600" : score >= 50 ? "text-blue-600" : score >= 25 ? "text-amber-600" : "text-red-500"
+        score >= 75 ? "text-th-positive" : score >= 50 ? "text-th-accent" : score >= 25 ? "text-th-warning" : "text-th-negative"
       }`}>
         {score}
       </span>
@@ -259,12 +261,12 @@ export default function StockScreener() {
     <button
       onClick={() => handleSort(field)}
       className={`group/hdr relative font-medium text-xs uppercase tracking-wider transition-colors ${
-        sortField === field ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
+        sortField === field ? "text-th-accent" : "text-th-text-3 hover:text-th-text-2"
       } ${className}`}
     >
       {label}
       {sortField === field && (sortDir === "desc" ? " \u2193" : " \u2191")}
-      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
+      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-th-tooltip-bg rounded-md shadow-lg pointer-events-none text-left">
         {HEADER_TOOLTIPS[field]}
       </div>
     </button>
@@ -273,12 +275,12 @@ export default function StockScreener() {
   const totalPages = data ? Math.ceil(data.totalCount / data.perPage) : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-8 sm:py-12">
+    <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-6xl mx-auto">
         {/* Hero section */}
         <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">AI Stock Screener</h1>
-          <p className="mt-2 text-sm sm:text-base text-gray-400 max-w-xl mx-auto">
+          <h1 className="text-2xl sm:text-3xl font-bold text-th-text tracking-tight">AI Stock Screener</h1>
+          <p className="mt-2 text-sm sm:text-base text-th-text-3 max-w-xl mx-auto">
             Search any stock for AI-powered analysis, or browse all stocks ranked by our multi-factor Backtest Score.
           </p>
         </div>
@@ -286,7 +288,7 @@ export default function StockScreener() {
         {/* Search bar */}
         <div ref={searchRef} className="relative max-w-2xl mx-auto">
           <div className="relative">
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-th-text-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
             </svg>
             <input
@@ -294,27 +296,27 @@ export default function StockScreener() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by ticker, company, sector, or industry..."
-              className="w-full pl-12 pr-4 py-3 text-base bg-white border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all"
+              className="w-full pl-12 pr-4 py-3 text-base bg-th-surface border-2 border-th-border rounded-xl focus:outline-none focus:border-th-focus-border focus:ring-4 focus:ring-th-focus-ring transition-all"
             />
           </div>
 
           {/* Search dropdown */}
           {showDropdown && (searchResults.length > 0 || matchingSectors.length > 0 || matchingIndustries.length > 0) && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 overflow-hidden max-h-[400px] overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-th-surface rounded-xl border border-th-border shadow-lg z-20 overflow-hidden max-h-[400px] overflow-y-auto">
               {/* Matching sectors */}
               {matchingSectors.length > 0 && (
                 <div>
-                  <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Sectors</p>
+                  <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-th-text-3 uppercase tracking-wider">Sectors</p>
                   {matchingSectors.map((s) => (
                     <button
                       key={`sector-${s}`}
                       onClick={() => selectSectorFromSearch(s)}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-blue-50 transition-colors min-h-[40px]"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-th-accent-bg transition-colors min-h-[40px]"
                     >
-                      <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <svg className="w-4 h-4 text-th-text-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" />
                       </svg>
-                      <span className="text-sm text-gray-700">Filter by sector: <span className="font-medium">{s}</span></span>
+                      <span className="text-sm text-th-text-2">Filter by sector: <span className="font-medium">{s}</span></span>
                     </button>
                   ))}
                 </div>
@@ -323,17 +325,17 @@ export default function StockScreener() {
               {/* Matching industries */}
               {matchingIndustries.length > 0 && (
                 <div>
-                  <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Industries</p>
+                  <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-th-text-3 uppercase tracking-wider">Industries</p>
                   {matchingIndustries.map((ind) => (
                     <button
                       key={`ind-${ind}`}
                       onClick={() => selectIndustry(ind)}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-blue-50 transition-colors min-h-[40px]"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-th-accent-bg transition-colors min-h-[40px]"
                     >
-                      <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <svg className="w-4 h-4 text-th-text-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z" />
                       </svg>
-                      <span className="text-sm text-gray-700">Filter by industry: <span className="font-medium">{ind}</span></span>
+                      <span className="text-sm text-th-text-2">Filter by industry: <span className="font-medium">{ind}</span></span>
                     </button>
                   ))}
                 </div>
@@ -343,21 +345,21 @@ export default function StockScreener() {
               {searchResults.length > 0 && (
                 <div>
                   {(matchingSectors.length > 0 || matchingIndustries.length > 0) && (
-                    <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Stocks</p>
+                    <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-th-text-3 uppercase tracking-wider">Stocks</p>
                   )}
                   {searchResults.map((stock) => (
                     <button
                       key={stock.symbol}
                       onClick={() => navigateToStock(stock.symbol)}
-                      className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 min-h-[44px]"
+                      className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-th-hover transition-colors border-b border-th-border-light last:border-0 min-h-[44px]"
                     >
                       <div className="min-w-0 flex items-center gap-2">
                         <StockLogo ticker={stock.symbol} sector={stock.sector} />
-                        <span className="text-sm font-semibold text-gray-900">{stock.symbol}</span>
-                        <span className="text-xs text-gray-400 truncate hidden sm:inline">{stock.name}</span>
+                        <span className="text-sm font-semibold text-th-text">{stock.symbol}</span>
+                        <span className="text-xs text-th-text-3 truncate hidden sm:inline">{stock.name}</span>
                       </div>
                       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                        <span className="text-xs text-gray-400 hidden sm:inline">{stock.sector}</span>
+                        <span className="text-xs text-th-text-3 hidden sm:inline">{stock.sector}</span>
                         <ScoreBar score={stock.backtestScore} />
                       </div>
                     </button>
@@ -367,37 +369,22 @@ export default function StockScreener() {
             </div>
           )}
           {showDropdown && searchQuery.trim() && searchResults.length === 0 && matchingSectors.length === 0 && matchingIndustries.length === 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-20 px-4 py-3 text-sm text-gray-400">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-th-surface rounded-xl border border-th-border shadow-lg z-20 px-4 py-3 text-sm text-th-text-3">
               No results for &ldquo;{searchQuery}&rdquo;
             </div>
           )}
         </div>
 
-        {/* Popular stocks */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-xs text-gray-300">Popular:</span>
-          {POPULAR_TICKERS.map((t) => (
-            <button
-              key={t}
-              onClick={() => navigateToStock(t)}
-              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:text-blue-600 transition-colors min-h-[44px] sm:min-h-0"
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Theme buttons */}
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-xs text-gray-300">Themes:</span>
+        {/* Themes */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           {THEME_BUTTONS.map((t) => (
             <button
               key={t.id}
               onClick={() => toggleTheme(t.id)}
               className={`px-3 py-2 sm:py-1.5 text-xs font-medium rounded-lg border transition-all min-h-[44px] sm:min-h-0 ${
                 theme === t.id
-                  ? "bg-blue-600 border-blue-600 text-white"
-                  : "bg-white border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600"
+                  ? "bg-th-accent border-th-accent text-white"
+                  : "bg-th-surface border-th-border text-th-text-3 hover:border-th-accent-border hover:text-th-accent"
               }`}
             >
               {t.label}
@@ -405,89 +392,101 @@ export default function StockScreener() {
           ))}
         </div>
 
-        {/* Filters row */}
-        <div className="mt-5 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
-          <select
-            value={sector}
-            onChange={(e) => { setSector(e.target.value); setIndustry(""); setPage(1); }}
-            className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:border-blue-400"
-          >
-            <option value="">All sectors</option>
-            {sectors.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-
-          <span className="text-xs text-gray-300 hidden sm:inline">|</span>
-
-          {/* Market cap range presets */}
-          {([
-            { label: "Small", min: 0.3, max: 2, title: "$300M \u2013 $2B" },
-            { label: "Mid", min: 2, max: 10, title: "$2B \u2013 $10B" },
-            { label: "Large", min: 10, max: 200, title: "$10B \u2013 $200B" },
-            { label: "Mega", min: 200, max: 0, title: "$200B+" },
-          ] as const).map((preset) => (
-            <button
-              key={preset.label}
-              onClick={() => setCapFilter(preset.min, preset.max)}
-              title={preset.title}
-              className={`px-2.5 py-1.5 sm:py-1 text-xs rounded-lg border transition-all ${
-                isCapActive(preset.min, preset.max)
-                  ? "bg-blue-50 border-blue-200 text-blue-700 font-medium"
-                  : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
-              }`}
+        {/* Filters */}
+        <div className="mt-4 mb-4 bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4">
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+            {/* Sector dropdown */}
+            <select
+              value={sector}
+              onChange={(e) => { setSector(e.target.value); setIndustry(""); setPage(1); }}
+              className="px-3 py-1.5 text-xs bg-th-inset border border-th-border rounded-lg text-th-text-2 focus:outline-none focus:border-th-focus-border"
             >
-              {preset.label}
-            </button>
-          ))}
+              <option value="">All Sectors</option>
+              {sectors.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
 
-          <span className="text-xs text-gray-300 hidden sm:inline">|</span>
+            <span className="w-px h-4 bg-th-border hidden sm:block" />
 
-          {([
-            { label: ">$10B", min: 10, title: "Market cap above $10B" },
-            { label: ">$100B", min: 100, title: "Market cap above $100B" },
-          ] as const).map((quick) => (
-            <button
-              key={quick.label}
-              onClick={() => setCapFilter(quick.min, 0)}
-              title={quick.title}
-              className={`px-2.5 py-1.5 sm:py-1 text-xs rounded-lg border transition-all ${
-                isCapActive(quick.min, 0)
-                  ? "bg-blue-50 border-blue-200 text-blue-700 font-medium"
-                  : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
-              }`}
-            >
-              {quick.label}
-            </button>
-          ))}
+            {/* Market cap presets */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-th-text-4 uppercase tracking-wider hidden sm:inline">Cap:</span>
+              {([
+                { label: "Small", min: 0.3, max: 2, title: "$300M \u2013 $2B" },
+                { label: "Mid", min: 2, max: 10, title: "$2B \u2013 $10B" },
+                { label: "Large", min: 10, max: 200, title: "$10B \u2013 $200B" },
+                { label: "Mega", min: 200, max: 0, title: "$200B+" },
+              ] as const).map((preset) => (
+                <button
+                  key={preset.label}
+                  onClick={() => setCapFilter(preset.min, preset.max)}
+                  title={preset.title}
+                  className={`px-2.5 py-1.5 text-xs rounded-lg border transition-all ${
+                    isCapActive(preset.min, preset.max)
+                      ? "bg-th-accent-bg border-th-accent-border text-th-accent-text font-medium"
+                      : "bg-th-inset border-th-border text-th-text-3 hover:border-th-border hover:text-th-text"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
 
-          {/* Active filter badges */}
-          {industry && (
-            <span className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-lg">
-              {industry}
-              <button onClick={() => { setIndustry(""); setPage(1); }} className="ml-0.5 hover:text-blue-900">&times;</button>
-            </span>
-          )}
+            <span className="w-px h-4 bg-th-border hidden sm:block" />
 
-          {hasActiveFilters && (
-            <button
-              onClick={clearAllFilters}
-              className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              Clear all
-            </button>
-          )}
+            {/* Index presets */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-th-text-4 uppercase tracking-wider hidden sm:inline">Index:</span>
+              {([
+                { label: "Russell 2000", min: 0.3, max: 4, title: "Small-cap stocks (~$300M \u2013 $4B)" },
+                { label: "S&P 500", min: 15, max: 0, title: "Large-cap stocks ($15B+)" },
+              ] as const).map((idx) => (
+                <button
+                  key={idx.label}
+                  onClick={() => setCapFilter(idx.min, idx.max)}
+                  title={idx.title}
+                  className={`px-2.5 py-1.5 text-xs rounded-lg border transition-all ${
+                    isCapActive(idx.min, idx.max)
+                      ? "bg-th-accent-bg border-th-accent-border text-th-accent-text font-medium"
+                      : "bg-th-inset border-th-border text-th-text-3 hover:border-th-border hover:text-th-text"
+                  }`}
+                >
+                  {idx.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {data && (
-            <span className="text-xs text-gray-400 ml-auto">
-              {data.totalCount.toLocaleString()} stocks
-            </span>
+          {/* Active filters + count */}
+          {(hasActiveFilters || data) && (
+            <div className="flex items-center justify-center gap-2 mt-2.5 pt-2.5 border-t border-th-border-light">
+              {industry && (
+                <span className="flex items-center gap-1 px-2 py-0.5 text-xs bg-th-accent-bg border border-th-accent-border text-th-accent-text rounded-full">
+                  {industry}
+                  <button onClick={() => { setIndustry(""); setPage(1); }} className="ml-0.5 hover:text-th-accent-text">&times;</button>
+                </span>
+              )}
+              {hasActiveFilters && (
+                <button
+                  onClick={clearAllFilters}
+                  className="px-2 py-0.5 text-xs text-th-text-3 hover:text-th-text-2 transition-colors"
+                >
+                  Clear all
+                </button>
+              )}
+              {data && (
+                <span className="text-xs text-th-text-3 ml-auto">
+                  {data.totalCount.toLocaleString()} stocks
+                </span>
+              )}
+            </div>
           )}
         </div>
 
         {/* Error state */}
         {error && (
-          <div className="mb-4 flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
+          <div className="mb-4 flex items-start gap-2 text-sm text-th-negative bg-th-negative-bg border border-th-negative-border rounded-lg px-4 py-3">
             <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
             </svg>
@@ -496,11 +495,11 @@ export default function StockScreener() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+        <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto shadow-sm">
           <div className="min-w-[600px]">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center">
-            <div className="col-span-3 text-xs font-medium text-gray-400 uppercase tracking-wider">
+          <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-th-border-light items-center">
+            <div className="col-span-3 text-xs font-medium text-th-text-3 uppercase tracking-wider">
               Stock
             </div>
             <div className="col-span-2">
@@ -521,13 +520,13 @@ export default function StockScreener() {
             <div className="col-span-1 text-right hidden md:block">
               <SortHeader field="roe" label="ROE" className="text-right" />
             </div>
-            <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:block group/hdr relative cursor-help">
+            <div className="col-span-1 text-right text-xs font-medium text-th-text-3 uppercase tracking-wider hidden md:block group/hdr relative cursor-help">
               D/E
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-gray-800 rounded-md shadow-lg pointer-events-none text-left">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/hdr:block z-10 w-48 px-2 py-1 text-[10px] font-normal normal-case tracking-normal text-white bg-th-tooltip-bg rounded-md shadow-lg pointer-events-none text-left">
                 {HEADER_TOOLTIPS.de}
               </div>
             </div>
-            <div className="col-span-1 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+            <div className="col-span-1 text-right text-xs font-medium text-th-text-3 uppercase tracking-wider">
               Sector
             </div>
           </div>
@@ -536,7 +535,7 @@ export default function StockScreener() {
           {loading && (
             <div className="px-4 py-8">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-12 bg-gray-50 rounded animate-pulse mb-2" />
+                <div key={i} className="h-12 bg-th-inset rounded animate-pulse mb-2" />
               ))}
             </div>
           )}
@@ -546,38 +545,38 @@ export default function StockScreener() {
             <button
               key={stock.symbol}
               onClick={() => navigateToStock(stock.symbol)}
-              className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-0 items-center hover:bg-blue-50/40 transition-colors text-left cursor-pointer min-h-[44px]"
+              className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-th-border-light last:border-0 items-center hover:bg-th-accent-bg/40 transition-colors text-left cursor-pointer min-h-[44px]"
             >
               <div className="col-span-3 min-w-0 flex items-center gap-2">
                 <StockLogo ticker={stock.symbol} sector={stock.sector} />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{stock.symbol}</p>
-                  <p className="text-xs text-gray-400 truncate">{stock.name}</p>
+                  <p className="text-sm font-semibold text-th-text truncate">{stock.symbol}</p>
+                  <p className="text-xs text-th-text-3 truncate">{stock.name}</p>
                 </div>
               </div>
               <div className="col-span-2">
                 <ScoreBar score={stock.backtestScore} />
               </div>
-              <div className="col-span-1 text-right text-sm text-gray-600">
+              <div className="col-span-1 text-right text-sm text-th-text-2">
                 {formatMarketCap(stock.marketCap)}
               </div>
-              <div className="col-span-1 text-right text-sm text-gray-600">
+              <div className="col-span-1 text-right text-sm text-th-text-2">
                 {formatPct(stock.earningsYield)}
               </div>
-              <div className="col-span-1 text-right text-sm text-gray-600">
+              <div className="col-span-1 text-right text-sm text-th-text-2">
                 {formatNum(stock.peRatio)}
               </div>
-              <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
+              <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
                 {formatPct(stock.earningsGrowth)}
               </div>
-              <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
+              <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
                 {formatPct(stock.roe)}
               </div>
-              <div className="col-span-1 text-right text-sm text-gray-600 hidden md:block">
+              <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
                 {formatNum(stock.debtToEquity)}
               </div>
               <div className="col-span-1 text-right">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
                   {stock.sector}
                 </span>
               </div>
@@ -592,17 +591,17 @@ export default function StockScreener() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-4 py-2.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
+              className="px-4 py-2.5 sm:px-3 sm:py-1.5 text-sm text-th-text-2 bg-th-surface border border-th-border rounded-lg hover:bg-th-hover disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
             >
               Previous
             </button>
-            <span className="text-sm text-gray-400">
+            <span className="text-sm text-th-text-3">
               Page {page} of {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="px-4 py-2.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
+              className="px-4 py-2.5 sm:px-3 sm:py-1.5 text-sm text-th-text-2 bg-th-surface border border-th-border rounded-lg hover:bg-th-hover disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
             >
               Next
             </button>
@@ -611,7 +610,7 @@ export default function StockScreener() {
 
         {/* Score methodology + disclaimer */}
         <details className="mt-6 group">
-          <summary className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
+          <summary className="flex items-center gap-2 text-xs text-th-text-3 cursor-pointer hover:text-th-text-2 transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
             </svg>
@@ -620,13 +619,13 @@ export default function StockScreener() {
               <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
             </svg>
           </summary>
-          <div className="mt-2 text-xs text-gray-500 leading-relaxed pl-5.5 space-y-1">
+          <div className="mt-2 text-xs text-th-text-3 leading-relaxed pl-5.5 space-y-1">
             <p>Each stock is ranked on 12 factors with heavy emphasis on <strong>earnings yield</strong> (net profit / market cap), <strong>earnings consistency</strong> (consecutive years of growing net income), and <strong>earnings growth</strong>. Additional factors include P/E, EV/EBITDA, ROE, ROIC, profit margin, revenue growth, FCF yield, leverage (D/E), and a <strong>size confidence</strong> adjustment (log market cap) that adds healthy skepticism for smaller, less-proven companies.</p>
             <p>Percentile ranks are weighted and combined into a composite score from 1 (weakest) to 100 (strongest). The score reflects today&apos;s metrics &mdash; it&apos;s a static snapshot, not a forward prediction.</p>
           </div>
         </details>
 
-        <p className="text-center mt-4 text-[10px] text-gray-300">
+        <p className="text-center mt-4 text-[10px] text-th-text-4">
           AI-generated analysis uses current data. Not financial advice. Always do your own research.
         </p>
       </div>

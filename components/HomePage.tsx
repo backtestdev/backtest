@@ -142,13 +142,17 @@ export default function HomePage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50/50">
+    <div className="min-h-screen bg-th-bg">
       {/* Header */}
       <header className="pt-8 sm:pt-12 md:pt-16 pb-4 text-center px-4">
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 tracking-tight">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-th-accent-bg border border-th-accent-border rounded-full text-xs font-medium text-th-accent-text mb-4">
+          <span className="w-1.5 h-1.5 rounded-full bg-th-accent animate-pulse" />
+          AI-Powered Strategy Testing
+        </div>
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-th-text tracking-tight">
           Backtest
         </h1>
-        <p className="mt-3 text-base sm:text-lg text-gray-400 max-w-lg mx-auto">
+        <p className="mt-3 text-base sm:text-lg text-th-text-3 max-w-lg mx-auto leading-relaxed">
           Test any stock market strategy using plain English.
           <br className="hidden sm:block" />
           <span className="sm:hidden"> </span>
@@ -171,9 +175,9 @@ export default function HomePage() {
         {/* Error message */}
         {error && (
           <div className="max-w-3xl mx-auto mt-8">
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-6 py-4 text-center">
-              <p className="text-amber-800 font-medium">{error}</p>
-              <p className="text-amber-600 text-sm mt-1">
+            <div className="bg-th-warning-bg border border-th-warning-border rounded-2xl px-6 py-4 text-center">
+              <p className="text-th-warning-text font-medium">{error}</p>
+              <p className="text-th-warning text-sm mt-1">
                 Try a different strategy or adjust your criteria.
               </p>
             </div>
@@ -198,10 +202,10 @@ export default function HomePage() {
 
         {/* Footer */}
         <footer className="max-w-3xl mx-auto mt-20 pb-12 text-center">
-          <p className="text-xs text-gray-300">
+          <p className="text-xs text-th-text-4">
             For educational purposes only. Not financial advice. Past performance
             does not guarantee future results
-            <a href="/admin/stocks" className="text-gray-300 hover:text-gray-400 transition-colors">.</a>
+            <a href="/admin/stocks" className="text-th-text-4 hover:text-th-text-3 transition-colors">.</a>
           </p>
         </footer>
       </main>
