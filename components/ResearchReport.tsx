@@ -741,10 +741,7 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
 
-  const firstPrice = prices[0];
-  const lastPrice = prices[prices.length - 1];
-  const isUp = lastPrice >= firstPrice;
-  const lineColor = isUp ? "var(--positive)" : "var(--negative)";
+  const lineColor = "var(--accent)";
 
   const points = data.map((d, i) => ({
     x: pad.left + (i / (data.length - 1)) * chartW,
@@ -780,8 +777,8 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
     >
       <defs>
         <linearGradient id="rrPriceGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={isUp ? "var(--positive)" : "var(--negative)"} stopOpacity="0.15" />
-          <stop offset="100%" stopColor={isUp ? "var(--positive)" : "var(--negative)"} stopOpacity="0.01" />
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
         </linearGradient>
       </defs>
 

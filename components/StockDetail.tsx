@@ -696,7 +696,7 @@ function TrendLineChart({ data, dataKey, color, negativeColor, formatValue }: {
       )}
 
       {/* Fill area */}
-      <path d={fillPath} fill={isUp ? `${lineColor}15` : `${negativeColor || lineColor}12`} />
+      <path d={fillPath} fill={isUp ? lineColor : (negativeColor || lineColor)} fillOpacity={isUp ? 0.08 : 0.06} />
 
       {/* Line */}
       <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -749,10 +749,7 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
 
-  const firstPrice = prices[0];
-  const lastPrice = prices[prices.length - 1];
-  const isUp = lastPrice >= firstPrice;
-  const lineColor = isUp ? "var(--positive)" : "var(--negative)";
+  const lineColor = "var(--accent)";
 
   const points = data.map((d, i) => ({
     x: pad.left + (i / (data.length - 1)) * chartW,
@@ -788,8 +785,8 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
     >
       <defs>
         <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={isUp ? "var(--positive)" : "var(--negative)"} stopOpacity="0.15" />
-          <stop offset="100%" stopColor={isUp ? "var(--positive)" : "var(--negative)"} stopOpacity="0.01" />
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
         </linearGradient>
       </defs>
 

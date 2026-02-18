@@ -31,10 +31,15 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
   const isTickerMode = !!(result.parsedParams?.tickers && result.parsedParams.tickers.length > 0);
-  const [stocksExpanded, setStocksExpanded] = useState(false);
+  const [stocksExpanded, setStocksExpanded] = useState(true);
+  const [stockPage, setStockPage] = useState(1);
+  const STOCKS_PER_PAGE = 50;
 
   // Score data for matched stocks
   const [stockScores, setStockScores] = useState<Map<string, { score: number; sector: string; name: string }>>(new Map());
+
+  // Reset page when results change
+  useEffect(() => { setStockPage(1); }, [result.matchedStocks]);
 
   useEffect(() => {
     if (result.matchedStocks.length === 0) return;
@@ -231,35 +236,62 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
-        {stocksExpanded && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            {sortedMatchedStocks.map((stock) => {
-              const ticker = stock.split(" ")[0];
-              const scoreData = stockScores.get(ticker);
-              return (
-                <Link
-                  key={stock}
-                  href={`/research/${ticker}`}
-                  title={scoreData?.name || ticker}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-th-text-2 bg-th-inset rounded-lg border border-th-border-light hover:border-th-accent-border hover:bg-th-accent-bg transition-colors"
-                >
-                  <StockLogo ticker={ticker} sector={scoreData?.sector} />
-                  <span className="font-medium">{ticker}</span>
-                  {scoreData && (
-                    <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
-                      scoreData.score >= 75 ? "bg-th-positive-bg text-th-positive" :
-                      scoreData.score >= 50 ? "bg-th-accent-bg text-th-accent" :
-                      scoreData.score >= 25 ? "bg-th-warning-bg text-th-warning" :
-                      "bg-th-negative-bg text-th-negative"
-                    }`}>
-                      {scoreData.score}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        )}
+        {stocksExpanded && (() => {
+          const totalStockPages = Math.ceil(sortedMatchedStocks.length / STOCKS_PER_PAGE);
+          const pagedStocks = sortedMatchedStocks.slice((stockPage - 1) * STOCKS_PER_PAGE, stockPage * STOCKS_PER_PAGE);
+          return (
+            <>
+              <div className="flex flex-wrap gap-2 mt-4">
+                {pagedStocks.map((stock) => {
+                  const ticker = stock.split(" ")[0];
+                  const scoreData = stockScores.get(ticker);
+                  return (
+                    <Link
+                      key={stock}
+                      href={`/research/${ticker}`}
+                      title={scoreData?.name || ticker}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-th-text-2 bg-th-inset rounded-lg border border-th-border-light hover:border-th-accent-border hover:bg-th-accent-bg transition-colors"
+                    >
+                      <StockLogo ticker={ticker} sector={scoreData?.sector} />
+                      <span className="font-medium">{ticker}</span>
+                      {scoreData && (
+                        <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
+                          scoreData.score >= 75 ? "bg-th-positive-bg text-th-positive" :
+                          scoreData.score >= 50 ? "bg-th-accent-bg text-th-accent" :
+                          scoreData.score >= 25 ? "bg-th-warning-bg text-th-warning" :
+                          "bg-th-negative-bg text-th-negative"
+                        }`}>
+                          {scoreData.score}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+              {totalStockPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-4 pt-3 border-t border-th-border-light">
+                  <button
+                    onClick={() => setStockPage((p) => Math.max(1, p - 1))}
+                    disabled={stockPage === 1}
+                    className="px-3 py-1.5 text-xs font-medium text-th-text-2 bg-th-inset border border-th-border rounded-lg hover:bg-th-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-th-text-3">
+                    {(stockPage - 1) * STOCKS_PER_PAGE + 1}&ndash;{Math.min(stockPage * STOCKS_PER_PAGE, sortedMatchedStocks.length)} of {sortedMatchedStocks.length}
+                  </span>
+                  <button
+                    onClick={() => setStockPage((p) => Math.min(totalStockPages, p + 1))}
+                    disabled={stockPage === totalStockPages}
+                    className="px-3 py-1.5 text-xs font-medium text-th-text-2 bg-th-inset border border-th-border rounded-lg hover:bg-th-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Survivorship bias note */}
