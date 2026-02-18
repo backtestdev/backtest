@@ -52,6 +52,7 @@ interface StockLogoProps {
 
 export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProps) {
   const [imgFailed, setImgFailed] = useState(() => failedTickers.has(ticker));
+  const [imgReady, setImgReady] = useState(false);
 
   const colors = (sector && SECTOR_COLORS[sector]) ||
     FALLBACK_COLORS[hashCode(ticker) % FALLBACK_COLORS.length];
@@ -71,12 +72,14 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
     const img = e.currentTarget;
     if (img.naturalWidth <= 1 || img.naturalHeight <= 1) {
       markFailed();
+    } else {
+      setImgReady(true);
     }
   }, [markFailed]);
 
   // Layered approach: letter avatar is always rendered as the base layer.
-  // The real logo overlays it. If FMP returns a transparent/empty image,
-  // the letter shows through instead of a blank white box.
+  // Once the real logo loads successfully, we add bg-white so it looks clean.
+  // If FMP returns a bad image, imgFailed=true removes the img entirely.
   return (
     <span
       className={`inline-flex items-center justify-center rounded-md font-bold flex-shrink-0 relative overflow-hidden ${dims} ${colors.bg} ${colors.text}`}
@@ -91,7 +94,7 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
           width={px}
           height={px}
           loading="lazy"
-          className="absolute inset-0 w-full h-full rounded-md object-contain"
+          className={`absolute inset-0 w-full h-full rounded-md object-contain${imgReady ? " bg-white" : ""}`}
           onError={markFailed}
           onLoad={handleLoad}
         />

@@ -375,9 +375,8 @@ export default function StockScreener() {
           )}
         </div>
 
-        {/* Theme buttons */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-xs text-th-text-4">Themes:</span>
+        {/* Themes */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           {THEME_BUTTONS.map((t) => (
             <button
               key={t.id}
@@ -393,83 +392,95 @@ export default function StockScreener() {
           ))}
         </div>
 
-        {/* Filters row */}
-        <div className="mt-5 mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
-          <select
-            value={sector}
-            onChange={(e) => { setSector(e.target.value); setIndustry(""); setPage(1); }}
-            className="px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg text-th-text-2 focus:outline-none focus:border-th-focus-border"
-          >
-            <option value="">All sectors</option>
-            {sectors.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-
-          <span className="text-xs text-th-text-4 hidden sm:inline">|</span>
-
-          {/* Market cap range presets */}
-          {([
-            { label: "Small", min: 0.3, max: 2, title: "$300M \u2013 $2B" },
-            { label: "Mid", min: 2, max: 10, title: "$2B \u2013 $10B" },
-            { label: "Large", min: 10, max: 200, title: "$10B \u2013 $200B" },
-            { label: "Mega", min: 200, max: 0, title: "$200B+" },
-          ] as const).map((preset) => (
-            <button
-              key={preset.label}
-              onClick={() => setCapFilter(preset.min, preset.max)}
-              title={preset.title}
-              className={`px-2.5 py-1.5 sm:py-1 text-xs rounded-lg border transition-all ${
-                isCapActive(preset.min, preset.max)
-                  ? "bg-th-accent-bg border-th-accent-border text-th-accent-text font-medium"
-                  : "bg-th-surface border-th-border text-th-text-3 hover:border-th-border hover:text-th-text"
-              }`}
+        {/* Filters */}
+        <div className="mt-4 mb-4 bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4">
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+            {/* Sector dropdown */}
+            <select
+              value={sector}
+              onChange={(e) => { setSector(e.target.value); setIndustry(""); setPage(1); }}
+              className="px-3 py-1.5 text-xs bg-th-inset border border-th-border rounded-lg text-th-text-2 focus:outline-none focus:border-th-focus-border"
             >
-              {preset.label}
-            </button>
-          ))}
+              <option value="">All Sectors</option>
+              {sectors.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
 
-          <span className="text-xs text-th-text-4 hidden sm:inline">|</span>
+            <span className="w-px h-4 bg-th-border hidden sm:block" />
 
-          {([
-            { label: "Russell 2000", min: 0.3, max: 4, title: "Small-cap stocks (~$300M – $4B)" },
-            { label: "S&P 500", min: 15, max: 0, title: "Large-cap stocks ($15B+)" },
-          ] as const).map((idx) => (
-            <button
-              key={idx.label}
-              onClick={() => setCapFilter(idx.min, idx.max)}
-              title={idx.title}
-              className={`px-2.5 py-1.5 sm:py-1 text-xs rounded-lg border transition-all ${
-                isCapActive(idx.min, idx.max)
-                  ? "bg-th-accent-bg border-th-accent-border text-th-accent-text font-medium"
-                  : "bg-th-surface border-th-border text-th-text-3 hover:border-th-border hover:text-th-text"
-              }`}
-            >
-              {idx.label}
-            </button>
-          ))}
+            {/* Market cap presets */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-th-text-4 uppercase tracking-wider hidden sm:inline">Cap:</span>
+              {([
+                { label: "Small", min: 0.3, max: 2, title: "$300M \u2013 $2B" },
+                { label: "Mid", min: 2, max: 10, title: "$2B \u2013 $10B" },
+                { label: "Large", min: 10, max: 200, title: "$10B \u2013 $200B" },
+                { label: "Mega", min: 200, max: 0, title: "$200B+" },
+              ] as const).map((preset) => (
+                <button
+                  key={preset.label}
+                  onClick={() => setCapFilter(preset.min, preset.max)}
+                  title={preset.title}
+                  className={`px-2.5 py-1.5 text-xs rounded-lg border transition-all ${
+                    isCapActive(preset.min, preset.max)
+                      ? "bg-th-accent-bg border-th-accent-border text-th-accent-text font-medium"
+                      : "bg-th-inset border-th-border text-th-text-3 hover:border-th-border hover:text-th-text"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
 
-          {/* Active filter badges */}
-          {industry && (
-            <span className="flex items-center gap-1 px-2 py-1 text-xs bg-th-accent-bg border border-th-accent-border text-th-accent-text rounded-lg">
-              {industry}
-              <button onClick={() => { setIndustry(""); setPage(1); }} className="ml-0.5 hover:text-th-accent-text">&times;</button>
-            </span>
-          )}
+            <span className="w-px h-4 bg-th-border hidden sm:block" />
 
-          {hasActiveFilters && (
-            <button
-              onClick={clearAllFilters}
-              className="px-2 py-1 text-xs text-th-text-3 hover:text-th-text-2 transition-colors"
-            >
-              Clear all
-            </button>
-          )}
+            {/* Index presets */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-th-text-4 uppercase tracking-wider hidden sm:inline">Index:</span>
+              {([
+                { label: "Russell 2000", min: 0.3, max: 4, title: "Small-cap stocks (~$300M \u2013 $4B)" },
+                { label: "S&P 500", min: 15, max: 0, title: "Large-cap stocks ($15B+)" },
+              ] as const).map((idx) => (
+                <button
+                  key={idx.label}
+                  onClick={() => setCapFilter(idx.min, idx.max)}
+                  title={idx.title}
+                  className={`px-2.5 py-1.5 text-xs rounded-lg border transition-all ${
+                    isCapActive(idx.min, idx.max)
+                      ? "bg-th-accent-bg border-th-accent-border text-th-accent-text font-medium"
+                      : "bg-th-inset border-th-border text-th-text-3 hover:border-th-border hover:text-th-text"
+                  }`}
+                >
+                  {idx.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {data && (
-            <span className="text-xs text-th-text-3 ml-auto">
-              {data.totalCount.toLocaleString()} stocks
-            </span>
+          {/* Active filters + count */}
+          {(hasActiveFilters || data) && (
+            <div className="flex items-center justify-center gap-2 mt-2.5 pt-2.5 border-t border-th-border-light">
+              {industry && (
+                <span className="flex items-center gap-1 px-2 py-0.5 text-xs bg-th-accent-bg border border-th-accent-border text-th-accent-text rounded-full">
+                  {industry}
+                  <button onClick={() => { setIndustry(""); setPage(1); }} className="ml-0.5 hover:text-th-accent-text">&times;</button>
+                </span>
+              )}
+              {hasActiveFilters && (
+                <button
+                  onClick={clearAllFilters}
+                  className="px-2 py-0.5 text-xs text-th-text-3 hover:text-th-text-2 transition-colors"
+                >
+                  Clear all
+                </button>
+              )}
+              {data && (
+                <span className="text-xs text-th-text-3 ml-auto">
+                  {data.totalCount.toLocaleString()} stocks
+                </span>
+              )}
+            </div>
           )}
         </div>
 
