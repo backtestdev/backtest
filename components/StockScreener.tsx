@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import StockLogo from "./StockLogo";
+import LoginGate from "./LoginGate";
 
 interface Stock {
   symbol: string;
@@ -95,6 +97,8 @@ const HEADER_TOOLTIPS: Record<string, string> = {
 };
 
 export default function StockScreener() {
+  const { isSignedIn } = useUser();
+  const isGuest = !isSignedIn;
   const router = useRouter();
   const [data, setData] = useState<ScreenerData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -541,52 +545,86 @@ export default function StockScreener() {
           )}
 
           {/* Rows */}
-          {!loading && data?.stocks?.map((stock) => (
-            <button
-              key={stock.symbol}
-              onClick={() => navigateToStock(stock.symbol)}
-              className="w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-th-border-light last:border-0 items-center hover:bg-th-accent-bg/40 transition-colors text-left cursor-pointer min-h-[44px]"
-            >
-              <div className="col-span-3 min-w-0 flex items-center gap-2">
-                <StockLogo ticker={stock.symbol} sector={stock.sector} />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-th-text truncate">{stock.symbol}</p>
-                  <p className="text-xs text-th-text-3 truncate">{stock.name}</p>
+          {!loading && data?.stocks && (() => {
+            const GUEST_VISIBLE_ROWS = 3;
+            const visibleStocks = isGuest ? data.stocks.slice(0, GUEST_VISIBLE_ROWS) : data.stocks;
+            const hiddenStocks = isGuest ? data.stocks.slice(GUEST_VISIBLE_ROWS) : [];
+
+            const StockRow = ({ stock, blurScore }: { stock: Stock; blurScore?: boolean }) => (
+              <button
+                key={stock.symbol}
+                onClick={() => !isGuest && navigateToStock(stock.symbol)}
+                className={`w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-th-border-light last:border-0 items-center transition-colors text-left min-h-[44px] ${
+                  isGuest ? "cursor-default" : "hover:bg-th-accent-bg/40 cursor-pointer"
+                }`}
+              >
+                <div className="col-span-3 min-w-0 flex items-center gap-2">
+                  <StockLogo ticker={stock.symbol} sector={stock.sector} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-th-text truncate">{stock.symbol}</p>
+                    <p className="text-xs text-th-text-3 truncate">{stock.name}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="col-span-2">
-                <ScoreBar score={stock.backtestScore} />
-              </div>
-              <div className="col-span-1 text-right text-sm text-th-text-2">
-                {formatMarketCap(stock.marketCap)}
-              </div>
-              <div className="col-span-1 text-right text-sm text-th-text-2">
-                {formatPct(stock.earningsYield)}
-              </div>
-              <div className="col-span-1 text-right text-sm text-th-text-2">
-                {formatNum(stock.peRatio)}
-              </div>
-              <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
-                {formatPct(stock.earningsGrowth)}
-              </div>
-              <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
-                {formatPct(stock.roe)}
-              </div>
-              <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
-                {formatNum(stock.debtToEquity)}
-              </div>
-              <div className="col-span-1 text-right">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
-                  {stock.sector}
-                </span>
-              </div>
-            </button>
-          ))}
+                <div className="col-span-2">
+                  {blurScore ? (
+                    <div className="blur-[5px] select-none pointer-events-none">
+                      <ScoreBar score={stock.backtestScore} />
+                    </div>
+                  ) : (
+                    <ScoreBar score={stock.backtestScore} />
+                  )}
+                </div>
+                <div className="col-span-1 text-right text-sm text-th-text-2">
+                  {formatMarketCap(stock.marketCap)}
+                </div>
+                <div className="col-span-1 text-right text-sm text-th-text-2">
+                  {formatPct(stock.earningsYield)}
+                </div>
+                <div className="col-span-1 text-right text-sm text-th-text-2">
+                  {formatNum(stock.peRatio)}
+                </div>
+                <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
+                  {formatPct(stock.earningsGrowth)}
+                </div>
+                <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
+                  {formatPct(stock.roe)}
+                </div>
+                <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
+                  {formatNum(stock.debtToEquity)}
+                </div>
+                <div className="col-span-1 text-right">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
+                    {stock.sector}
+                  </span>
+                </div>
+              </button>
+            );
+
+            return (
+              <>
+                {visibleStocks.map((stock) => (
+                  <StockRow key={stock.symbol} stock={stock} blurScore={isGuest} />
+                ))}
+                {isGuest && hiddenStocks.length > 0 && (
+                  <LoginGate
+                    locked={true}
+                    message="Sign up to view all stocks"
+                    subMessage={`${data.totalCount.toLocaleString()} stocks with Backtest Scores, metrics, and AI analysis`}
+                    blur="heavy"
+                  >
+                    {hiddenStocks.slice(0, 8).map((stock) => (
+                      <StockRow key={stock.symbol} stock={stock} />
+                    ))}
+                  </LoginGate>
+                )}
+              </>
+            );
+          })()}
           </div>
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {!isGuest && totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 mt-6">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}

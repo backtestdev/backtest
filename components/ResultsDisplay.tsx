@@ -7,13 +7,17 @@ import { BacktestResult, StructuredParameters } from "@/lib/types";
 import ResultsChart from "./ResultsChart";
 import StrategyInspector from "./StrategyInspector";
 import StockLogo from "./StockLogo";
+import LoginGate from "./LoginGate";
 
 interface ResultsDisplayProps {
   result: BacktestResult;
   onAddToLeaderboard: (name: string) => Promise<{ ok: boolean; error?: string }>;
   onUpdateParams: (params: StructuredParameters) => void;
   isUpdating: boolean;
+  isGuest?: boolean;
 }
+
+const GUEST_VISIBLE_STOCKS = 5;
 
 const PERIOD_YEARS: Record<string, number> = {
   "1yr": 1,
@@ -22,7 +26,7 @@ const PERIOD_YEARS: Record<string, number> = {
   "20yr": 20,
 };
 
-export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdateParams, isUpdating }: ResultsDisplayProps) {
+export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdateParams, isUpdating, isGuest }: ResultsDisplayProps) {
   const { isSignedIn } = useUser();
   const [showLeaderboardPrompt, setShowLeaderboardPrompt] = useState(false);
   const [leaderboardName, setLeaderboardName] = useState("");
@@ -239,10 +243,12 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         {stocksExpanded && (() => {
           const totalStockPages = Math.ceil(sortedMatchedStocks.length / STOCKS_PER_PAGE);
           const pagedStocks = sortedMatchedStocks.slice((stockPage - 1) * STOCKS_PER_PAGE, stockPage * STOCKS_PER_PAGE);
+          const visibleStocks = isGuest ? pagedStocks.slice(0, GUEST_VISIBLE_STOCKS) : pagedStocks;
+          const hiddenStocks = isGuest ? pagedStocks.slice(GUEST_VISIBLE_STOCKS) : [];
           return (
             <>
               <div className="flex flex-wrap gap-2 mt-4">
-                {pagedStocks.map((stock) => {
+                {visibleStocks.map((stock) => {
                   const ticker = stock.split(" ")[0];
                   const scoreData = stockScores.get(ticker);
                   return (
@@ -254,7 +260,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
                     >
                       <StockLogo ticker={ticker} sector={scoreData?.sector} />
                       <span className="font-medium">{ticker}</span>
-                      {scoreData && (
+                      {scoreData && !isGuest && (
                         <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
                           scoreData.score >= 75 ? "bg-th-positive-bg text-th-positive" :
                           scoreData.score >= 50 ? "bg-th-accent-bg text-th-accent" :
@@ -268,7 +274,33 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
                   );
                 })}
               </div>
-              {totalStockPages > 1 && (
+              {/* Blurred remaining stocks for guests */}
+              {isGuest && hiddenStocks.length > 0 && (
+                <LoginGate
+                  locked={true}
+                  message="Sign up to see all matched stocks"
+                  subMessage={`${sortedMatchedStocks.length - GUEST_VISIBLE_STOCKS} more stocks hidden`}
+                  blur="medium"
+                  className="mt-2"
+                >
+                  <div className="flex flex-wrap gap-2">
+                    {hiddenStocks.map((stock) => {
+                      const ticker = stock.split(" ")[0];
+                      const scoreData = stockScores.get(ticker);
+                      return (
+                        <span
+                          key={stock}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-th-text-2 bg-th-inset rounded-lg border border-th-border-light"
+                        >
+                          <StockLogo ticker={ticker} sector={scoreData?.sector} />
+                          <span className="font-medium">{ticker}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </LoginGate>
+              )}
+              {!isGuest && totalStockPages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-4 pt-3 border-t border-th-border-light">
                   <button
                     onClick={() => setStockPage((p) => Math.max(1, p - 1))}
