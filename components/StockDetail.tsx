@@ -178,11 +178,11 @@ function formatCurrency(val: number | null): string {
 // ── Recommendation config ────────────────────────────────────────────
 
 const RECOMMENDATION_CONFIG: Record<string, { label: string; angle: number }> = {
-  STRONG_BUY:  { label: "Strong Buy",  angle: 162 },
-  BUY:         { label: "Buy",         angle: 135 },
+  STRONG_BUY:  { label: "Strong Buy",  angle: 172 },
+  BUY:         { label: "Buy",         angle: 140 },
   HOLD:        { label: "Hold",        angle: 90 },
-  SELL:        { label: "Sell",        angle: 45 },
-  STRONG_SELL: { label: "Strong Sell", angle: 18 },
+  SELL:        { label: "Sell",        angle: 40 },
+  STRONG_SELL: { label: "Strong Sell", angle: 8 },
 };
 
 // ── Main component ───────────────────────────────────────────────────
@@ -319,7 +319,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
                   )}
                 </div>
                 <p className="text-th-text-3 mt-0.5">{data.companyName}</p>
-                <div className="flex items-center gap-3 mt-1 text-xs text-th-text-3 flex-wrap">
+                <div className="flex items-center gap-3 mt-1.5 text-sm text-th-text-3 flex-wrap">
                   {f.sector && (
                     <Link href={`/screener?sector=${encodeURIComponent(f.sector)}`} className="hover:text-th-accent transition-colors">
                       {f.sector}
@@ -327,15 +327,15 @@ export default function StockDetail({ ticker }: { ticker: string }) {
                   )}
                   {f.industry && (
                     <>
-                      <span className="text-th-text-4">|</span>
+                      <span className="text-th-text-4">·</span>
                       <Link href={`/screener?industry=${encodeURIComponent(f.industry)}`} className="hover:text-th-accent transition-colors">
                         {f.industry}
                       </Link>
                     </>
                   )}
-                  {f.exchange && <><span className="text-th-text-4">|</span><span>{f.exchange}</span></>}
+                  {f.exchange && <><span className="text-th-text-4">·</span><span>{f.exchange}</span></>}
                   {f.marketCap != null && (
-                    <><span className="text-th-text-4">|</span><span>{formatCurrency(f.marketCap)}</span></>
+                    <><span className="text-th-text-4">·</span><span className="font-medium">{formatCurrency(f.marketCap)}</span></>
                   )}
                 </div>
               </div>
@@ -365,14 +365,15 @@ export default function StockDetail({ ticker }: { ticker: string }) {
             )}
           </div>
 
-          {/* Executive Summary */}
+          {/* Executive Summary + Thesis */}
           {report && (
             <div className="mt-4 pt-4 border-t border-th-border-light">
-              <p className="text-sm text-th-text-2 leading-relaxed">{report.executiveSummary}</p>
+              <p className="text-sm sm:text-base text-th-text-2 leading-relaxed">{report.executiveSummary}</p>
               {report.recommendationRationale && (
-                <p className="text-xs text-th-text-3 mt-2">
-                  <span className="font-medium text-th-text-3">Thesis:</span> {report.recommendationRationale}
-                </p>
+                <div className="mt-3 p-3 rounded-xl bg-th-inset border border-th-border-light">
+                  <p className="text-xs font-semibold text-th-accent uppercase tracking-wider mb-1">Investment Thesis</p>
+                  <p className="text-sm text-th-text leading-relaxed">{report.recommendationRationale}</p>
+                </div>
               )}
             </div>
           )}
@@ -389,26 +390,36 @@ export default function StockDetail({ ticker }: { ticker: string }) {
           </div>
         )}
 
-        {/* Key Metrics with improved percentile bars */}
+        {/* Key Metrics */}
         <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 shadow-sm">
           <h2 className="text-sm font-semibold text-th-text mb-4">Key Metrics</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 sm:gap-x-6 gap-y-3 sm:gap-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {KEY_METRICS.map((m) => {
               const val = m.getValue(f);
+              const quality = val != null && m.benchmarks && m.direction !== "neutral"
+                ? getMetricQuality(val, m.direction, m.benchmarks)
+                : null;
+              const borderColor = quality === "strong" ? "border-l-emerald-500"
+                : quality === "good" ? "border-l-blue-400"
+                : quality === "fair" ? "border-l-amber-400"
+                : quality === "weak" ? "border-l-red-400"
+                : "border-l-transparent";
               return (
                 <Tooltip key={m.key} content={m.tooltip} position="bottom" width="w-64">
-                  <div className="w-full">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[10px] text-th-text-3 uppercase tracking-wider">{m.label}</span>
-                      {val != null && m.direction !== "neutral" && m.benchmarks && (
-                        <MetricQualityDot value={val} direction={m.direction} benchmarks={m.benchmarks} />
-                      )}
-                    </div>
-                    <p className={`text-sm font-bold ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
+                  <div className={`p-3 rounded-lg bg-th-inset border border-th-border-light border-l-[3px] ${borderColor}`}>
+                    <span className="text-[10px] text-th-text-3 uppercase tracking-wider">{m.label}</span>
+                    <p className={`text-lg font-bold mt-0.5 ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
                       {val != null ? m.format(val) : "N/A"}
                     </p>
-                    {val != null && m.benchmarks && m.direction !== "neutral" && (
-                      <PercentileBar value={val} benchmarks={m.benchmarks} direction={m.direction} />
+                    {quality && (
+                      <span className={`text-[10px] font-medium ${
+                        quality === "strong" ? "text-th-positive" :
+                        quality === "good" ? "text-th-accent" :
+                        quality === "fair" ? "text-th-warning" :
+                        "text-th-negative"
+                      }`}>
+                        {quality === "strong" ? "Excellent" : quality === "good" ? "Good" : quality === "fair" ? "Fair" : "Weak"}
+                      </span>
                     )}
                   </div>
                 </Tooltip>
@@ -462,15 +473,11 @@ export default function StockDetail({ ticker }: { ticker: string }) {
 
         {/* Price Targets */}
         {report && (
-          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
+          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 shadow-sm">
             <h2 className="text-sm font-semibold text-th-text mb-4">Price Targets</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <PriceTargetCard label="Bear Case" target={report.bearCase} currentPrice={f.price} color="red" />
-              <PriceTargetCard label="Base Case" target={report.baseCase} currentPrice={f.price} color="blue" />
-              <PriceTargetCard label="Bull Case" target={report.bullCase} currentPrice={f.price} color="emerald" />
-            </div>
+
             {f.price != null && (
-              <div className="mt-5 pt-4 border-t border-th-border-light">
+              <div className="mb-5">
                 <PriceRangeBar
                   currentPrice={f.price}
                   bear={report.bearCase.targetPrice}
@@ -479,6 +486,12 @@ export default function StockDetail({ ticker }: { ticker: string }) {
                 />
               </div>
             )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <PriceTargetCard label="Bear Case" target={report.bearCase} currentPrice={f.price} color="red" />
+              <PriceTargetCard label="Base Case" target={report.baseCase} currentPrice={f.price} color="blue" />
+              <PriceTargetCard label="Bull Case" target={report.bullCase} currentPrice={f.price} color="emerald" />
+            </div>
           </div>
         )}
 
@@ -540,53 +553,23 @@ function getMetricColor(
   return "text-th-negative";
 }
 
-function MetricQualityDot({ value, direction, benchmarks }: {
-  value: number;
-  direction: "higher" | "lower";
-  benchmarks: [number, number, number];
-}) {
+function getMetricQuality(
+  value: number,
+  direction: "higher" | "lower" | "neutral",
+  benchmarks?: [number, number, number],
+): "strong" | "good" | "fair" | "weak" | null {
+  if (!benchmarks || direction === "neutral") return null;
   const [low, mid, high] = benchmarks;
-  let color = "bg-th-bar";
   if (direction === "higher") {
-    if (value >= high) color = "bg-th-positive-bar";
-    else if (value >= mid) color = "bg-th-bar";
-    else if (value >= low) color = "bg-th-warning";
-    else color = "bg-th-negative";
-  } else {
-    if (value <= low) color = "bg-th-positive-bar";
-    else if (value <= mid) color = "bg-th-bar";
-    else if (value <= high) color = "bg-th-warning";
-    else color = "bg-th-negative";
+    if (value >= high) return "strong";
+    if (value >= mid) return "good";
+    if (value >= low) return "fair";
+    return "weak";
   }
-  return <div className={`w-1.5 h-1.5 rounded-full ${color}`} />;
-}
-
-/** Improved percentile bar — indicator circle is no longer clipped */
-function PercentileBar({ value, benchmarks, direction }: {
-  value: number;
-  benchmarks: [number, number, number];
-  direction: "higher" | "lower";
-}) {
-  const [low,, high] = benchmarks;
-  const range = high - low || 1;
-  const rawPct = ((value - low) / range) * 100;
-  const pct = Math.max(4, Math.min(96, rawPct));
-
-  const gradient = direction === "higher"
-    ? "from-red-200 via-amber-100 to-emerald-200"
-    : "from-emerald-200 via-amber-100 to-red-200";
-
-  return (
-    <div className="mt-1.5 relative h-3 w-full flex items-center">
-      {/* Track */}
-      <div className={`absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-gradient-to-r ${gradient}`} />
-      {/* Indicator circle */}
-      <div
-        className="absolute w-3 h-3 rounded-full bg-th-tooltip-bg border-2 border-white shadow-sm"
-        style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
-      />
-    </div>
-  );
+  if (value <= low) return "strong";
+  if (value <= mid) return "good";
+  if (value <= high) return "fair";
+  return "weak";
 }
 
 // ── Recommendation Gauge ─────────────────────────────────────────────
@@ -598,8 +581,9 @@ function RecommendationGauge({ recommendation, label, angle }: {
 }) {
   const needleAngle = 180 - angle;
   const radians = (needleAngle * Math.PI) / 180;
-  const needleX = 80 + 52 * Math.cos(radians);
-  const needleY = 80 - 52 * Math.sin(radians);
+  const r = 56;
+  const needleX = 80 + r * Math.cos(radians);
+  const needleY = 82 - r * Math.sin(radians);
 
   const colorForRec = (rec: string) => {
     if (rec === "STRONG_BUY" || rec === "BUY") return "text-th-positive";
@@ -609,24 +593,28 @@ function RecommendationGauge({ recommendation, label, angle }: {
 
   return (
     <div className="flex flex-col items-center">
-      <svg viewBox="0 0 160 100" className="w-full h-auto" style={{ maxWidth: 176 }}>
+      <svg viewBox="0 0 160 105" className="w-full h-auto" style={{ maxWidth: 180 }}>
+        {/* Background track */}
+        <path d="M 16 82 A 64 64 0 0 1 144 82" fill="none" stroke="var(--skeleton)" strokeWidth="7" strokeLinecap="round" />
         {/* Strong Sell */}
-        <path d="M 16 80 A 64 64 0 0 1 28.7 39.2" fill="none" stroke="#fecaca" strokeWidth="10" strokeLinecap="round" />
+        <path d="M 16 82 A 64 64 0 0 1 28.7 41.2" fill="none" stroke="#e11d48" strokeWidth="7" strokeLinecap="round" opacity="0.7" />
         {/* Sell */}
-        <path d="M 32.5 35 A 64 64 0 0 1 56 17.2" fill="none" stroke="#fde68a" strokeWidth="10" strokeLinecap="round" />
+        <path d="M 32.5 37 A 64 64 0 0 1 56 19.2" fill="none" stroke="#ea580c" strokeWidth="7" strokeLinecap="round" opacity="0.6" />
         {/* Hold */}
-        <path d="M 61 15.5 A 64 64 0 0 1 99 15.5" fill="none" stroke="#d4d4d8" strokeWidth="10" strokeLinecap="round" />
+        <path d="M 61 17.5 A 64 64 0 0 1 99 17.5" fill="none" stroke="var(--text-4)" strokeWidth="7" strokeLinecap="round" opacity="0.7" />
         {/* Buy */}
-        <path d="M 104 17.2 A 64 64 0 0 1 127.5 35" fill="none" stroke="#bbf7d0" strokeWidth="10" strokeLinecap="round" />
+        <path d="M 104 19.2 A 64 64 0 0 1 127.5 37" fill="none" stroke="#059669" strokeWidth="7" strokeLinecap="round" opacity="0.6" />
         {/* Strong Buy */}
-        <path d="M 131.3 39.2 A 64 64 0 0 1 144 80" fill="none" stroke="#6ee7b7" strokeWidth="10" strokeLinecap="round" />
+        <path d="M 131.3 41.2 A 64 64 0 0 1 144 82" fill="none" stroke="#047857" strokeWidth="7" strokeLinecap="round" opacity="0.7" />
         {/* Needle */}
-        <line x1="80" y1="80" x2={needleX} y2={needleY} stroke="var(--text)" strokeWidth="2.5" strokeLinecap="round" />
-        <circle cx="80" cy="80" r="4" fill="var(--text)" />
-        <text x="10" y="95" className="text-[7px] fill-th-text-4" textAnchor="start">Sell</text>
-        <text x="150" y="95" className="text-[7px] fill-th-text-4" textAnchor="end">Buy</text>
+        <line x1="80" y1="82" x2={needleX} y2={needleY} stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="80" cy="82" r="5" fill="var(--bg-surface)" stroke="var(--text)" strokeWidth="2" />
+        <circle cx="80" cy="82" r="2" fill="var(--text)" />
+        {/* Labels */}
+        <text x="14" y="98" className="text-[8px]" fill="var(--text-4)" textAnchor="start">Sell</text>
+        <text x="146" y="98" className="text-[8px]" fill="var(--text-4)" textAnchor="end">Buy</text>
       </svg>
-      <span className={`text-sm font-bold ${colorForRec(recommendation)} -mt-1`}>{label}</span>
+      <span className={`text-sm font-bold ${colorForRec(recommendation)} -mt-2`}>{label}</span>
     </div>
   );
 }
@@ -867,28 +855,30 @@ function PriceTargetCard({ label, target, currentPrice, color }: {
     ? ((target.targetPrice - currentPrice) / currentPrice) * 100
     : null;
 
-  const colorMap = {
-    emerald: { bg: "bg-th-positive-bg", border: "border-th-positive-border", accent: "text-th-positive" },
-    blue: { bg: "bg-th-accent-bg", border: "border-th-accent-border", accent: "text-th-accent" },
-    red: { bg: "bg-th-negative-bg", border: "border-th-negative-border", accent: "text-th-negative" },
-  };
-  const c = colorMap[color];
+  const borderLeft = color === "emerald" ? "border-l-emerald-500"
+    : color === "blue" ? "border-l-blue-500"
+    : "border-l-red-500";
+  const accentText = color === "emerald" ? "text-th-positive"
+    : color === "blue" ? "text-th-accent"
+    : "text-th-negative";
 
   return (
-    <div className={`p-4 rounded-xl border ${c.bg} ${c.border}`}>
+    <div className={`p-4 rounded-xl bg-th-inset border border-th-border-light border-l-[3px] ${borderLeft}`}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-th-text-3">{label}</span>
-        <span className="text-[10px] font-medium text-th-text-3">{target.probability}% prob.</span>
+        <span className="text-xs font-bold text-th-text-2 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] font-medium text-th-text-4 bg-th-surface px-1.5 py-0.5 rounded">{target.probability}%</span>
       </div>
-      <p className={`text-xl font-bold ${c.accent}`}>
-        ${target.targetPrice.toFixed(2)}
-      </p>
-      {upside != null && (
-        <p className={`text-xs font-medium mt-1 ${upside >= 0 ? "text-th-positive" : "text-th-negative"}`}>
-          {upside >= 0 ? "+" : ""}{upside.toFixed(1)}% from current
+      <div className="flex items-baseline gap-2">
+        <p className={`text-2xl font-bold ${accentText}`}>
+          ${target.targetPrice.toFixed(0)}
         </p>
-      )}
-      <p className="text-xs text-th-text-3 mt-2 leading-relaxed">{target.rationale}</p>
+        {upside != null && (
+          <span className={`text-sm font-semibold ${upside >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+            {upside >= 0 ? "+" : ""}{upside.toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-th-text-3 mt-2 leading-relaxed line-clamp-3">{target.rationale}</p>
     </div>
   );
 }
@@ -902,31 +892,49 @@ function PriceRangeBar({ currentPrice, bear, base, bull }: {
   const min = Math.min(bear, currentPrice) * 0.95;
   const max = Math.max(bull, currentPrice) * 1.05;
   const rangeVal = max - min;
-  const pos = (val: number) => ((val - min) / rangeVal) * 100;
+  const pos = (val: number) => Math.max(2, Math.min(98, ((val - min) / rangeVal) * 100));
 
   return (
-    <div className="relative h-12">
-      <div className="absolute top-4 left-0 right-0 h-2 bg-th-skeleton rounded-full">
-        <div
-          className="absolute h-full bg-gradient-to-r from-red-200 via-blue-200 to-emerald-200 rounded-full"
-          style={{ left: `${pos(bear)}%`, width: `${pos(bull) - pos(bear)}%` }}
-        />
+    <div className="relative pt-6 pb-8">
+      {/* Track background */}
+      <div className="absolute top-8 left-0 right-0 h-2 bg-th-skeleton rounded-full" />
+      {/* Colored range segment */}
+      <div
+        className="absolute top-8 h-2 rounded-full"
+        style={{
+          left: `${pos(bear)}%`,
+          width: `${pos(bull) - pos(bear)}%`,
+          background: "linear-gradient(to right, var(--negative), var(--accent), var(--positive))",
+          opacity: 0.35,
+        }}
+      />
+
+      {/* Bear marker */}
+      <div className="absolute" style={{ left: `${pos(bear)}%`, top: 0, transform: "translateX(-50%)" }}>
+        <p className="text-[10px] font-semibold text-th-negative text-center whitespace-nowrap">${bear.toFixed(0)}</p>
+        <p className="text-[9px] text-th-text-4 text-center">Bear</p>
+        <div className="w-0.5 h-3 bg-th-negative mx-auto mt-0.5 rounded-full" />
       </div>
-      <div className="absolute top-2" style={{ left: `${pos(bear)}%`, transform: "translateX(-50%)" }}>
-        <div className="w-2 h-6 bg-th-negative rounded-full" />
-        <p className="text-[9px] text-th-negative mt-1 whitespace-nowrap">${bear.toFixed(0)}</p>
+
+      {/* Base marker */}
+      <div className="absolute" style={{ left: `${pos(base)}%`, top: 0, transform: "translateX(-50%)" }}>
+        <p className="text-[10px] font-semibold text-th-accent text-center whitespace-nowrap">${base.toFixed(0)}</p>
+        <p className="text-[9px] text-th-text-4 text-center">Base</p>
+        <div className="w-0.5 h-3 bg-th-accent mx-auto mt-0.5 rounded-full" />
       </div>
-      <div className="absolute top-2" style={{ left: `${pos(base)}%`, transform: "translateX(-50%)" }}>
-        <div className="w-2 h-6 bg-blue-400 rounded-full" />
-        <p className="text-[9px] text-th-accent mt-1 whitespace-nowrap">${base.toFixed(0)}</p>
+
+      {/* Bull marker */}
+      <div className="absolute" style={{ left: `${pos(bull)}%`, top: 0, transform: "translateX(-50%)" }}>
+        <p className="text-[10px] font-semibold text-th-positive text-center whitespace-nowrap">${bull.toFixed(0)}</p>
+        <p className="text-[9px] text-th-text-4 text-center">Bull</p>
+        <div className="w-0.5 h-3 bg-th-positive mx-auto mt-0.5 rounded-full" />
       </div>
-      <div className="absolute top-2" style={{ left: `${pos(bull)}%`, transform: "translateX(-50%)" }}>
-        <div className="w-2 h-6 bg-th-positive-bar rounded-full" />
-        <p className="text-[9px] text-th-positive mt-1 whitespace-nowrap">${bull.toFixed(0)}</p>
-      </div>
-      <div className="absolute top-1" style={{ left: `${pos(currentPrice)}%`, transform: "translateX(-50%)" }}>
-        <div className="w-3 h-3 bg-th-nav-active rounded-full border-2 border-white shadow" />
-        <p className="text-[9px] font-bold text-th-text mt-4 whitespace-nowrap">${currentPrice.toFixed(0)} now</p>
+
+      {/* Current price marker */}
+      <div className="absolute" style={{ left: `${pos(currentPrice)}%`, top: "26px", transform: "translateX(-50%)" }}>
+        <div className="w-4 h-4 rounded-full bg-th-text border-2 border-th-surface shadow-md mx-auto" />
+        <p className="text-[11px] font-bold text-th-text mt-1 text-center whitespace-nowrap">${currentPrice.toFixed(0)}</p>
+        <p className="text-[9px] text-th-text-3 text-center">Current</p>
       </div>
     </div>
   );

@@ -74,28 +74,28 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
     }
   }, [markFailed]);
 
-  if (!imgFailed) {
-    return (
-      <img
-        src={`https://financialmodelingprep.com/image-stock/${encodeURIComponent(ticker)}.png`}
-        alt={ticker}
-        width={px}
-        height={px}
-        loading="lazy"
-        className={`rounded-md object-contain flex-shrink-0 bg-th-surface border border-th-border-light ${dims}`}
-        onError={markFailed}
-        onLoad={handleLoad}
-      />
-    );
-  }
-
-  // Fallback: sector-colored letter avatar
+  // Layered approach: letter avatar is always rendered as the base layer.
+  // The real logo overlays it. If FMP returns a transparent/empty image,
+  // the letter shows through instead of a blank white box.
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-md font-bold flex-shrink-0 ${dims} ${colors.bg} ${colors.text}`}
+      className={`inline-flex items-center justify-center rounded-md font-bold flex-shrink-0 relative overflow-hidden ${dims} ${colors.bg} ${colors.text}`}
       title={ticker}
     >
       {ticker.charAt(0)}
+      {!imgFailed && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`https://financialmodelingprep.com/image-stock/${encodeURIComponent(ticker)}.png`}
+          alt=""
+          width={px}
+          height={px}
+          loading="lazy"
+          className="absolute inset-0 w-full h-full rounded-md object-contain bg-white"
+          onError={markFailed}
+          onLoad={handleLoad}
+        />
+      )}
     </span>
   );
 }
