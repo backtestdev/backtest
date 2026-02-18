@@ -396,27 +396,26 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                 ? getMetricQuality(val, m.direction, m.benchmarks)
                 : null;
               const borderColor = quality === "strong" ? "border-l-emerald-500"
-                : quality === "good" ? "border-l-blue-400"
-                : quality === "fair" ? "border-l-amber-400"
-                : quality === "weak" ? "border-l-red-400"
-                : "border-l-transparent";
+                : quality === "good" ? "border-l-blue-500"
+                : quality === "fair" ? "border-l-amber-500"
+                : quality === "weak" ? "border-l-red-500"
+                : "border-l-th-border-light";
+              const qualityLabel = quality === "strong" ? "Excellent"
+                : quality === "good" ? "Good"
+                : quality === "fair" ? "Fair"
+                : quality === "weak" ? "Poor" : "\u00A0";
+              const qualityColor = quality === "strong" ? "text-th-positive"
+                : quality === "good" ? "text-th-accent"
+                : quality === "fair" ? "text-th-warning"
+                : quality === "weak" ? "text-th-negative" : "text-transparent";
               return (
                 <Tooltip key={m.key} content={m.tooltip} position="bottom" width="w-64">
-                  <div className={`p-3 rounded-lg bg-th-inset border border-th-border-light border-l-[3px] ${borderColor}`}>
-                    <span className="text-[10px] text-th-text-3 uppercase tracking-wider">{m.label}</span>
-                    <p className={`text-lg font-bold mt-0.5 ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
+                  <div className={`flex flex-col justify-between p-3 rounded-lg bg-th-inset border border-th-border-light border-l-[3px] ${borderColor} h-[88px]`}>
+                    <span className="text-[10px] text-th-text-3 uppercase tracking-wider leading-tight">{m.label}</span>
+                    <p className={`text-xl font-bold ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
                       {val != null ? m.format(val) : "N/A"}
                     </p>
-                    {quality && (
-                      <span className={`text-[10px] font-medium ${
-                        quality === "strong" ? "text-th-positive" :
-                        quality === "good" ? "text-th-accent" :
-                        quality === "fair" ? "text-th-warning" :
-                        "text-th-negative"
-                      }`}>
-                        {quality === "strong" ? "Excellent" : quality === "good" ? "Good" : quality === "fair" ? "Fair" : "Weak"}
-                      </span>
-                    )}
+                    <span className={`text-[10px] font-semibold ${qualityColor}`}>{qualityLabel}</span>
                   </div>
                 </Tooltip>
               );
@@ -869,7 +868,7 @@ function PriceTargetCard({ label, target, currentPrice, color }: {
           </span>
         )}
       </div>
-      <p className="text-xs text-th-text-3 mt-2 leading-relaxed line-clamp-3">{target.rationale}</p>
+      <p className="text-xs text-th-text-3 mt-2 leading-relaxed">{target.rationale}</p>
     </div>
   );
 }

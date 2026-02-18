@@ -400,27 +400,26 @@ export default function StockDetail({ ticker }: { ticker: string }) {
                 ? getMetricQuality(val, m.direction, m.benchmarks)
                 : null;
               const borderColor = quality === "strong" ? "border-l-emerald-500"
-                : quality === "good" ? "border-l-blue-400"
-                : quality === "fair" ? "border-l-amber-400"
-                : quality === "weak" ? "border-l-red-400"
-                : "border-l-transparent";
+                : quality === "good" ? "border-l-blue-500"
+                : quality === "fair" ? "border-l-amber-500"
+                : quality === "weak" ? "border-l-red-500"
+                : "border-l-th-border-light";
+              const qualityLabel = quality === "strong" ? "Excellent"
+                : quality === "good" ? "Good"
+                : quality === "fair" ? "Fair"
+                : quality === "weak" ? "Poor" : "\u00A0";
+              const qualityColor = quality === "strong" ? "text-th-positive"
+                : quality === "good" ? "text-th-accent"
+                : quality === "fair" ? "text-th-warning"
+                : quality === "weak" ? "text-th-negative" : "text-transparent";
               return (
                 <Tooltip key={m.key} content={m.tooltip} position="bottom" width="w-64">
-                  <div className={`p-3 rounded-lg bg-th-inset border border-th-border-light border-l-[3px] ${borderColor}`}>
-                    <span className="text-[10px] text-th-text-3 uppercase tracking-wider">{m.label}</span>
-                    <p className={`text-lg font-bold mt-0.5 ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
+                  <div className={`flex flex-col justify-between p-3 rounded-lg bg-th-inset border border-th-border-light border-l-[3px] ${borderColor} h-[88px]`}>
+                    <span className="text-[10px] text-th-text-3 uppercase tracking-wider leading-tight">{m.label}</span>
+                    <p className={`text-xl font-bold ${val != null ? getMetricColor(val, m.direction, m.benchmarks) : "text-th-text-4"}`}>
                       {val != null ? m.format(val) : "N/A"}
                     </p>
-                    {quality && (
-                      <span className={`text-[10px] font-medium ${
-                        quality === "strong" ? "text-th-positive" :
-                        quality === "good" ? "text-th-accent" :
-                        quality === "fair" ? "text-th-warning" :
-                        "text-th-negative"
-                      }`}>
-                        {quality === "strong" ? "Excellent" : quality === "good" ? "Good" : quality === "fair" ? "Fair" : "Weak"}
-                      </span>
-                    )}
+                    <span className={`text-[10px] font-semibold ${qualityColor}`}>{qualityLabel}</span>
                   </div>
                 </Tooltip>
               );
@@ -514,10 +513,15 @@ export default function StockDetail({ ticker }: { ticker: string }) {
 
         {/* Company Description */}
         {data.description && (
-          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4">
-            <h2 className="text-sm font-semibold text-th-text mb-2">About {data.companyName}</h2>
-            <p className="text-sm text-th-text-3 leading-relaxed">{data.description}</p>
-          </div>
+          <details className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 group">
+            <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <h2 className="text-sm font-semibold text-th-text">About {data.companyName}</h2>
+              <svg className="w-4 h-4 text-th-text-3 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <p className="text-sm text-th-text-3 leading-relaxed mt-3">{data.description}</p>
+          </details>
         )}
 
         {/* Disclaimer */}
@@ -878,7 +882,7 @@ function PriceTargetCard({ label, target, currentPrice, color }: {
           </span>
         )}
       </div>
-      <p className="text-xs text-th-text-3 mt-2 leading-relaxed line-clamp-3">{target.rationale}</p>
+      <p className="text-xs text-th-text-3 mt-2 leading-relaxed">{target.rationale}</p>
     </div>
   );
 }
