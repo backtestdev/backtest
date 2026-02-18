@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useUser, SignUpButton, SignInButton } from "@clerk/nextjs";
 import BacktestInput from "@/components/BacktestInput";
 import ResultsDisplay from "@/components/ResultsDisplay";
 import Leaderboard from "@/components/Leaderboard";
 import Toast from "@/components/Toast";
 import { BacktestResult, StructuredParameters, ParsingMethod } from "@/lib/types";
+
+const FREE_RUN_LIMIT = 1;
+const STORAGE_KEY = "backtest_free_runs";
 
 interface ToastState {
   message: string;
@@ -13,6 +17,7 @@ interface ToastState {
 }
 
 export default function HomePage() {
+  const { isSignedIn } = useUser();
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,6 +29,18 @@ export default function HomePage() {
   const [stockUniverseSize, setStockUniverseSize] = useState<number | undefined>();
   const [warnings, setWarnings] = useState<string[] | undefined>();
   const [stockSourceError, setStockSourceError] = useState<string | undefined>();
+  const [freeRunsUsed, setFreeRunsUsed] = useState(0);
+
+  // Load free run count from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) setFreeRunsUsed(parseInt(stored, 10) || 0);
+    } catch { /* SSR or private browsing */ }
+  }, []);
+
+  const isGuest = !isSignedIn;
+  const freeRunsExhausted = isGuest && freeRunsUsed >= FREE_RUN_LIMIT;
 
   const runBacktest = useCallback(async (strategy: string, structuredParams?: StructuredParameters) => {
     if (structuredParams) {
@@ -63,6 +80,12 @@ export default function HomePage() {
         }
       } else {
         setResult(data);
+        // Track free runs for guests
+        if (!isSignedIn && !structuredParams) {
+          const newCount = freeRunsUsed + 1;
+          setFreeRunsUsed(newCount);
+          try { localStorage.setItem(STORAGE_KEY, String(newCount)); } catch { /* ignore */ }
+        }
         if (structuredParams) {
           setToast({ message: "Results updated with your adjustments", type: "success" });
         }
@@ -78,7 +101,7 @@ export default function HomePage() {
       setIsLoading(false);
       setIsUpdating(false);
     }
-  }, []);
+  }, [isSignedIn, freeRunsUsed]);
 
   const handleAddToLeaderboard = useCallback(
     async (name: string): Promise<{ ok: boolean; error?: string }> => {
@@ -162,15 +185,43 @@ export default function HomePage() {
 
       {/* Main input section */}
       <main className="px-4 sm:px-6 py-6 sm:py-8">
-        <BacktestInput
-          onSubmit={runBacktest}
-          isLoading={isLoading}
-          parsingMethod={parsingMethod}
-          dataSource={dataSource}
-          stockUniverseSize={stockUniverseSize}
-          warnings={warnings}
-          stockSourceError={stockSourceError}
-        />
+        {freeRunsExhausted ? (
+          <div className="max-w-3xl mx-auto mb-8">
+            <div className="bg-th-surface border border-th-border rounded-2xl p-6 sm:p-8 text-center">
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-th-accent-bg flex items-center justify-center">
+                <svg className="w-6 h-6 text-th-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-th-text">You&apos;ve used your free backtest</h2>
+              <p className="text-sm text-th-text-3 mt-2 max-w-md mx-auto">
+                Create a free account to run unlimited backtests, save strategies to the leaderboard, and access all features.
+              </p>
+              <div className="flex items-center justify-center gap-3 mt-5">
+                <SignUpButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
+                  <button className="px-6 py-2.5 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors">
+                    Sign Up Free
+                  </button>
+                </SignUpButton>
+                <SignInButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
+                  <button className="px-6 py-2.5 text-sm font-medium text-th-text-2 bg-th-inset border border-th-border rounded-xl hover:bg-th-hover transition-colors">
+                    Sign In
+                  </button>
+                </SignInButton>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <BacktestInput
+            onSubmit={runBacktest}
+            isLoading={isLoading}
+            parsingMethod={parsingMethod}
+            dataSource={dataSource}
+            stockUniverseSize={stockUniverseSize}
+            warnings={warnings}
+            stockSourceError={stockSourceError}
+          />
+        )}
 
         {/* Error message */}
         {error && (
@@ -191,6 +242,7 @@ export default function HomePage() {
             onAddToLeaderboard={handleAddToLeaderboard}
             onUpdateParams={handleUpdateParams}
             isUpdating={isUpdating}
+            isGuest={isGuest}
           />
         )}
 

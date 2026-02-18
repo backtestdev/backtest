@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
 import StockLogo from "./StockLogo";
+import LoginGate from "./LoginGate";
 
 // ── Types ──
 
@@ -145,6 +147,8 @@ function SectorBar({ breakdown }: { breakdown: SectorBreakdown[] }) {
 // ── Main Component ──
 
 export default function PortfolioAnalyzer() {
+  const { isSignedIn } = useUser();
+  const isGuest = !isSignedIn;
   const [holdings, setHoldings] = useState<Holding[]>([{ symbol: "", shares: 0 }]);
   const [profile, setProfile] = useState<{ age?: number; netWorth?: string; riskTolerance?: string }>({});
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -454,93 +458,101 @@ export default function PortfolioAnalyzer() {
               )}
             </div>
 
-            {/* Sector allocation */}
-            <div className="bg-th-surface rounded-2xl border border-th-border-light p-6">
-              <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
-              <SectorBar breakdown={result.summary.sectorBreakdown} />
-            </div>
-
-            {/* Holdings table */}
-            <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto">
-              <div className="px-4 sm:px-6 py-3 border-b border-th-border-light">
-                <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
+            {/* Detailed results - gated for guests */}
+            <LoginGate
+              locked={isGuest}
+              message="Sign up to view your full portfolio analysis"
+              subMessage="Sector allocation, per-holding detail, gain/loss breakdown, and AI-powered recommendations"
+              blur="heavy"
+            >
+              {/* Sector allocation */}
+              <div className="bg-th-surface rounded-2xl border border-th-border-light p-6">
+                <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
+                <SectorBar breakdown={result.summary.sectorBreakdown} />
               </div>
-              <div className="min-w-[600px] divide-y divide-th-border-light">
-                {result.holdings.map((h) => {
-                  const score = stockScores.get(h.symbol);
-                  return (
-                  <div key={h.symbol} className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 items-center">
-                    <div className="col-span-3 min-w-0 flex items-center gap-2">
-                      <StockLogo ticker={h.symbol} sector={h.sector} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-semibold text-th-text">{h.symbol}</p>
-                          {score !== undefined && (
-                            <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
-                              score >= 75 ? "bg-th-positive-bg text-th-positive" :
-                              score >= 50 ? "bg-th-accent-bg text-th-accent" :
-                              score >= 25 ? "bg-th-warning-bg text-th-warning" :
-                              "bg-th-negative-bg text-th-negative"
-                            }`}>{score}</span>
-                          )}
+
+              {/* Holdings table */}
+              <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto mt-6">
+                <div className="px-4 sm:px-6 py-3 border-b border-th-border-light">
+                  <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
+                </div>
+                <div className="min-w-[600px] divide-y divide-th-border-light">
+                  {result.holdings.map((h) => {
+                    const score = stockScores.get(h.symbol);
+                    return (
+                    <div key={h.symbol} className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 items-center">
+                      <div className="col-span-3 min-w-0 flex items-center gap-2">
+                        <StockLogo ticker={h.symbol} sector={h.sector} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-th-text">{h.symbol}</p>
+                            {score !== undefined && (
+                              <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
+                                score >= 75 ? "bg-th-positive-bg text-th-positive" :
+                                score >= 50 ? "bg-th-accent-bg text-th-accent" :
+                                score >= 25 ? "bg-th-warning-bg text-th-warning" :
+                                "bg-th-negative-bg text-th-negative"
+                              }`}>{score}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-th-text-3 truncate">{h.name}</p>
                         </div>
-                        <p className="text-xs text-th-text-3 truncate">{h.name}</p>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <p className="text-sm text-th-text-2">{h.shares} shares</p>
+                        <p className="text-xs text-th-text-3">${h.currentPrice.toFixed(2)}</p>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <p className="text-sm font-medium text-th-text">{formatCurrency(h.currentValue)}</p>
+                        <p className="text-xs text-th-text-3">
+                          {result.summary.totalValue > 0
+                            ? `${((h.currentValue / result.summary.totalValue) * 100).toFixed(1)}%`
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        {h.gainLoss !== null ? (
+                          <>
+                            <p className={`text-sm font-medium ${h.gainLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                              {h.gainLoss >= 0 ? "+" : ""}{formatCurrency(h.gainLoss)}
+                            </p>
+                            <p className={`text-xs ${(h.gainLossPct ?? 0) >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                              {(h.gainLossPct ?? 0) >= 0 ? "+" : ""}{((h.gainLossPct ?? 0) * 100).toFixed(1)}%
+                            </p>
+                          </>
+                        ) : (
+                          <span className="text-xs text-th-text-4">No cost basis</span>
+                        )}
+                      </div>
+                      <div className="col-span-3 text-right">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
+                          {h.sector}
+                        </span>
                       </div>
                     </div>
-                    <div className="col-span-2 text-right">
-                      <p className="text-sm text-th-text-2">{h.shares} shares</p>
-                      <p className="text-xs text-th-text-3">${h.currentPrice.toFixed(2)}</p>
-                    </div>
-                    <div className="col-span-2 text-right">
-                      <p className="text-sm font-medium text-th-text">{formatCurrency(h.currentValue)}</p>
-                      <p className="text-xs text-th-text-3">
-                        {result.summary.totalValue > 0
-                          ? `${((h.currentValue / result.summary.totalValue) * 100).toFixed(1)}%`
-                          : ""}
-                      </p>
-                    </div>
-                    <div className="col-span-2 text-right">
-                      {h.gainLoss !== null ? (
-                        <>
-                          <p className={`text-sm font-medium ${h.gainLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
-                            {h.gainLoss >= 0 ? "+" : ""}{formatCurrency(h.gainLoss)}
-                          </p>
-                          <p className={`text-xs ${(h.gainLossPct ?? 0) >= 0 ? "text-th-positive" : "text-th-negative"}`}>
-                            {(h.gainLossPct ?? 0) >= 0 ? "+" : ""}{((h.gainLossPct ?? 0) * 100).toFixed(1)}%
-                          </p>
-                        </>
-                      ) : (
-                        <span className="text-xs text-th-text-4">No cost basis</span>
-                      )}
-                    </div>
-                    <div className="col-span-3 text-right">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
-                        {h.sector}
-                      </span>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* AI Analysis */}
-            {result.aiAnalysis && (
-              <div className="bg-th-surface rounded-2xl border border-th-border-light p-6">
-                <h3 className="text-sm font-semibold text-th-text-2 mb-3 flex items-center gap-2">
-                  AI Analysis
-                  <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
-                    Beta
-                  </span>
-                </h3>
-                <div className="text-sm text-th-text-2 leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_strong]:text-th-text [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-th-text [&_h2]:mt-3 [&_h2]:mb-1 whitespace-pre-line">
-                  {result.aiAnalysis}
+                    );
+                  })}
                 </div>
               </div>
-            )}
 
-            {/* Price note */}
-            <p className="text-xs text-th-text-4 text-center">{result.priceNote}</p>
+              {/* AI Analysis */}
+              {result.aiAnalysis && (
+                <div className="bg-th-surface rounded-2xl border border-th-border-light p-6 mt-6">
+                  <h3 className="text-sm font-semibold text-th-text-2 mb-3 flex items-center gap-2">
+                    AI Analysis
+                    <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
+                      Beta
+                    </span>
+                  </h3>
+                  <div className="text-sm text-th-text-2 leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_strong]:text-th-text [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-th-text [&_h2]:mt-3 [&_h2]:mb-1 whitespace-pre-line">
+                    {result.aiAnalysis}
+                  </div>
+                </div>
+              )}
+
+              {/* Price note */}
+              <p className="text-xs text-th-text-4 text-center mt-6">{result.priceNote}</p>
+            </LoginGate>
           </div>
         )}
       </div>
