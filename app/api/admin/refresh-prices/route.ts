@@ -162,26 +162,68 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
   };
 }
 
-// ── GET: Vercel Cron handler ───────────────────────────────────────
+// ── Auto-refresh staleness threshold ────────────────────────────────
+const AUTO_REFRESH_STALE_DAYS = 8; // prices are weekly, trigger after 8 days
+
+// ── GET: Vercel Cron handler + auto-refresh + status ───────────────
 
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
   const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
 
-  if (!isCron) {
-    // Non-cron GET: return last refresh status
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      return NextResponse.json({ configured: false, message: "DATABASE_URL not set" });
-    }
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    if (isCron) return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 400 });
+    return NextResponse.json({ configured: false, message: "DATABASE_URL not set" });
+  }
+
+  const sql = neon(databaseUrl);
+
+  // ── Determine if we should run a refresh ─────────────────────────
+  let shouldRefresh = !!isCron;
+  let isAutoRefresh = false;
+
+  if (!shouldRefresh) {
     try {
-      const sql = neon(databaseUrl);
+      const meta = await sql`SELECT key, value FROM stock_meta WHERE key IN ('last_price_refresh', 'price_refresh_lock')`;
+      const lastRefreshStr = meta.find(r => r.key === 'last_price_refresh')?.value as string | undefined;
+      const lockStr = meta.find(r => r.key === 'price_refresh_lock')?.value as string | undefined;
+
+      const lastRefreshMs = lastRefreshStr ? new Date(lastRefreshStr).getTime() : 0;
+      const daysSinceRefresh = (Date.now() - lastRefreshMs) / (1000 * 60 * 60 * 24);
+
+      if (daysSinceRefresh > AUTO_REFRESH_STALE_DAYS) {
+        // Check lock
+        if (lockStr) {
+          const lockAgeMin = (Date.now() - new Date(lockStr).getTime()) / (1000 * 60);
+          if (lockAgeMin < 10) {
+            return NextResponse.json({
+              configured: true,
+              stale: true,
+              refreshInProgress: true,
+              daysSinceRefresh: Math.round(daysSinceRefresh * 10) / 10,
+            });
+          }
+        }
+        shouldRefresh = true;
+        isAutoRefresh = true;
+        console.log(`[auto-refresh] Price data is ${Math.round(daysSinceRefresh)}d stale, triggering refresh`);
+      }
+    } catch {
+      // Tables may not exist yet
+    }
+  }
+
+  // ── Status response (data is fresh) ──────────────────────────────
+  if (!shouldRefresh) {
+    try {
       const meta = await sql`SELECT value FROM stock_meta WHERE key = 'last_price_refresh'`;
       const countResult = await sql`SELECT count(*) as cnt FROM stock_annual_returns`;
       const symbolCount = await sql`SELECT count(DISTINCT symbol) as cnt FROM stock_annual_returns`;
       return NextResponse.json({
         configured: true,
+        stale: false,
         lastPriceRefresh: meta[0]?.value || null,
         totalRecords: Number(countResult[0]?.cnt || 0),
         totalSymbols: Number(symbolCount[0]?.cnt || 0),
@@ -191,20 +233,37 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Cron request — run full price refresh
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 400 });
-  }
+  // ── Run price refresh (cron or auto-refresh) ─────────────────────
 
-  const sql = neon(databaseUrl);
+  // Acquire lock
   try {
-    console.log("[cron] Starting weekly price refresh...");
+    await sql`
+      CREATE TABLE IF NOT EXISTS stock_meta (
+        key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await sql`
+      INSERT INTO stock_meta (key, value, updated_at)
+      VALUES ('price_refresh_lock', ${new Date().toISOString()}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+  } catch { /* ignore */ }
+
+  const trigger = isAutoRefresh ? 'auto-refresh' : 'cron';
+
+  try {
+    console.log(`[${trigger}] Starting price refresh...`);
     const result = await runPriceRefresh(sql);
-    console.log(`[cron] Price refresh complete: ${result.symbols.succeeded} symbols, ${result.records} records`);
-    return NextResponse.json({ success: true, ...result });
+    console.log(`[${trigger}] Price refresh complete: ${result.symbols.succeeded} symbols, ${result.records} records`);
+
+    // Release lock
+    try { await sql`DELETE FROM stock_meta WHERE key = 'price_refresh_lock'`; } catch { /* ignore */ }
+
+    return NextResponse.json({ success: true, trigger, ...result });
   } catch (error) {
-    console.error("Cron price refresh error:", error);
+    // Release lock on error
+    try { await sql`DELETE FROM stock_meta WHERE key = 'price_refresh_lock'`; } catch { /* ignore */ }
+    console.error(`${trigger} price refresh error:`, error);
     return NextResponse.json({ error: "Price refresh failed", details: String(error) }, { status: 500 });
   }
 }

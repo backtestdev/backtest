@@ -10,6 +10,7 @@ import {
 } from "@clerk/nextjs";
 import Navigation from "@/components/Navigation";
 import ThemeProvider from "@/components/ThemeProvider";
+import AutoRefresh from "@/components/AutoRefresh";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -61,6 +62,7 @@ export default function RootLayout({
                 </SignedIn>
               </div>
             </nav>
+            <AutoRefresh />
             {children}
           </ThemeProvider>
         </body>
