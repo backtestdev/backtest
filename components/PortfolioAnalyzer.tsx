@@ -65,16 +65,16 @@ interface ConsolidatedHolding {
 // ── Sector colors for allocation chart ──
 const SECTOR_COLORS: Record<string, string> = {
   Technology: "bg-th-accent",
-  Healthcare: "bg-th-positive-bar",
+  Healthcare: "bg-emerald-500",
   Financial: "bg-th-warning",
   Energy: "bg-orange-500",
-  Consumer: "bg-pink-500",
-  Industrials: "bg-gray-500",
+  Consumer: "bg-violet-500",
+  Industrials: "bg-slate-500",
   "Basic Materials": "bg-yellow-600",
   "Real Estate": "bg-purple-500",
   Utilities: "bg-teal-500",
   "Communication Services": "bg-indigo-500",
-  "Index Fund": "bg-blue-500",
+  "Index Fund": "bg-cyan-500",
   Unknown: "bg-gray-400",
   Other: "bg-gray-500",
 };
@@ -279,6 +279,33 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
   );
 }
 
+function HoldingsTableHeader() {
+  return (
+    <div className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-2 border-b border-th-border-light">
+      {/* Always reserve caret space (w-3 + gap) for alignment */}
+      <div className="col-span-3 min-w-0 flex items-center gap-2">
+        <span className="w-3 shrink-0" />
+        <span className="text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Holding</span>
+      </div>
+      <div className="col-span-1 text-right">
+        <span className="text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Shares</span>
+      </div>
+      <div className="col-span-2 text-right">
+        <span className="text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Avg Cost</span>
+      </div>
+      <div className="col-span-2 text-right">
+        <span className="text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Price</span>
+      </div>
+      <div className="col-span-2 text-right">
+        <span className="text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Value</span>
+      </div>
+      <div className="col-span-2 text-right">
+        <span className="text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Gain/Loss</span>
+      </div>
+    </div>
+  );
+}
+
 function ConsolidatedHoldingRow({
   holding,
   totalValue,
@@ -297,15 +324,18 @@ function ConsolidatedHoldingRow({
         className={`grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 items-center ${hasMultipleLots ? "cursor-pointer hover:bg-th-bg/50" : ""}`}
         onClick={hasMultipleLots ? () => setExpanded(!expanded) : undefined}
       >
+        {/* Holding — always reserve caret space for alignment */}
         <div className="col-span-3 min-w-0 flex items-center gap-2">
-          {hasMultipleLots && (
-            <svg
-              className={`w-3 h-3 text-th-text-3 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
-              fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-            </svg>
-          )}
+          <span className="w-3 shrink-0 flex items-center justify-center">
+            {hasMultipleLots && (
+              <svg
+                className={`w-3 h-3 text-th-text-3 transition-transform ${expanded ? "rotate-90" : ""}`}
+                fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            )}
+          </span>
           <StockLogo ticker={holding.symbol} sector={holding.sector} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
@@ -325,16 +355,30 @@ function ConsolidatedHoldingRow({
             <p className="text-xs text-th-text-3 truncate">{holding.name}</p>
           </div>
         </div>
-        <div className="col-span-2 text-right">
-          <p className="text-sm text-th-text-2">{holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 3 })} shares</p>
-          <p className="text-xs text-th-text-3">${holding.currentPrice.toFixed(2)}</p>
+        {/* Shares */}
+        <div className="col-span-1 text-right">
+          <p className="text-sm text-th-text-2">{holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 3 })}</p>
         </div>
+        {/* Avg Cost */}
+        <div className="col-span-2 text-right">
+          {holding.avgCostBasis !== null ? (
+            <p className="text-sm text-th-text-2">${holding.avgCostBasis.toFixed(2)}</p>
+          ) : (
+            <span className="text-xs text-th-text-4">--</span>
+          )}
+        </div>
+        {/* Price */}
+        <div className="col-span-2 text-right">
+          <p className="text-sm text-th-text-2">${holding.currentPrice.toFixed(2)}</p>
+        </div>
+        {/* Value + Weight */}
         <div className="col-span-2 text-right">
           <p className="text-sm font-medium text-th-text">{formatCurrency(holding.currentValue)}</p>
           <p className="text-xs text-th-text-3">
             {totalValue > 0 ? `${((holding.currentValue / totalValue) * 100).toFixed(1)}%` : ""}
           </p>
         </div>
+        {/* Gain/Loss */}
         <div className="col-span-2 text-right">
           {holding.gainLoss !== null ? (
             <>
@@ -346,16 +390,8 @@ function ConsolidatedHoldingRow({
               </p>
             </>
           ) : (
-            <span className="text-xs text-th-text-4">No cost basis</span>
+            <span className="text-xs text-th-text-4">--</span>
           )}
-        </div>
-        <div className="col-span-3 text-right flex items-center justify-end gap-2">
-          {holding.avgCostBasis !== null && (
-            <span className="text-xs text-th-text-3">${holding.avgCostBasis.toFixed(2)} avg</span>
-          )}
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
-            {holding.sector}
-          </span>
         </div>
       </div>
 
@@ -363,13 +399,23 @@ function ConsolidatedHoldingRow({
       {expanded && hasMultipleLots && (
         <div className="bg-th-bg/30 border-t border-th-border-light">
           {holding.lots.map((lot, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-2 items-center pl-12 sm:pl-16">
-              <div className="col-span-3 min-w-0">
+            <div key={i} className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-2 items-center">
+              <div className="col-span-3 min-w-0 flex items-center gap-2">
+                <span className="w-3 shrink-0" />
+                <span className="w-6 shrink-0" />
                 <p className="text-xs text-th-text-3">Lot {i + 1}</p>
               </div>
-              <div className="col-span-2 text-right">
+              <div className="col-span-1 text-right">
                 <p className="text-xs text-th-text-3">{lot.shares.toLocaleString(undefined, { maximumFractionDigits: 3 })}</p>
               </div>
+              <div className="col-span-2 text-right">
+                {lot.costBasis !== null ? (
+                  <p className="text-xs text-th-text-3">${lot.costBasis.toFixed(2)}</p>
+                ) : (
+                  <span className="text-xs text-th-text-4">--</span>
+                )}
+              </div>
+              <div className="col-span-2 text-right" />
               <div className="col-span-2 text-right">
                 <p className="text-xs text-th-text-3">{formatCurrency(lot.currentValue)}</p>
               </div>
@@ -380,11 +426,6 @@ function ConsolidatedHoldingRow({
                   </p>
                 ) : (
                   <span className="text-xs text-th-text-4">--</span>
-                )}
-              </div>
-              <div className="col-span-3 text-right">
-                {lot.costBasis !== null && (
-                  <span className="text-xs text-th-text-3">${lot.costBasis.toFixed(2)}/share</span>
                 )}
               </div>
             </div>
@@ -407,6 +448,7 @@ export default function PortfolioAnalyzer() {
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const [stockScores, setStockScores] = useState<Map<string, number>>(new Map());
 
   // Fetch backtest scores for portfolio holdings
@@ -508,6 +550,10 @@ export default function PortfolioAnalyzer() {
         setError(data.error);
       } else {
         setResult(data);
+        // Smooth scroll to results after a tick so DOM updates
+        setTimeout(() => {
+          resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
       }
     } catch {
       setError("Failed to analyze portfolio. Please try again.");
@@ -681,7 +727,7 @@ export default function PortfolioAnalyzer() {
 
         {/* Results */}
         {result && (
-          <div className="mt-8 space-y-6 animate-in fade-in duration-500">
+          <div ref={resultsRef} className="mt-8 space-y-6 animate-in fade-in duration-500">
             {/* Summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
@@ -766,15 +812,18 @@ export default function PortfolioAnalyzer() {
                 <div className="px-4 sm:px-6 py-3 border-b border-th-border-light">
                   <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
                 </div>
-                <div className="min-w-[600px] divide-y divide-th-border-light">
-                  {consolidated.map((h) => (
-                    <ConsolidatedHoldingRow
-                      key={h.symbol}
-                      holding={h}
-                      totalValue={result.summary.totalValue}
-                      score={stockScores.get(h.symbol)}
-                    />
-                  ))}
+                <div className="min-w-[640px]">
+                  <HoldingsTableHeader />
+                  <div className="divide-y divide-th-border-light">
+                    {consolidated.map((h) => (
+                      <ConsolidatedHoldingRow
+                        key={h.symbol}
+                        holding={h}
+                        totalValue={result.summary.totalValue}
+                        score={stockScores.get(h.symbol)}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
 
