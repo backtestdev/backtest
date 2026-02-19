@@ -33,8 +33,23 @@ function normalizeSector(raw: string | null | undefined): string {
   return "Other";
 }
 
-// Known index fund / ETF → sector treatment
-const INDEX_FUND_SYMBOLS = new Set(["VOO", "SPY", "IVV", "VTI", "VXUS", "VT", "QQQ", "VUG", "VTV", "BND", "AGG", "SCHD", "ITOT", "SPTM"]);
+// Known index fund / ETF → display name + sector treatment
+const INDEX_FUND_MAP: Record<string, string> = {
+  VOO: "S&P 500 Index Fund",
+  SPY: "S&P 500 ETF",
+  IVV: "S&P 500 Index Fund",
+  VTI: "Total US Stock Market",
+  VXUS: "International Stock Fund",
+  VT: "Total World Stock Fund",
+  QQQ: "Nasdaq-100 ETF",
+  VUG: "US Growth Fund",
+  VTV: "US Value Fund",
+  BND: "Total Bond Market",
+  AGG: "US Aggregate Bond",
+  SCHD: "US Dividend ETF",
+  ITOT: "Total US Stock Market",
+  SPTM: "Total US Stock Market",
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -86,18 +101,20 @@ export async function POST(request: NextRequest) {
       const sym = h.symbol.toUpperCase();
       const stock = stockMap.get(sym);
       const priceInfo = priceMap.get(sym);
-      // Price priority: stock_prices table → stocks.price → 0
-      const currentPrice = priceInfo?.price || (stock?.price ? Number(stock.price) : 0);
+      const isIndexFund = sym in INDEX_FUND_MAP;
+      // Price priority: stock_prices table → stocks.price → cost basis (for untracked funds) → 0
+      const dbPrice = priceInfo?.price || (stock?.price ? Number(stock.price) : 0);
+      const currentPrice = dbPrice > 0 ? dbPrice : (h.costBasis || 0);
       const currentValue = currentPrice * h.shares;
       const costBasisTotal = h.costBasis ? h.costBasis * h.shares : null;
-      const gainLoss = costBasisTotal !== null ? currentValue - costBasisTotal : null;
-      const gainLossPct = costBasisTotal !== null && costBasisTotal > 0
+      const gainLoss = costBasisTotal !== null && dbPrice > 0 ? currentValue - costBasisTotal : null;
+      const gainLossPct = costBasisTotal !== null && costBasisTotal > 0 && dbPrice > 0
         ? (currentValue - costBasisTotal) / costBasisTotal
         : null;
 
       // Determine sector
       let sector: string;
-      if (INDEX_FUND_SYMBOLS.has(sym)) {
+      if (isIndexFund) {
         sector = "Index Fund";
       } else if (stock) {
         sector = normalizeSector(stock.sector as string);
@@ -107,7 +124,7 @@ export async function POST(request: NextRequest) {
 
       return {
         symbol: sym,
-        name: stock?.name || (INDEX_FUND_SYMBOLS.has(sym) ? sym : sym),
+        name: stock?.name || INDEX_FUND_MAP[sym] || sym,
         shares: h.shares,
         currentPrice,
         priceDate: priceInfo?.date || null,
@@ -153,7 +170,7 @@ export async function POST(request: NextRequest) {
 
     // Portfolio beta (weighted)
     const weightedBeta = enrichedHoldings.reduce((sum, h) => {
-      const beta = h.metrics?.beta || (INDEX_FUND_SYMBOLS.has(h.symbol) ? 1.0 : 1);
+      const beta = h.metrics?.beta || (h.symbol in INDEX_FUND_MAP ? 1.0 : 1);
       const weight = totalValue > 0 ? h.currentValue / totalValue : 0;
       return sum + beta * weight;
     }, 0);
