@@ -16,11 +16,25 @@ interface UserProfile {
   netWorth?: string;
 }
 
-const SECTOR_NAMES: Record<number, string> = {
-  1: "Technology", 2: "Healthcare", 3: "Financial", 4: "Energy",
-  5: "Consumer", 6: "Industrials", 7: "Basic Materials", 8: "Real Estate",
-  9: "Utilities", 10: "Communication Services",
-};
+// Normalize FMP sector strings to display names
+function normalizeSector(raw: string | null | undefined): string {
+  if (!raw) return "Unknown";
+  const s = raw.trim().toLowerCase();
+  if (s.includes("technology") || s.includes("tech")) return "Technology";
+  if (s.includes("health")) return "Healthcare";
+  if (s.includes("financial") || s.includes("finance")) return "Financial";
+  if (s.includes("energy")) return "Energy";
+  if (s.includes("consumer")) return "Consumer";
+  if (s.includes("industrial")) return "Industrials";
+  if (s.includes("basic material")) return "Basic Materials";
+  if (s.includes("real estate")) return "Real Estate";
+  if (s.includes("utilit")) return "Utilities";
+  if (s.includes("communication")) return "Communication Services";
+  return "Other";
+}
+
+// Known index fund / ETF → sector treatment
+const INDEX_FUND_SYMBOLS = new Set(["VOO", "SPY", "IVV", "VTI", "VXUS", "VT", "QQQ", "VUG", "VTV", "BND", "AGG", "SCHD", "ITOT", "SPTM"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,9 +52,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
 
-    // Fetch stock data for all holdings
+    // Fetch stock data for all holdings — include price from stocks table as fallback
     const stockRows = await sql`
-      SELECT symbol, company_name AS name, sector, market_cap,
+      SELECT symbol, company_name AS name, sector, market_cap, price,
              price_to_earnings_ratio AS pe_ratio,
              return_on_equity AS roe,
              net_profit_margin AS profit_margin,
@@ -56,7 +70,7 @@ export async function POST(request: NextRequest) {
       WHERE symbol = ANY(${symbols})
     `;
 
-    // Fetch latest prices
+    // Fetch latest prices from stock_prices table (most accurate)
     const priceRows = await sql`
       SELECT DISTINCT ON (symbol) symbol, close_price, date
       FROM stock_prices
@@ -67,12 +81,13 @@ export async function POST(request: NextRequest) {
     const stockMap = new Map(stockRows.map((r) => [r.symbol as string, r]));
     const priceMap = new Map(priceRows.map((r) => [r.symbol as string, { price: Number(r.close_price), date: r.date }]));
 
-    // Build enriched holdings
+    // Build enriched holdings (one per input row — consolidation happens client-side)
     const enrichedHoldings = holdings.map((h) => {
       const sym = h.symbol.toUpperCase();
       const stock = stockMap.get(sym);
       const priceInfo = priceMap.get(sym);
-      const currentPrice = priceInfo?.price || 0;
+      // Price priority: stock_prices table → stocks.price → 0
+      const currentPrice = priceInfo?.price || (stock?.price ? Number(stock.price) : 0);
       const currentValue = currentPrice * h.shares;
       const costBasisTotal = h.costBasis ? h.costBasis * h.shares : null;
       const gainLoss = costBasisTotal !== null ? currentValue - costBasisTotal : null;
@@ -80,9 +95,19 @@ export async function POST(request: NextRequest) {
         ? (currentValue - costBasisTotal) / costBasisTotal
         : null;
 
+      // Determine sector
+      let sector: string;
+      if (INDEX_FUND_SYMBOLS.has(sym)) {
+        sector = "Index Fund";
+      } else if (stock) {
+        sector = normalizeSector(stock.sector as string);
+      } else {
+        sector = "Unknown";
+      }
+
       return {
         symbol: sym,
-        name: stock?.name || sym,
+        name: stock?.name || (INDEX_FUND_SYMBOLS.has(sym) ? sym : sym),
         shares: h.shares,
         currentPrice,
         priceDate: priceInfo?.date || null,
@@ -91,7 +116,7 @@ export async function POST(request: NextRequest) {
         costBasisTotal,
         gainLoss,
         gainLossPct,
-        sector: stock ? SECTOR_NAMES[Number(stock.sector)] || "Other" : "Unknown",
+        sector,
         metrics: stock ? {
           peRatio: stock.pe_ratio !== null ? Number(stock.pe_ratio) : null,
           roe: stock.roe !== null ? Number(stock.roe) : null,
@@ -117,45 +142,85 @@ export async function POST(request: NextRequest) {
       .map(([sector, value]) => ({ sector, value, pct: totalValue > 0 ? value / totalValue : 0 }))
       .sort((a, b) => b.value - a.value);
 
-    // Concentration risk
-    const holdingWeights = enrichedHoldings
-      .map((h) => ({ symbol: h.symbol, pct: totalValue > 0 ? h.currentValue / totalValue : 0 }))
+    // Concentration risk (consolidate by symbol for accurate weights)
+    const symbolValues: Record<string, number> = {};
+    for (const h of enrichedHoldings) {
+      symbolValues[h.symbol] = (symbolValues[h.symbol] || 0) + h.currentValue;
+    }
+    const holdingWeights = Object.entries(symbolValues)
+      .map(([symbol, value]) => ({ symbol, pct: totalValue > 0 ? value / totalValue : 0 }))
       .sort((a, b) => b.pct - a.pct);
 
     // Portfolio beta (weighted)
     const weightedBeta = enrichedHoldings.reduce((sum, h) => {
-      const beta = h.metrics?.beta || 1;
+      const beta = h.metrics?.beta || (INDEX_FUND_SYMBOLS.has(h.symbol) ? 1.0 : 1);
       const weight = totalValue > 0 ? h.currentValue / totalValue : 0;
       return sum + beta * weight;
     }, 0);
 
-    // AI analysis
+    // AI analysis — senior wealth advisor tone
     let aiAnalysis: string | null = null;
     const openaiKey = process.env.OPENAI_API_KEY;
     if (openaiKey) {
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
 
-        const holdingSummary = enrichedHoldings.map((h) => {
-          const weight = totalValue > 0 ? ((h.currentValue / totalValue) * 100).toFixed(1) : "0";
-          return `${h.symbol} (${h.name}): ${weight}% of portfolio, sector: ${h.sector}, P/E: ${h.metrics?.peRatio?.toFixed(1) || "N/A"}, ROE: ${h.metrics?.roe ? (h.metrics.roe * 100).toFixed(1) + "%" : "N/A"}, Revenue Growth: ${h.metrics?.revenueGrowth ? (h.metrics.revenueGrowth * 100).toFixed(1) + "%" : "N/A"}, Dividend Yield: ${h.metrics?.dividendYield ? (h.metrics.dividendYield * 100).toFixed(1) + "%" : "N/A"}, Beta: ${h.metrics?.beta?.toFixed(2) || "N/A"}`;
+        // Consolidate holdings by symbol for the AI summary
+        const consolidated: Record<string, { name: string; totalValue: number; sector: string; metrics: typeof enrichedHoldings[0]["metrics"] }> = {};
+        for (const h of enrichedHoldings) {
+          if (!consolidated[h.symbol]) {
+            consolidated[h.symbol] = { name: h.name, totalValue: 0, sector: h.sector, metrics: h.metrics };
+          }
+          consolidated[h.symbol].totalValue += h.currentValue;
+        }
+
+        const holdingSummary = Object.entries(consolidated).map(([sym, data]) => {
+          const weight = totalValue > 0 ? ((data.totalValue / totalValue) * 100).toFixed(1) : "0";
+          const m = data.metrics;
+          return `${sym} (${data.name}): ${weight}% of portfolio, sector: ${data.sector}, P/E: ${m?.peRatio?.toFixed(1) || "N/A"}, ROE: ${m?.roe ? (m.roe * 100).toFixed(1) + "%" : "N/A"}, Revenue Growth: ${m?.revenueGrowth ? (m.revenueGrowth * 100).toFixed(1) + "%" : "N/A"}, Dividend Yield: ${m?.dividendYield ? (m.dividendYield * 100).toFixed(1) + "%" : "N/A"}, Beta: ${m?.beta?.toFixed(2) || "N/A"}`;
         }).join("\n");
 
         const profileContext = profile
-          ? `\nInvestor profile: Age ${profile.age || "unknown"}, Risk tolerance: ${profile.riskTolerance || "moderate"}${profile.netWorth ? `, Estimated net worth: ${profile.netWorth}` : ""}.`
+          ? `\n\nINVESTOR PROFILE (use this to tailor every recommendation — reference it explicitly when it influences your advice):\n- Age: ${profile.age || "not provided"}\n- Risk tolerance: ${profile.riskTolerance || "not provided"}\n- Estimated net worth: ${profile.netWorth || "not provided"}`
           : "";
 
         const response = await openai.chat.completions.create({
           model: "gpt-4o-mini",
-          max_tokens: 800,
+          max_tokens: 1200,
           messages: [
             {
               role: "system",
-              content: "You are a concise portfolio analyst. Give practical, specific feedback. Use bullet points. Keep it under 300 words. Never give specific buy/sell recommendations. Include a disclaimer that this is not financial advice.",
+              content: `You are a senior wealth management advisor at a top-tier firm, providing a portfolio review. Your tone is professional, direct, and confident — like a seasoned advisor speaking to a client in a private meeting.
+
+FORMAT RULES:
+- Use markdown: ## for section headers, **bold** for emphasis, bullet points for lists
+- Keep total response 250-400 words
+- Be specific: name tickers, percentages, and concrete actions
+- When the investor profile is provided, explicitly reference it when it shapes a recommendation (e.g., "Given your age of 28 and aggressive risk tolerance...")
+- Never give specific buy/sell price targets
+- End with a brief disclaimer in italics
+
+SECTIONS TO INCLUDE:
+## Portfolio Overview
+A 2-3 sentence executive summary of the portfolio's character (growth-heavy? concentrated? balanced?).
+
+## Key Strengths
+2-3 specific positives (e.g., "Strong NVDA position capturing AI growth at 35% of portfolio").
+
+## Risk Factors
+2-3 specific risks with context (e.g., "70% Technology sector — a single sector downturn would hit hard").
+
+## Recommendations
+3-4 specific, actionable recommendations. These should be the kind of advice a top wealth advisor would give — not generic platitudes. Consider:
+- Position sizing (any holdings too large or too small to matter?)
+- Sector diversification gaps
+- Income vs growth balance for the investor's stage of life
+- Quality of holdings (are any speculative/low-quality?)
+- Missing asset classes (international, bonds, REITs, etc.)`,
             },
             {
               role: "user",
-              content: `Analyze this portfolio ($${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} total value, portfolio beta: ${weightedBeta.toFixed(2)}):\n\n${holdingSummary}\n\nSector breakdown: ${sectorBreakdown.map((s) => `${s.sector}: ${(s.pct * 100).toFixed(1)}%`).join(", ")}\n\nTop concentration: ${holdingWeights.slice(0, 3).map((h) => `${h.symbol}: ${(h.pct * 100).toFixed(1)}%`).join(", ")}${profileContext}\n\nProvide:\n1. Diversification assessment (sector concentration, position sizing)\n2. Risk assessment (beta, leverage exposure, volatility)\n3. Quality assessment (are these quality companies based on metrics?)\n4. 2-3 specific suggestions for improvement`,
+              content: `Portfolio value: $${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} | Beta: ${weightedBeta.toFixed(2)} | ${Object.keys(consolidated).length} unique holdings\n\n${holdingSummary}\n\nSector breakdown: ${sectorBreakdown.map((s) => `${s.sector}: ${(s.pct * 100).toFixed(1)}%`).join(", ")}\n\nTop positions: ${holdingWeights.slice(0, 5).map((h) => `${h.symbol}: ${(h.pct * 100).toFixed(1)}%`).join(", ")}${profileContext}`,
             },
           ],
         });
@@ -166,13 +231,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Unique holding count (by symbol, not lot)
+    const uniqueSymbols = new Set(enrichedHoldings.map((h) => h.symbol));
+
     return NextResponse.json({
       holdings: enrichedHoldings,
       summary: {
         totalValue,
         totalCostBasis: totalCostBasis > 0 ? totalCostBasis : null,
         totalGainLoss: totalCostBasis > 0 ? totalValue - totalCostBasis : null,
-        holdingCount: enrichedHoldings.length,
+        holdingCount: uniqueSymbols.size,
         weightedBeta,
         sectorBreakdown,
         concentrationRisk: holdingWeights,
