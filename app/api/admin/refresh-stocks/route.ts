@@ -589,20 +589,66 @@ async function runRefresh(
   };
 }
 
-// ── GET: Vercel Cron handler + status ──────────────────────────────
+// ── Auto-refresh staleness threshold ────────────────────────────────
+const AUTO_REFRESH_STALE_HOURS = 20;
+
+// ── GET: Vercel Cron handler + auto-refresh + status ───────────────
 
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
   const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
 
-  if (!isCron) {
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      return NextResponse.json({ configured: false, message: "DATABASE_URL not set" });
-    }
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    if (isCron) return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 400 });
+    return NextResponse.json({ configured: false, message: "DATABASE_URL not set" });
+  }
+
+  const sql = neon(databaseUrl);
+
+  // ── Determine if we should run a refresh ─────────────────────────
+  // Trigger 1: Vercel cron with valid CRON_SECRET
+  // Trigger 2: Auto-refresh when data is stale (>20 hours) — works
+  //            even if CRON_SECRET is not set or cron is misconfigured
+  let shouldRefresh = !!isCron;
+  let isAutoRefresh = false;
+
+  if (!shouldRefresh && FMP_API_KEY) {
     try {
-      const sql = neon(databaseUrl);
+      const meta = await sql`SELECT key, value FROM stock_meta WHERE key IN ('last_populate', 'refresh_lock')`;
+      const lastPopulateStr = meta.find(r => r.key === 'last_populate')?.value as string | undefined;
+      const refreshLockStr = meta.find(r => r.key === 'refresh_lock')?.value as string | undefined;
+
+      const lastRefreshMs = lastPopulateStr ? new Date(lastPopulateStr).getTime() : 0;
+      const hoursSinceRefresh = (Date.now() - lastRefreshMs) / (1000 * 60 * 60);
+
+      if (hoursSinceRefresh > AUTO_REFRESH_STALE_HOURS) {
+        // Data is stale — check if another refresh is already running
+        if (refreshLockStr) {
+          const lockAgeMin = (Date.now() - new Date(refreshLockStr).getTime()) / (1000 * 60);
+          if (lockAgeMin < 10) {
+            return NextResponse.json({
+              configured: true,
+              stale: true,
+              refreshInProgress: true,
+              hoursSinceRefresh: Math.round(hoursSinceRefresh * 10) / 10,
+            });
+          }
+          // Lock is stale (>10 min old), previous refresh likely timed out
+        }
+        shouldRefresh = true;
+        isAutoRefresh = true;
+        console.log(`[auto-refresh] Data is ${Math.round(hoursSinceRefresh)}h stale, triggering refresh`);
+      }
+    } catch {
+      // stock_meta table may not exist yet — fall through to status
+    }
+  }
+
+  // ── Status response (data is fresh, no refresh needed) ───────────
+  if (!shouldRefresh) {
+    try {
       const meta = await sql`SELECT * FROM stock_meta WHERE key IN ('last_populate', 'enrich_offset', 'last_refresh')`;
       const stockCount = await sql`SELECT count(*) as cnt FROM stocks`;
       const enrichedCount = await sql`SELECT count(*) as cnt FROM stocks WHERE price_to_earnings_ratio IS NOT NULL OR return_on_equity IS NOT NULL`;
@@ -612,6 +658,7 @@ export async function GET(request: NextRequest) {
       const enrichOffset = meta.find((r) => r.key === "enrich_offset")?.value || "0";
       return NextResponse.json({
         configured: true,
+        stale: false,
         lastPopulate,
         lastRefresh,
         enrichOffset: Number(enrichOffset),
@@ -624,37 +671,49 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Cron request — run refresh with rotating batch
+  // ── Run refresh (triggered by cron OR auto-refresh) ──────────────
   if (!FMP_API_KEY) {
     return NextResponse.json({ error: "FMP API key not configured" }, { status: 400 });
   }
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 400 });
-  }
 
-  const sql = neon(databaseUrl);
   // Reset rate limiter for this request
   nextSlot = 0;
 
+  // Acquire refresh lock (prevents concurrent refreshes)
   try {
     await ensureStockTables(sql);
+    await sql`
+      INSERT INTO stock_meta (key, value, updated_at)
+      VALUES ('refresh_lock', ${new Date().toISOString()}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+  } catch { /* ensureStockTables handles table creation */ }
+
+  const trigger = isAutoRefresh ? 'auto-refresh' : 'cron';
+
+  try {
     let offset = 0;
     try {
       const offsetRow = await sql`SELECT value FROM stock_meta WHERE key = 'enrich_offset'`;
       if (offsetRow[0]?.value) offset = parseInt(offsetRow[0].value as string, 10) || 0;
     } catch { /* first run, start at 0 */ }
 
-    console.log(`[cron] Starting refresh, enrich offset: ${offset}`);
+    console.log(`[${trigger}] Starting refresh, enrich offset: ${offset}`);
     const result = await runRefresh(sql, offset);
+
+    // Release lock
+    try { await sql`DELETE FROM stock_meta WHERE key = 'refresh_lock'`; } catch { /* ignore */ }
 
     return NextResponse.json({
       success: true,
+      trigger,
       ...result,
       message: `Batch ${result.batchRange} of ${result.totalStocks}: ${result.enriched} enriched, ${result.noData} no data, ${result.enrichFailed} errors. ${result.runsRemaining > 0 ? `~${result.runsRemaining} runs remaining.` : 'Full cycle complete!'}`,
     });
   } catch (error) {
-    console.error("Cron refresh error:", error);
+    // Release lock on error
+    try { await sql`DELETE FROM stock_meta WHERE key = 'refresh_lock'`; } catch { /* ignore */ }
+    console.error(`${trigger} refresh error:`, error);
     return NextResponse.json({ error: "Refresh failed", details: String(error) }, { status: 500 });
   }
 }
