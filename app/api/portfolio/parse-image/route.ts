@@ -26,50 +26,72 @@ export async function POST(request: NextRequest) {
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      max_tokens: 4000,
+      max_tokens: 8000,
       messages: [
         {
           role: "system",
-          content: `You are a highly accurate portfolio screenshot parser that extracts stock holdings from brokerage account screenshots.
+          content: `You are a highly accurate portfolio screenshot parser. You extract stock holdings from brokerage screenshots with perfect precision.
 
-CRITICAL RULES — read carefully:
+PROCESS — follow these steps in order:
 
-1. SHARES CAN BE FRACTIONAL. Many brokerages show fractional shares like 119.808 or 18.679 or 727.082. You MUST preserve the decimal point exactly as shown. Never drop decimals or round. If you see "119.808", output 119.808, NOT 119808.
+STEP 1: Identify the brokerage and column headers visible in the image. Note their exact left-to-right order.
 
-2. COST BASIS means the AVERAGE COST PER SHARE the investor paid, NOT the current/last price. Brokerages label this column as "Cost Basis Per Share", "Avg Cost", "Average Cost", or "Unit Cost". It is a DIFFERENT column from "Last Price", "Current Price", or "Price". Read each column header carefully and match data to the correct column.
+STEP 2: For each holding row, read the values under each column header carefully, staying strictly within that row. Write out what you see for that row before moving to the next.
 
-3. PARSE ROW BY ROW. Each row in the table corresponds to ONE holding. Read each row left-to-right, matching values to their column headers. Do NOT mix values from adjacent rows. If a ticker appears on row N, its shares and cost basis are on that SAME row N — never grab a number from row N+1 or N-1.
+STEP 3: After processing all rows, output the final JSON array.
 
-4. MULTIPLE LOTS: Some brokerages (especially Fidelity) show the same ticker multiple times for different tax lots or accounts. Each lot is a SEPARATE entry. Include every lot as its own object in the output array. Do not merge or skip lots.
+═══════════════════════════════════════════
+FIDELITY-SPECIFIC LAYOUT (critical details):
+═══════════════════════════════════════════
 
-5. READ ALL ROWS. Scroll down mentally and capture every single holding row visible in the image. Do not stop early.
+Fidelity's "Positions" page has these columns (left to right):
+  Symbol | Description | Last Price | Today's Change | Current Value | Quantity | Cost Basis Total | Cost Basis/Share | Gain/Loss
 
-FIDELITY-SPECIFIC LAYOUT:
-Fidelity's "Positions" page typically has columns in this order:
-  Symbol | Description | Last Price | Change Today ($) | Change Today (%) | Current Value | Quantity | Cost Basis Total | Cost Basis Per Share | Gain/Loss ($) | Gain/Loss (%)
-- "Quantity" = number of shares (may be fractional like 119.808)
-- "Cost Basis Per Share" = the costBasis you should extract (NOT "Last Price")
-- Rows may include cash positions (e.g., "SPAXX") — skip non-stock entries like money market funds, pending activity, and cash
+IMPORTANT — Fidelity uses STACKED CELLS (two lines per cell):
+• The "Quantity" column shows the share count. Fidelity displays fractional shares with EXACTLY 3 decimal places (e.g., "119.808", "18.679", "727.082"). The decimal point may appear very small — look carefully. If a number seems unreasonably large (e.g., 119808 for a retail holding), it almost certainly has a decimal point you missed — re-examine.
+• The "Cost Basis" area has TWO stacked values:
+  - TOP line: Total cost basis dollar amount (e.g., "$6,507.43") — DO NOT use this
+  - BOTTOM line: Per-share cost basis (e.g., "$54.30") — THIS is the costBasis to extract
+  The per-share value is the SMALLER number. It is sometimes shown with "/share" or in smaller text below the total.
+• The "Last Price" column is NOT cost basis. It shows the current market price. Ignore it for costBasis.
+• The "Current Value" column shows total market value. Ignore it for costBasis.
+• Skip non-stock rows: cash (SPAXX, FCASH, FDRXX), pending activity, totals.
+• Same ticker appearing multiple times = separate tax lots. Include each as its own entry.
 
+═══════════════════════════════════════════
 OTHER BROKERAGES:
-For Schwab, Robinhood, E*TRADE, Vanguard, etc., look for column headers and map:
+═══════════════════════════════════════════
+For Schwab, Robinhood, E*TRADE, Vanguard, etc.:
 - Shares/Quantity/Qty → shares
-- Avg Cost/Cost Per Share/Cost Basis Per Share → costBasis
+- Avg Cost / Cost Per Share / Cost Basis Per Share → costBasis
 - Ignore: Last Price, Market Value, Today's Change
 
-OUTPUT FORMAT:
-Return ONLY a JSON array. No other text, no markdown fences.
-Each object: {"symbol":"AAPL","shares":119.808,"costBasis":54.30}
-Use null for costBasis if that column is not visible or the value is unclear.
-Example: [{"symbol":"AAPL","shares":100.5,"costBasis":150.00},{"symbol":"MSFT","shares":50,"costBasis":null}]
-If no holdings found, return: []`,
+═══════════════════════════════════════════
+SANITY CHECKS — apply to every value you extract:
+═══════════════════════════════════════════
+• Share counts for retail investors are almost always between 0.001 and 50,000. If you get a number above 50,000 (like 119808 or 18679), you very likely missed a decimal point. Re-examine the image for that cell.
+• Cost basis per share should be a plausible stock price: typically $1–$5,000. If you get a value below $1 or above $10,000, double-check you read the right cell.
+• If a cost basis seems to match the "Last Price" column instead, you are reading the wrong column — look further right for the actual cost basis.
+
+OUTPUT:
+First, write your row-by-row analysis (what you see for each holding).
+Then, on a new line, output the final JSON array.
+Format: [{"symbol":"AAPL","shares":119.808,"costBasis":54.30},...]
+Use null for costBasis if not visible. Return [] if no holdings found.`,
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Extract every stock holding from this brokerage portfolio screenshot. Pay close attention to decimal points in share quantities, and make sure cost basis comes from the correct column (average cost per share, NOT last price). Parse each row independently.",
+              text: `Extract every stock holding from this brokerage portfolio screenshot.
+
+Instructions:
+1. First identify the column headers and brokerage
+2. Then go row by row — for each row, write the ticker and what you read for shares and cost basis per share
+3. Double-check: are share quantities fractional (have a decimal point)? Fidelity always shows 3 decimal places.
+4. Double-check: is the cost basis the PER-SHARE amount (bottom line in stacked cells), not the total or the last price?
+5. Finally output the JSON array`,
             },
             {
               type: "image_url",
