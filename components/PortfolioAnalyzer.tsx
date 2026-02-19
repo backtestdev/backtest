@@ -47,6 +47,21 @@ interface AnalysisResult {
   priceNote: string;
 }
 
+// Consolidated holding with optional lot breakdown
+interface ConsolidatedHolding {
+  symbol: string;
+  name: string;
+  totalShares: number;
+  currentPrice: number;
+  currentValue: number;
+  avgCostBasis: number | null;
+  totalCostBasis: number | null;
+  gainLoss: number | null;
+  gainLossPct: number | null;
+  sector: string;
+  lots: EnrichedHolding[];
+}
+
 // ── Sector colors for allocation chart ──
 const SECTOR_COLORS: Record<string, string> = {
   Technology: "bg-th-accent",
@@ -59,17 +74,126 @@ const SECTOR_COLORS: Record<string, string> = {
   "Real Estate": "bg-purple-500",
   Utilities: "bg-teal-500",
   "Communication Services": "bg-indigo-500",
+  "Index Fund": "bg-blue-500",
   Unknown: "bg-gray-400",
   Other: "bg-gray-500",
 };
 
-// ── Sub-components ──
+// ── Helpers ──
 
 function formatCurrency(v: number): string {
   if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
   if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
   return `$${v.toFixed(2)}`;
 }
+
+function consolidateHoldings(holdings: EnrichedHolding[]): ConsolidatedHolding[] {
+  const groups: Record<string, EnrichedHolding[]> = {};
+  for (const h of holdings) {
+    if (!groups[h.symbol]) groups[h.symbol] = [];
+    groups[h.symbol].push(h);
+  }
+
+  return Object.entries(groups).map(([symbol, lots]) => {
+    const totalShares = lots.reduce((s, l) => s + l.shares, 0);
+    const currentValue = lots.reduce((s, l) => s + l.currentValue, 0);
+    const totalCostBasis = lots.reduce((s, l) => s + (l.costBasisTotal || 0), 0);
+    const hasCostBasis = lots.some((l) => l.costBasisTotal !== null);
+    const avgCostBasis = hasCostBasis && totalShares > 0
+      ? Math.round((totalCostBasis / totalShares) * 100) / 100
+      : null;
+    const gainLoss = hasCostBasis ? currentValue - totalCostBasis : null;
+    const gainLossPct = hasCostBasis && totalCostBasis > 0
+      ? (currentValue - totalCostBasis) / totalCostBasis
+      : null;
+
+    return {
+      symbol,
+      name: lots[0].name,
+      totalShares,
+      currentPrice: lots[0].currentPrice,
+      currentValue,
+      avgCostBasis,
+      totalCostBasis: hasCostBasis ? totalCostBasis : null,
+      gainLoss,
+      gainLossPct,
+      sector: lots[0].sector,
+      lots,
+    };
+  }).sort((a, b) => b.currentValue - a.currentValue);
+}
+
+/** Lightweight markdown → React renderer for AI analysis */
+function renderMarkdown(text: string): React.ReactNode[] {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let listItems: React.ReactNode[] = [];
+  let key = 0;
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      elements.push(<ul key={key++} className="list-disc pl-5 space-y-1.5 my-2">{listItems}</ul>);
+      listItems = [];
+    }
+  };
+
+  const inlineFormat = (str: string): React.ReactNode => {
+    // Handle **bold**, *italic*
+    const parts: React.ReactNode[] = [];
+    const remaining = str;
+    let i = 0;
+    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*)/g;
+    let match;
+    let lastIndex = 0;
+    while ((match = regex.exec(remaining)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(remaining.slice(lastIndex, match.index));
+      }
+      if (match[2]) {
+        parts.push(<strong key={i++} className="font-semibold text-th-text">{match[2]}</strong>);
+      } else if (match[3]) {
+        parts.push(<em key={i++} className="italic text-th-text-3">{match[3]}</em>);
+      }
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < remaining.length) {
+      parts.push(remaining.slice(lastIndex));
+    }
+    return parts.length === 1 ? parts[0] : <>{parts}</>;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("## ")) {
+      flushList();
+      elements.push(
+        <h3 key={key++} className="text-sm font-bold text-th-text mt-5 mb-2 first:mt-0">
+          {inlineFormat(trimmed.slice(3))}
+        </h3>
+      );
+    } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      listItems.push(
+        <li key={key++} className="text-sm text-th-text-2 leading-relaxed">
+          {inlineFormat(trimmed.slice(2))}
+        </li>
+      );
+    } else if (trimmed === "") {
+      flushList();
+    } else {
+      flushList();
+      elements.push(
+        <p key={key++} className="text-sm text-th-text-2 leading-relaxed my-1.5">
+          {inlineFormat(trimmed)}
+        </p>
+      );
+    }
+  }
+  flushList();
+  return elements;
+}
+
+// ── Sub-components ──
 
 function HoldingEntryRow({
   holding,
@@ -144,6 +268,133 @@ function SectorBar({ breakdown }: { breakdown: SectorBreakdown[] }) {
   );
 }
 
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="relative group cursor-help">
+      {children}
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 px-3 py-2 text-xs text-th-text-2 bg-th-surface border border-th-border rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 text-left leading-relaxed">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+function ConsolidatedHoldingRow({
+  holding,
+  totalValue,
+  score,
+}: {
+  holding: ConsolidatedHolding;
+  totalValue: number;
+  score: number | undefined;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasMultipleLots = holding.lots.length > 1;
+
+  return (
+    <div>
+      <div
+        className={`grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 items-center ${hasMultipleLots ? "cursor-pointer hover:bg-th-bg/50" : ""}`}
+        onClick={hasMultipleLots ? () => setExpanded(!expanded) : undefined}
+      >
+        <div className="col-span-3 min-w-0 flex items-center gap-2">
+          {hasMultipleLots && (
+            <svg
+              className={`w-3 h-3 text-th-text-3 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+              fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+          )}
+          <StockLogo ticker={holding.symbol} sector={holding.sector} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-th-text">{holding.symbol}</p>
+              {score !== undefined && (
+                <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
+                  score >= 75 ? "bg-th-positive-bg text-th-positive" :
+                  score >= 50 ? "bg-th-accent-bg text-th-accent" :
+                  score >= 25 ? "bg-th-warning-bg text-th-warning" :
+                  "bg-th-negative-bg text-th-negative"
+                }`}>{score}</span>
+              )}
+              {hasMultipleLots && (
+                <span className="text-[10px] text-th-text-4 font-medium">{holding.lots.length} lots</span>
+              )}
+            </div>
+            <p className="text-xs text-th-text-3 truncate">{holding.name}</p>
+          </div>
+        </div>
+        <div className="col-span-2 text-right">
+          <p className="text-sm text-th-text-2">{holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 3 })} shares</p>
+          <p className="text-xs text-th-text-3">${holding.currentPrice.toFixed(2)}</p>
+        </div>
+        <div className="col-span-2 text-right">
+          <p className="text-sm font-medium text-th-text">{formatCurrency(holding.currentValue)}</p>
+          <p className="text-xs text-th-text-3">
+            {totalValue > 0 ? `${((holding.currentValue / totalValue) * 100).toFixed(1)}%` : ""}
+          </p>
+        </div>
+        <div className="col-span-2 text-right">
+          {holding.gainLoss !== null ? (
+            <>
+              <p className={`text-sm font-medium ${holding.gainLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                {holding.gainLoss >= 0 ? "+" : ""}{formatCurrency(holding.gainLoss)}
+              </p>
+              <p className={`text-xs ${(holding.gainLossPct ?? 0) >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                {(holding.gainLossPct ?? 0) >= 0 ? "+" : ""}{((holding.gainLossPct ?? 0) * 100).toFixed(1)}%
+              </p>
+            </>
+          ) : (
+            <span className="text-xs text-th-text-4">No cost basis</span>
+          )}
+        </div>
+        <div className="col-span-3 text-right flex items-center justify-end gap-2">
+          {holding.avgCostBasis !== null && (
+            <span className="text-xs text-th-text-3">${holding.avgCostBasis.toFixed(2)} avg</span>
+          )}
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
+            {holding.sector}
+          </span>
+        </div>
+      </div>
+
+      {/* Expanded lot breakdown */}
+      {expanded && hasMultipleLots && (
+        <div className="bg-th-bg/30 border-t border-th-border-light">
+          {holding.lots.map((lot, i) => (
+            <div key={i} className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-2 items-center pl-12 sm:pl-16">
+              <div className="col-span-3 min-w-0">
+                <p className="text-xs text-th-text-3">Lot {i + 1}</p>
+              </div>
+              <div className="col-span-2 text-right">
+                <p className="text-xs text-th-text-3">{lot.shares.toLocaleString(undefined, { maximumFractionDigits: 3 })}</p>
+              </div>
+              <div className="col-span-2 text-right">
+                <p className="text-xs text-th-text-3">{formatCurrency(lot.currentValue)}</p>
+              </div>
+              <div className="col-span-2 text-right">
+                {lot.gainLoss !== null ? (
+                  <p className={`text-xs ${lot.gainLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                    {lot.gainLoss >= 0 ? "+" : ""}{formatCurrency(lot.gainLoss)}
+                  </p>
+                ) : (
+                  <span className="text-xs text-th-text-4">--</span>
+                )}
+              </div>
+              <div className="col-span-3 text-right">
+                {lot.costBasis !== null && (
+                  <span className="text-xs text-th-text-3">${lot.costBasis.toFixed(2)}/share</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ──
 
 export default function PortfolioAnalyzer() {
@@ -164,7 +415,7 @@ export default function PortfolioAnalyzer() {
       setStockScores(new Map());
       return;
     }
-    const tickers = result.holdings.map((h) => h.symbol);
+    const tickers = Array.from(new Set(result.holdings.map((h) => h.symbol)));
     let cancelled = false;
     (async () => {
       try {
@@ -181,6 +432,8 @@ export default function PortfolioAnalyzer() {
     })();
     return () => { cancelled = true; };
   }, [result]);
+
+  const consolidated = result ? consolidateHoldings(result.holdings) : [];
 
   const updateHolding = (index: number, h: Holding) => {
     const updated = [...holdings];
@@ -441,10 +694,6 @@ export default function PortfolioAnalyzer() {
                 <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider">Holdings</p>
                 <p className="text-lg sm:text-2xl font-bold text-th-text mt-1">{result.summary.holdingCount}</p>
               </div>
-              <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
-                <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider">Portfolio Beta</p>
-                <p className="text-lg sm:text-2xl font-bold text-th-text mt-1">{result.summary.weightedBeta.toFixed(2)}</p>
-              </div>
               {result.summary.totalGainLoss !== null && (
                 <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
                   <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider">Total Gain/Loss</p>
@@ -456,6 +705,29 @@ export default function PortfolioAnalyzer() {
                   </p>
                 </div>
               )}
+              <div className="bg-th-surface rounded-xl border border-th-border-light p-3 sm:p-4 text-center">
+                <Tooltip text="Beta measures how volatile your portfolio is vs. the market. 1.0 = same as S&P 500. Above 1 = more volatile (bigger swings). Below 1 = more stable. Most balanced portfolios fall between 0.8 and 1.2.">
+                  <p className="text-[10px] sm:text-xs text-th-text-3 uppercase tracking-wider inline-flex items-center gap-1">
+                    Portfolio Beta
+                    <svg className="w-3 h-3 text-th-text-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+                    </svg>
+                  </p>
+                </Tooltip>
+                <p className={`text-lg sm:text-2xl font-bold mt-1 ${
+                  result.summary.weightedBeta > 1.3 ? "text-th-warning" :
+                  result.summary.weightedBeta < 0.7 ? "text-th-accent" :
+                  "text-th-text"
+                }`}>
+                  {result.summary.weightedBeta.toFixed(2)}
+                </p>
+                <p className="text-[10px] text-th-text-4 mt-0.5">
+                  {result.summary.weightedBeta > 1.3 ? "High volatility" :
+                   result.summary.weightedBeta > 1.0 ? "Above market" :
+                   result.summary.weightedBeta > 0.7 ? "Near market" :
+                   "Low volatility"}
+                </p>
+              </div>
             </div>
 
             {/* Detailed results - gated for guests */}
@@ -465,8 +737,26 @@ export default function PortfolioAnalyzer() {
               subMessage="Sector allocation, per-holding detail, gain/loss breakdown, and AI-powered recommendations"
               blur="heavy"
             >
+              {/* AI Analysis — prominent placement */}
+              {result.aiAnalysis && (
+                <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-hidden">
+                  <div className="px-6 py-4 border-b border-th-border-light flex items-center gap-2">
+                    <svg className="w-5 h-5 text-th-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
+                    </svg>
+                    <h3 className="text-sm font-semibold text-th-text">Advisor Analysis</h3>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
+                      AI
+                    </span>
+                  </div>
+                  <div className="px-6 py-5">
+                    {renderMarkdown(result.aiAnalysis)}
+                  </div>
+                </div>
+              )}
+
               {/* Sector allocation */}
-              <div className="bg-th-surface rounded-2xl border border-th-border-light p-6">
+              <div className="bg-th-surface rounded-2xl border border-th-border-light p-6 mt-6">
                 <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
                 <SectorBar breakdown={result.summary.sectorBreakdown} />
               </div>
@@ -477,78 +767,16 @@ export default function PortfolioAnalyzer() {
                   <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
                 </div>
                 <div className="min-w-[600px] divide-y divide-th-border-light">
-                  {result.holdings.map((h) => {
-                    const score = stockScores.get(h.symbol);
-                    return (
-                    <div key={h.symbol} className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 items-center">
-                      <div className="col-span-3 min-w-0 flex items-center gap-2">
-                        <StockLogo ticker={h.symbol} sector={h.sector} />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-semibold text-th-text">{h.symbol}</p>
-                            {score !== undefined && (
-                              <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
-                                score >= 75 ? "bg-th-positive-bg text-th-positive" :
-                                score >= 50 ? "bg-th-accent-bg text-th-accent" :
-                                score >= 25 ? "bg-th-warning-bg text-th-warning" :
-                                "bg-th-negative-bg text-th-negative"
-                              }`}>{score}</span>
-                            )}
-                          </div>
-                          <p className="text-xs text-th-text-3 truncate">{h.name}</p>
-                        </div>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <p className="text-sm text-th-text-2">{h.shares} shares</p>
-                        <p className="text-xs text-th-text-3">${h.currentPrice.toFixed(2)}</p>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <p className="text-sm font-medium text-th-text">{formatCurrency(h.currentValue)}</p>
-                        <p className="text-xs text-th-text-3">
-                          {result.summary.totalValue > 0
-                            ? `${((h.currentValue / result.summary.totalValue) * 100).toFixed(1)}%`
-                            : ""}
-                        </p>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        {h.gainLoss !== null ? (
-                          <>
-                            <p className={`text-sm font-medium ${h.gainLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
-                              {h.gainLoss >= 0 ? "+" : ""}{formatCurrency(h.gainLoss)}
-                            </p>
-                            <p className={`text-xs ${(h.gainLossPct ?? 0) >= 0 ? "text-th-positive" : "text-th-negative"}`}>
-                              {(h.gainLossPct ?? 0) >= 0 ? "+" : ""}{((h.gainLossPct ?? 0) * 100).toFixed(1)}%
-                            </p>
-                          </>
-                        ) : (
-                          <span className="text-xs text-th-text-4">No cost basis</span>
-                        )}
-                      </div>
-                      <div className="col-span-3 text-right">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
-                          {h.sector}
-                        </span>
-                      </div>
-                    </div>
-                    );
-                  })}
+                  {consolidated.map((h) => (
+                    <ConsolidatedHoldingRow
+                      key={h.symbol}
+                      holding={h}
+                      totalValue={result.summary.totalValue}
+                      score={stockScores.get(h.symbol)}
+                    />
+                  ))}
                 </div>
               </div>
-
-              {/* AI Analysis */}
-              {result.aiAnalysis && (
-                <div className="bg-th-surface rounded-2xl border border-th-border-light p-6 mt-6">
-                  <h3 className="text-sm font-semibold text-th-text-2 mb-3 flex items-center gap-2">
-                    AI Analysis
-                    <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
-                      Beta
-                    </span>
-                  </h3>
-                  <div className="text-sm text-th-text-2 leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_strong]:text-th-text [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-th-text [&_h2]:mt-3 [&_h2]:mb-1 whitespace-pre-line">
-                    {result.aiAnalysis}
-                  </div>
-                </div>
-              )}
 
               {/* Price note */}
               <p className="text-xs text-th-text-4 text-center mt-6">{result.priceNote}</p>
