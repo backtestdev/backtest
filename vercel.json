@@ -7,6 +7,10 @@
     {
       "path": "/api/admin/refresh-prices",
       "schedule": "0 5 * * 0"
+    },
+    {
+      "path": "/api/admin/refresh-signals",
+      "schedule": "0 7 * * *"
     }
   ]
 }
