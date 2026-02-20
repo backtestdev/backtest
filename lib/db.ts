@@ -420,6 +420,33 @@ export async function ensureSavedPortfoliosTable(sql: NeonQueryFunction<false, f
   await sql`CREATE INDEX IF NOT EXISTS idx_saved_portfolios_user ON saved_portfolios(user_id)`;
 }
 
+/**
+ * Ensures the signal_picks table exists for the Signal Tracker module.
+ */
+export async function ensureSignalPicksTable(sql: NeonQueryFunction<false, false>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS signal_picks (
+      id TEXT PRIMARY KEY,
+      symbol VARCHAR(10) NOT NULL,
+      company_name VARCHAR(255),
+      sector VARCHAR(100),
+      market_cap_at_pick NUMERIC,
+      score INTEGER NOT NULL,
+      thesis TEXT,
+      pick_date DATE NOT NULL,
+      entry_price DECIMAL(12,4),
+      status VARCHAR(20) DEFAULT 'active',
+      sell_date DATE,
+      sell_price DECIMAL(12,4),
+      sell_reason TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signal_picks_symbol ON signal_picks(symbol)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signal_picks_status ON signal_picks(status)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signal_picks_date ON signal_picks(pick_date)`;
+}
+
 export function generateParametersHash(params: unknown): string {
   const sortedJson = JSON.stringify(params, Object.keys(params as Record<string, unknown>).sort());
   return createHash("sha256").update(sortedJson).digest("hex").slice(0, 16);

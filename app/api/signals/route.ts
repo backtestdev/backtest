@@ -158,9 +158,15 @@ export async function GET(request: NextRequest) {
       return SECTOR_DISPLAY[s] || s || "Other";
     };
 
+    // Deduplicate GOOG/GOOGL — keep GOOGL (Class A), drop GOOG (Class C)
+    const googlExists = stockRows.some((s) => s.symbol === "GOOGL");
+    const dedupedRows = googlExists
+      ? stockRows.filter((s) => s.symbol !== "GOOG")
+      : stockRows;
+
     // Build a lookup for stock metadata
     const stockMeta = new Map<string, { name: string; sector: string; marketCap: number }>();
-    for (const row of stockRows) {
+    for (const row of dedupedRows) {
       stockMeta.set(row.symbol as string, {
         name: (row.company_name as string) || "",
         sector: sectorName(row.sector),
@@ -170,7 +176,7 @@ export async function GET(request: NextRequest) {
 
     for (const metric of ANALYZABLE_METRICS) {
       // Get stocks with non-null values for this metric
-      const stocksWithMetric = stockRows
+      const stocksWithMetric = dedupedRows
         .filter((s) => s[metric.column] !== null && s[metric.column] !== undefined)
         .map((s) => ({
           symbol: s.symbol as string,
@@ -277,7 +283,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       signals: results,
-      stockCount: stockRows.length,
+      stockCount: dedupedRows.length,
       yearsAnalyzed: yearsOfData,
       period,
       methodology: "static",
