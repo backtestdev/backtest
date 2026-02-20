@@ -13,6 +13,8 @@ export const maxDuration = 60;
 
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
+// Bump this to force regeneration of initial picks when generation logic changes
+const PICKS_VERSION = 2;
 
 type Sql = NeonQueryFunction<false, false>;
 
@@ -105,11 +107,8 @@ async function fetchStocksWithScores(sql: Sql) {
       AND company_name !~* ${NON_COMPANY_PATTERN}
   `;
 
-  // Dedup GOOG/GOOGL
-  const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
-  const deduped = googlExists ? allStocks.filter((s) => s.symbol !== "GOOG") : allStocks;
-
-  const enriched = deduped.map((stock) => {
+  // Compute scores on full stock set (before dedup) to match screener percentiles
+  const enriched = allStocks.map((stock) => {
     const mcapB = (Number(stock.market_cap) || 0) / 1e9;
     return {
       ...(stock as unknown as Record<string, unknown>),
@@ -118,6 +117,10 @@ async function fetchStocksWithScores(sql: Sql) {
   });
 
   const scoreMap = computeBacktestScore(enriched);
+
+  // Dedup GOOG/GOOGL after scoring
+  const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
+  const deduped = googlExists ? allStocks.filter((s) => s.symbol !== "GOOG") : allStocks;
 
   const infos: StockInfo[] = deduped.map((stock) => ({
     symbol: stock.symbol as string,
@@ -260,9 +263,9 @@ async function generateInitialPicks(sql: Sql) {
 
   // Take top outperformers for active picks, and a few underperformers for sells
   const activePool = withReturns.slice(0, 20);
-  // Find stocks with worst returns for realistic sell entries
+  // Find stocks with worst returns for realistic sell entries (exclude high-scorers)
   const sellPool = withReturns
-    .filter((s) => s.returnPct < 5)
+    .filter((s) => s.returnPct < 5 && s.score < 80)
     .sort((a, b) => a.returnPct - b.returnPct)
     .slice(0, 3);
   // Add sell candidates that aren't already in active pool
@@ -407,7 +410,7 @@ async function computePerformance(
   `;
   let spyPrices = new Map<string, number>();
   for (const row of spyRows) {
-    spyPrices.set(String(row.date).slice(0, 10), Number(row.close_price));
+    spyPrices.set(toDateStr(row.date), Number(row.close_price));
   }
   // Fallback: if no SPY in stock_prices, fetch from Yahoo Finance
   if (spyPrices.size === 0) {
@@ -427,8 +430,8 @@ async function computePerformance(
   for (const monthEnd of monthEnds) {
     // Active picks at this point
     const active = picks.filter((p) => {
-      const pd = String(p.pick_date).slice(0, 10);
-      const sd = p.sell_date ? String(p.sell_date).slice(0, 10) : null;
+      const pd = toDateStr(p.pick_date);
+      const sd = p.sell_date ? toDateStr(p.sell_date) : null;
       return pd <= monthEnd && (p.status === "active" || (sd && sd > prevEnd));
     });
 
@@ -450,7 +453,7 @@ async function computePerformance(
       const symPrices = priceLookup.get(sym);
       if (!symPrices) continue;
 
-      const pd = String(pick.pick_date).slice(0, 10);
+      const pd = toDateStr(pick.pick_date);
       const startP = pd > prevEnd ? Number(pick.entry_price) : getClosestPrice(symPrices, prevEnd);
       const endP = getClosestPrice(symPrices, monthEnd);
 
@@ -484,19 +487,29 @@ export async function GET() {
   try {
     await ensureSignalPicksTable(sql);
 
-    // Check if picks need regeneration (empty, or all same date = bad state from refresh-signals)
+    // Check if picks need regeneration
     const existingPicks = await sql`SELECT pick_date FROM signal_picks LIMIT 50`;
-    const needsRegeneration = existingPicks.length === 0 || (() => {
-      const dates = new Set(existingPicks.map((p) => toDateStr(p.pick_date)));
-      return dates.size === 1 && existingPicks.length > 3;
-    })();
+    const versionRow = await sql`SELECT value FROM stock_meta WHERE key = 'signal_picks_version'`.catch(() => []);
+    const currentVersion = versionRow.length > 0 ? Number(versionRow[0].value) : 0;
+
+    const needsRegeneration = existingPicks.length === 0
+      || currentVersion < PICKS_VERSION
+      || (() => {
+        const dates = new Set(existingPicks.map((p) => toDateStr(p.pick_date)));
+        return dates.size === 1 && existingPicks.length > 3;
+      })();
 
     if (needsRegeneration) {
       if (existingPicks.length > 0) {
-        console.log("[Signal Tracker] Regenerating picks — all picks have same date (bad state)");
+        console.log(`[Signal Tracker] Regenerating picks (version ${currentVersion} → ${PICKS_VERSION})`);
         await sql`DELETE FROM signal_picks`;
       }
       await generateInitialPicks(sql);
+      // Store version
+      await sql`
+        INSERT INTO stock_meta (key, value, updated_at) VALUES ('signal_picks_version', ${String(PICKS_VERSION)}, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      `.catch(() => {});
     }
 
     const picks = await sql`
