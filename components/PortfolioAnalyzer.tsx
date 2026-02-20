@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import StockLogo from "./StockLogo";
 import LoginGate from "./LoginGate";
@@ -46,6 +46,54 @@ interface AnalysisResult {
   aiAnalysis: string | null;
   priceNote: string;
 }
+
+interface ImportSummary {
+  totalHoldings: number;
+  brokersDetected: string[];
+  accountsDetected: string[];
+  skippedRows: number;
+}
+
+// ── Broker export instructions ──
+
+const BROKER_INSTRUCTIONS = [
+  {
+    name: "Fidelity",
+    steps: "Accounts & Trade → Portfolio → Positions → Download icon (top right) → CSV",
+  },
+  {
+    name: "Charles Schwab",
+    steps: "Accounts → Positions → Export → CSV",
+  },
+  {
+    name: "E*TRADE / Morgan Stanley",
+    steps: "Portfolio tab → Export → CSV",
+  },
+  {
+    name: "Merrill Edge",
+    steps: "Accounts → Account Resources → Download Account Data → Spreadsheets and Text → CSV",
+  },
+  {
+    name: "Vanguard",
+    steps: "Portfolio Watch → Download",
+  },
+  {
+    name: "Robinhood",
+    steps: 'Account → History → Export All (CSV sent via email). For current positions, use the "Export Portfolio" Chrome extension.',
+  },
+  {
+    name: "Webull",
+    steps: "Account page → Export icon (top right) → CSV sent to email. Or export from the app's Positions page.",
+  },
+  {
+    name: "Interactive Brokers",
+    steps: "Reports → Statements → Activity → CSV format. We parse the Open Positions section automatically.",
+  },
+  {
+    name: "SoFi",
+    steps: "Account → Transaction History → Export",
+  },
+];
 
 // Consolidated holding with optional lot breakdown
 interface ConsolidatedHolding {
@@ -445,11 +493,15 @@ export default function PortfolioAnalyzer() {
   const [profile, setProfile] = useState<{ age?: number; netWorth?: string; riskTolerance?: string }>({});
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [imageLoading, setImageLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const [stockScores, setStockScores] = useState<Map<string, number>>(new Map());
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [brokerAccordionOpen, setBrokerAccordionOpen] = useState<string | null>(null);
 
   // Fetch backtest scores for portfolio holdings
   useEffect(() => {
@@ -492,18 +544,39 @@ export default function PortfolioAnalyzer() {
     setHoldings([...holdings, { symbol: "", shares: 0 }]);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCSVImport = useCallback(async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
 
-    setImageLoading(true);
+    // Validate
+    if (fileArray.length > 5) {
+      setError("Maximum 5 files allowed.");
+      return;
+    }
+    for (const f of fileArray) {
+      const name = f.name.toLowerCase();
+      if (!name.endsWith(".csv") && !name.endsWith(".xlsx") && !name.endsWith(".xls")) {
+        setError(`"${f.name}" is not a CSV or XLSX file.`);
+        return;
+      }
+      if (f.size > 10 * 1024 * 1024) {
+        setError(`"${f.name}" exceeds the 10 MB limit.`);
+        return;
+      }
+    }
+
+    setImportLoading(true);
     setError(null);
+    setImportSummary(null);
+    setImportWarnings([]);
 
     try {
       const formData = new FormData();
-      formData.append("image", file);
+      for (const f of fileArray) {
+        formData.append("files", f);
+      }
 
-      const res = await fetch("/api/portfolio/parse-image", { method: "POST", body: formData });
+      const res = await fetch("/api/portfolio/import", { method: "POST", body: formData });
       const data = await res.json();
 
       if (data.error) {
@@ -511,22 +584,51 @@ export default function PortfolioAnalyzer() {
         return;
       }
 
+      if (data.warnings && data.warnings.length > 0) {
+        setImportWarnings(data.warnings);
+      }
+
       if (data.holdings && data.holdings.length > 0) {
-        setHoldings(data.holdings.map((h: Holding) => ({
-          symbol: h.symbol?.toUpperCase() || "",
-          shares: h.shares || 0,
-          costBasis: h.costBasis || undefined,
-        })));
-      } else {
-        setError("Could not identify any holdings in the image. Try a clearer screenshot.");
+        // Map imported holdings to the form schema
+        setHoldings(
+          data.holdings
+            .filter((h: { assetType?: string }) => h.assetType !== "cash")
+            .map((h: { symbol?: string; quantity?: number; averageCostPerShare?: number | null }) => ({
+              symbol: (h.symbol || "").toUpperCase(),
+              shares: h.quantity || 0,
+              costBasis: h.averageCostPerShare ?? undefined,
+            }))
+        );
+        setImportSummary(data.summary);
+        setResult(null); // Clear previous analysis
+      } else if (!data.warnings || data.warnings.length === 0) {
+        setError("No holdings found in the uploaded file(s). Check that you exported Positions, not transaction history.");
       }
     } catch {
-      setError("Failed to parse image. Please try again.");
+      setError("Failed to import portfolio data. Please try again.");
     } finally {
-      setImageLoading(false);
+      setImportLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  };
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleCSVImport(e.dataTransfer.files);
+    }
+  }, [handleCSVImport]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  }, []);
 
   const analyze = async () => {
     const validHoldings = holdings.filter((h) => h.symbol.trim() && h.shares > 0);
@@ -571,27 +673,36 @@ export default function PortfolioAnalyzer() {
           Enter your holdings for a full analysis with diversification, risk assessment, and AI-powered recommendations.
         </p>
 
-        {/* Screenshot upload zone */}
+        {/* CSV Import zone */}
         <div className="mt-6 sm:mt-8 bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
+            accept=".csv,.xlsx,.xls"
+            multiple
+            onChange={(e) => e.target.files && handleCSVImport(e.target.files)}
             className="hidden"
           />
-          <button
+
+          {/* Drop zone */}
+          <div
             onClick={() => fileInputRef.current?.click()}
-            disabled={imageLoading}
-            className="w-full border-2 border-dashed border-th-border rounded-xl p-6 hover:border-th-accent-border hover:bg-th-accent-bg transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            className={`w-full border-2 border-dashed rounded-xl p-6 transition-all cursor-pointer group ${
+              dragOver
+                ? "border-th-accent bg-th-accent-bg"
+                : "border-th-border hover:border-th-accent-border hover:bg-th-accent-bg"
+            } ${importLoading ? "opacity-50 cursor-not-allowed" : ""}`}
           >
-            {imageLoading ? (
+            {importLoading ? (
               <div className="flex flex-col items-center gap-2">
                 <svg className="animate-spin w-8 h-8 text-th-accent" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <p className="text-sm font-medium text-th-accent">Reading your portfolio screenshot...</p>
+                <p className="text-sm font-medium text-th-accent">Importing your portfolio...</p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
@@ -601,17 +712,89 @@ export default function PortfolioAnalyzer() {
                   </svg>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-th-text-2">Upload a screenshot of your portfolio</p>
+                  <p className="text-sm font-semibold text-th-text-2">
+                    {dragOver ? "Drop files here" : "Import your brokerage CSV or XLSX"}
+                  </p>
                   <p className="text-xs text-th-text-3 mt-1">
-                    Skip manual entry &mdash; AI will extract your tickers, shares, and cost basis automatically
+                    Drag &amp; drop or click to browse &mdash; supports Fidelity, Schwab, E*TRADE, Vanguard, and more
                   </p>
                 </div>
-                <p className="text-[11px] text-th-text-3 mt-1">
-                  Use your brokerage&apos;s &quot;Holdings&quot; or &quot;Positions&quot; view showing tickers and shares.
+                <p className="text-[11px] text-th-text-4 mt-1">
+                  .csv and .xlsx files, up to 10 MB each, max 5 files
                 </p>
               </div>
             )}
-          </button>
+          </div>
+
+          {/* Import summary */}
+          {importSummary && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-th-positive-bg text-th-positive font-medium">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                {importSummary.totalHoldings} holdings imported
+              </span>
+              {importSummary.brokersDetected.map((b) => (
+                <span key={b} className="px-2 py-1 rounded-full bg-th-accent-bg text-th-accent font-medium">
+                  {b}
+                </span>
+              ))}
+              {importSummary.accountsDetected.length > 1 && (
+                <span className="px-2 py-1 rounded-full bg-th-surface border border-th-border text-th-text-3">
+                  {importSummary.accountsDetected.length} accounts
+                </span>
+              )}
+              {importSummary.skippedRows > 0 && (
+                <span className="px-2 py-1 rounded-full bg-th-warning-bg text-th-warning">
+                  {importSummary.skippedRows} rows skipped
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Import warnings */}
+          {importWarnings.length > 0 && (
+            <div className="mt-3 p-3 rounded-lg bg-th-warning-bg border border-th-warning/20">
+              {importWarnings.map((w, i) => (
+                <p key={i} className="text-xs text-th-warning leading-relaxed">
+                  {w}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Broker instructions accordion */}
+          <div className="mt-4">
+            <p className="text-xs font-medium text-th-text-3 uppercase tracking-wider mb-2">
+              How to export from your broker
+            </p>
+            <div className="space-y-1">
+              {BROKER_INSTRUCTIONS.map((broker) => (
+                <div key={broker.name} className="border border-th-border-light rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setBrokerAccordionOpen(brokerAccordionOpen === broker.name ? null : broker.name)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-th-bg/50 transition-colors"
+                  >
+                    <span className="text-sm text-th-text-2">{broker.name}</span>
+                    <svg
+                      className={`w-3.5 h-3.5 text-th-text-4 transition-transform ${
+                        brokerAccordionOpen === broker.name ? "rotate-90" : ""
+                      }`}
+                      fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                    </svg>
+                  </button>
+                  {brokerAccordionOpen === broker.name && (
+                    <div className="px-3 pb-2">
+                      <p className="text-xs text-th-text-3 leading-relaxed">{broker.steps}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-5">
