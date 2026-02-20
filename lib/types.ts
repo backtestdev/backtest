@@ -84,4 +84,14 @@ export interface LeaderboardEntry {
   parameters_json?: StructuredParameters;
   parameters_hash?: string;
   query_hash?: string;
+  is_public?: boolean;
+}
+
+export interface SavedPortfolio {
+  id: string;
+  name: string;
+  holdings: { symbol: string; shares: number; costBasis?: number }[];
+  analysis: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
 }

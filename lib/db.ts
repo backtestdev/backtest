@@ -388,6 +388,9 @@ export async function ensureLeaderboardTable(sql: NeonQueryFunction<false, false
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leaderboard' AND column_name='created_by') THEN
         ALTER TABLE leaderboard ADD COLUMN created_by TEXT;
       END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leaderboard' AND column_name='is_public') THEN
+        ALTER TABLE leaderboard ADD COLUMN is_public BOOLEAN DEFAULT TRUE;
+      END IF;
     END $$
   `;
 
@@ -397,6 +400,24 @@ export async function ensureLeaderboardTable(sql: NeonQueryFunction<false, false
   await sql`
     CREATE INDEX IF NOT EXISTS idx_leaderboard_query_hash ON leaderboard (query_hash)
   `;
+}
+
+/**
+ * Ensures the saved_portfolios table exists.
+ */
+export async function ensureSavedPortfoliosTable(sql: NeonQueryFunction<false, false>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS saved_portfolios (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      holdings JSONB NOT NULL,
+      analysis JSONB,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_saved_portfolios_user ON saved_portfolios(user_id)`;
 }
 
 export function generateParametersHash(params: unknown): string {

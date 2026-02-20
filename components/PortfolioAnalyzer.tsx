@@ -486,6 +486,16 @@ function ConsolidatedHoldingRow({
 
 // ── Main Component ──
 
+interface SavedPortfolioItem {
+  id: string;
+  name: string;
+  holdings: Holding[];
+  analysis: AnalysisResult | null;
+  created_at: string;
+}
+
+const HOLDINGS_STORAGE_KEY = "portfolio_holdings_draft";
+
 export default function PortfolioAnalyzer() {
   const { isSignedIn } = useUser();
   const isGuest = !isSignedIn;
@@ -497,11 +507,110 @@ export default function PortfolioAnalyzer() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const holdingsRef = useRef<HTMLDivElement>(null);
   const [stockScores, setStockScores] = useState<Map<string, number>>(new Map());
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  const [brokerAccordionOpen, setBrokerAccordionOpen] = useState<string | null>(null);
+  const [selectedBroker, setSelectedBroker] = useState("");
+
+  // Saved portfolios
+  const [savedPortfolios, setSavedPortfolios] = useState<SavedPortfolioItem[]>([]);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [savingPortfolio, setSavingPortfolio] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Restore holdings from sessionStorage on mount (survives login redirect)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(HOLDINGS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Holding[];
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(h => h.symbol)) {
+          setHoldings(parsed);
+          sessionStorage.removeItem(HOLDINGS_STORAGE_KEY);
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Save holdings to sessionStorage on change (for login persistence)
+  useEffect(() => {
+    const hasData = holdings.some(h => h.symbol.trim());
+    if (hasData) {
+      try { sessionStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify(holdings)); } catch { /* ignore */ }
+    }
+  }, [holdings]);
+
+  // Fetch saved portfolios for logged-in users
+  useEffect(() => {
+    if (!isSignedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/portfolio/saved");
+        const data = await res.json();
+        if (!cancelled && data.portfolios) {
+          setSavedPortfolios(data.portfolios.map((p: Record<string, unknown>) => ({
+            id: p.id as string,
+            name: p.name as string,
+            holdings: p.holdings as Holding[],
+            analysis: p.analysis as AnalysisResult | null,
+            created_at: p.created_at as string,
+          })));
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isSignedIn]);
+
+  const handleSavePortfolio = useCallback(async () => {
+    if (!saveName.trim() || !result) return;
+    setSavingPortfolio(true);
+    try {
+      const res = await fetch("/api/portfolio/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: saveName.trim(), holdings, analysis: result }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSavedPortfolios(prev => [{
+          id: data.id,
+          name: saveName.trim(),
+          holdings,
+          analysis: result,
+          created_at: data.created_at,
+        }, ...prev]);
+        setSavedSuccess(true);
+        setShowSaveDialog(false);
+        setSaveName("");
+        setTimeout(() => setSavedSuccess(false), 3000);
+      }
+    } catch { /* ignore */ }
+    setSavingPortfolio(false);
+  }, [saveName, result, holdings]);
+
+  const handleDeletePortfolio = useCallback(async (id: string) => {
+    setDeletingId(id);
+    try {
+      await fetch(`/api/portfolio/saved?id=${id}`, { method: "DELETE" });
+      setSavedPortfolios(prev => prev.filter(p => p.id !== id));
+    } catch { /* ignore */ }
+    setDeletingId(null);
+  }, []);
+
+  const handleLoadPortfolio = useCallback((portfolio: SavedPortfolioItem) => {
+    setHoldings(portfolio.holdings);
+    if (portfolio.analysis) {
+      setResult(portfolio.analysis);
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  }, []);
 
   // Fetch backtest scores for portfolio holdings
   useEffect(() => {
@@ -601,6 +710,10 @@ export default function PortfolioAnalyzer() {
         );
         setImportSummary(data.summary);
         setResult(null); // Clear previous analysis
+        // Auto-scroll to the holdings section
+        setTimeout(() => {
+          holdingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 150);
       } else if (!data.warnings || data.warnings.length === 0) {
         setError("No holdings found in the uploaded file(s). Check that you exported Positions, not transaction history.");
       }
@@ -672,6 +785,41 @@ export default function PortfolioAnalyzer() {
         <p className="mt-2 text-sm sm:text-base text-th-text-3">
           Enter your holdings for a full analysis with diversification, risk assessment, and AI-powered recommendations.
         </p>
+
+        {/* Saved portfolios (logged-in users) */}
+        {isSignedIn && savedPortfolios.length > 0 && (
+          <div className="mt-5">
+            <h2 className="text-sm font-semibold text-th-text-2 mb-2">Saved Portfolios</h2>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {savedPortfolios.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex-shrink-0 w-56 bg-th-surface rounded-xl border border-th-border-light p-3 group hover:border-th-accent-border transition-colors"
+                >
+                  <button
+                    onClick={() => handleLoadPortfolio(p)}
+                    className="w-full text-left"
+                  >
+                    <p className="text-sm font-semibold text-th-text truncate">{p.name}</p>
+                    <p className="text-xs text-th-text-3 mt-1">
+                      {Array.isArray(p.holdings) ? p.holdings.length : 0} holdings
+                    </p>
+                    <p className="text-[10px] text-th-text-4 mt-0.5">
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </p>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeletePortfolio(p.id); }}
+                    disabled={deletingId === p.id}
+                    className="mt-2 text-[10px] text-th-text-4 hover:text-th-negative transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    {deletingId === p.id ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* CSV Import zone */}
         <div className="mt-6 sm:mt-8 bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
@@ -764,36 +912,26 @@ export default function PortfolioAnalyzer() {
             </div>
           )}
 
-          {/* Broker instructions accordion */}
-          <div className="mt-4">
-            <p className="text-xs font-medium text-th-text-3 uppercase tracking-wider mb-2">
-              How to export from your broker
-            </p>
-            <div className="space-y-1">
-              {BROKER_INSTRUCTIONS.map((broker) => (
-                <div key={broker.name} className="border border-th-border-light rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => setBrokerAccordionOpen(brokerAccordionOpen === broker.name ? null : broker.name)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-th-bg/50 transition-colors"
-                  >
-                    <span className="text-sm text-th-text-2">{broker.name}</span>
-                    <svg
-                      className={`w-3.5 h-3.5 text-th-text-4 transition-transform ${
-                        brokerAccordionOpen === broker.name ? "rotate-90" : ""
-                      }`}
-                      fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                    </svg>
-                  </button>
-                  {brokerAccordionOpen === broker.name && (
-                    <div className="px-3 pb-2">
-                      <p className="text-xs text-th-text-3 leading-relaxed">{broker.steps}</p>
-                    </div>
-                  )}
-                </div>
+          {/* Broker export instructions — compact dropdown */}
+          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+            <label className="text-xs font-medium text-th-text-3 whitespace-nowrap">
+              How to export:
+            </label>
+            <select
+              value={selectedBroker}
+              onChange={(e) => setSelectedBroker(e.target.value)}
+              className="px-3 py-1.5 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border text-th-text-2"
+            >
+              <option value="">Select your broker...</option>
+              {BROKER_INSTRUCTIONS.map((b) => (
+                <option key={b.name} value={b.name}>{b.name}</option>
               ))}
-            </div>
+            </select>
+            {selectedBroker && (
+              <p className="text-xs text-th-text-3 leading-relaxed">
+                {BROKER_INSTRUCTIONS.find(b => b.name === selectedBroker)?.steps}
+              </p>
+            )}
           </div>
 
           {/* Divider */}
@@ -804,7 +942,7 @@ export default function PortfolioAnalyzer() {
           </div>
 
           {/* Manual entry */}
-          <h2 className="text-sm font-semibold text-th-text-2 mb-3">Your Holdings</h2>
+          <h2 ref={holdingsRef} className="text-sm font-semibold text-th-text-2 mb-3">Your Holdings</h2>
 
           {/* Column headers */}
           <div className="flex items-center gap-2 sm:gap-3 mb-2 pl-0">
@@ -959,12 +1097,57 @@ export default function PortfolioAnalyzer() {
               </div>
             </div>
 
+            {/* Save portfolio button (logged-in users only) */}
+            {isSignedIn && !savedSuccess && !showSaveDialog && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowSaveDialog(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-th-accent bg-th-accent-bg border border-th-accent-border rounded-xl hover:bg-th-accent-muted transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+                  </svg>
+                  Save Analysis
+                </button>
+              </div>
+            )}
+            {showSaveDialog && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 max-w-md ml-auto">
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  placeholder="Name this portfolio..."
+                  className="flex-1 px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSavePortfolio(); }}
+                />
+                <button
+                  onClick={handleSavePortfolio}
+                  disabled={savingPortfolio || !saveName.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-th-accent rounded-lg hover:bg-th-accent-hover disabled:opacity-40 transition-colors"
+                >
+                  {savingPortfolio ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={() => { setShowSaveDialog(false); setSaveName(""); }}
+                  className="px-3 py-2 text-sm text-th-text-3 hover:text-th-text-2 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {savedSuccess && (
+              <p className="text-sm text-th-positive text-right font-medium">Portfolio saved!</p>
+            )}
+
             {/* Detailed results - gated for guests */}
             <LoginGate
               locked={isGuest}
               message="Sign up to view your full portfolio analysis"
               subMessage="Sector allocation, per-holding detail, gain/loss breakdown, and AI-powered recommendations"
               blur="heavy"
+              ctaPosition="top"
             >
               {/* AI Analysis — prominent placement */}
               {result.aiAnalysis && (

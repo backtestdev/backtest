@@ -23,6 +23,7 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [leaderboardKey, setLeaderboardKey] = useState(0);
+  const [leaderboardTab, setLeaderboardTab] = useState<"public" | "personal" | undefined>();
   const [toast, setToast] = useState<ToastState | null>(null);
   const [parsingMethod, setParsingMethod] = useState<ParsingMethod | undefined>();
   const [dataSource, setDataSource] = useState<"fmp" | "hardcoded" | undefined>();
@@ -104,7 +105,7 @@ export default function HomePage() {
   }, [isSignedIn, freeRunsUsed]);
 
   const handleAddToLeaderboard = useCallback(
-    async (name: string): Promise<{ ok: boolean; error?: string }> => {
+    async (name: string, isPublic: boolean = true): Promise<{ ok: boolean; error?: string }> => {
       if (!result) return { ok: false, error: "No result to save" };
 
       const return1yr = result.timeHorizons.find((h) => h.period === "1yr")?.strategyReturn ?? 0;
@@ -125,6 +126,7 @@ export default function HomePage() {
             return20yr,
             matchedStocks: result.matchedStockCount,
             parameters_json: result.parsedParams,
+            is_public: isPublic,
           }),
         });
 
@@ -136,10 +138,11 @@ export default function HomePage() {
         }
 
         setLeaderboardKey((k) => k + 1);
-        setToast({ message: "Strategy added to leaderboard!", type: "success" });
+        setLeaderboardTab("personal"); // Switch to personal view to show the new entry
+        setToast({ message: "Strategy saved to My Strategies!", type: "success" });
         return { ok: true };
       } catch {
-        const errMsg = "Failed to save to leaderboard";
+        const errMsg = "Failed to save strategy";
         setToast({ message: errMsg, type: "error" });
         return { ok: false, error: errMsg };
       }
@@ -250,6 +253,7 @@ export default function HomePage() {
         <Leaderboard
           onSelectStrategy={handleSelectStrategy}
           refreshKey={leaderboardKey}
+          activeTab={leaderboardTab}
         />
 
         {/* Footer */}

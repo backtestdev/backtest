@@ -11,7 +11,7 @@ import LoginGate from "./LoginGate";
 
 interface ResultsDisplayProps {
   result: BacktestResult;
-  onAddToLeaderboard: (name: string) => Promise<{ ok: boolean; error?: string }>;
+  onAddToLeaderboard: (name: string, isPublic: boolean) => Promise<{ ok: boolean; error?: string }>;
   onUpdateParams: (params: StructuredParameters) => void;
   isUpdating: boolean;
   isGuest?: boolean;
@@ -33,6 +33,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [sharePublicly, setSharePublicly] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>("10yr");
   const isTickerMode = !!(result.parsedParams?.tickers && result.parsedParams.tickers.length > 0);
   const [stocksExpanded, setStocksExpanded] = useState(true);
@@ -93,7 +94,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
     const name = leaderboardName.trim() || result.strategyName;
     setSaving(true);
     setSaveError(null);
-    const res = await onAddToLeaderboard(name);
+    const res = await onAddToLeaderboard(name, sharePublicly);
     setSaving(false);
     if (res.ok) {
       setSaved(true);
@@ -332,13 +333,13 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         Uses representative historical data for demonstration purposes.
       </p>
 
-      {/* Add to leaderboard */}
+      {/* Save strategy */}
       {!saved && (
         <div className="mt-6 text-center">
           {!isSignedIn ? (
             <SignUpButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
               <button className="px-6 py-3 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors">
-                Sign up to save to leaderboard
+                Sign up to save strategies
               </button>
             </SignUpButton>
           ) : !showLeaderboardPrompt ? (
@@ -346,7 +347,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
               onClick={() => setShowLeaderboardPrompt(true)}
               className="px-6 py-3 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors"
             >
-              Add to Leaderboard
+              Save Strategy
             </button>
           ) : (
             <div className="space-y-3 max-w-md mx-auto px-4 sm:px-0">
@@ -366,6 +367,15 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
                   {saving ? "Saving..." : "Save"}
                 </button>
               </div>
+              <label className="flex items-center gap-2 justify-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sharePublicly}
+                  onChange={(e) => setSharePublicly(e.target.checked)}
+                  className="w-4 h-4 rounded border-th-border text-th-accent focus:ring-th-focus-ring"
+                />
+                <span className="text-sm text-th-text-3">Also share on public leaderboard</span>
+              </label>
               {saveError && (
                 <p className="text-sm text-th-negative">{saveError}</p>
               )}
@@ -375,7 +385,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
       )}
       {saved && (
         <p className="mt-4 text-sm text-th-positive text-center font-medium">
-          Strategy added to leaderboard!
+          Strategy saved to My Strategies!
         </p>
       )}
     </div>
