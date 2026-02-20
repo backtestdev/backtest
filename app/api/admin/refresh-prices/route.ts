@@ -123,18 +123,17 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
   // ── Store monthly prices in stock_prices ───────────────────────────
   log.push("Writing monthly prices to stock_prices...");
 
-  // Ensure stock_prices table exists
+  // Ensure stock_prices table exists (matches db.ts schema: close_price)
   await sql`
     CREATE TABLE IF NOT EXISTS stock_prices (
       id SERIAL PRIMARY KEY,
       symbol VARCHAR(10) NOT NULL,
       date DATE NOT NULL,
-      close DECIMAL(12,4) NOT NULL,
+      close_price DECIMAL(12,4) NOT NULL,
       UNIQUE(symbol, date)
     )
   `;
-  await sql`CREATE INDEX IF NOT EXISTS idx_stock_prices_symbol ON stock_prices(symbol)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_stock_prices_date ON stock_prices(date)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON stock_prices(symbol, date)`;
 
   // Clear and re-insert
   await sql`DELETE FROM stock_prices`;
@@ -154,9 +153,9 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
       return `($${b + 1}, $${b + 2}, $${b + 3})`;
     }).join(", ");
     const params = batch.flatMap(r => [r.symbol, r.date, r.close]);
-    const query = `INSERT INTO stock_prices (symbol, date, close)
+    const query = `INSERT INTO stock_prices (symbol, date, close_price)
        VALUES ${placeholders}
-       ON CONFLICT (symbol, date) DO UPDATE SET close = EXCLUDED.close`;
+       ON CONFLICT (symbol, date) DO UPDATE SET close_price = EXCLUDED.close_price`;
     await sql.query(query, params);
     insertedPrices += batch.length;
   }
