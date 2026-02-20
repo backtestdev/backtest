@@ -4,9 +4,18 @@ import OpenAI from "openai";
 export const dynamic = "force-dynamic";
 
 /**
- * Cross-validate extracted values using redundant data from the table.
- * Detects column confusion (e.g., currentValue mistaken for totalCostBasis)
- * and resolves conflicts between multiple cost basis sources.
+ * Derive shares and cost basis from redundant extracted fields.
+ *
+ * Priority order:
+ *   Shares  → currentValue ÷ lastPrice  (most reliable — two independent reads)
+ *           → quantity                    (direct read, but GPT sometimes misreads)
+ *           → totalCostBasis ÷ costBasisPerShare (last resort)
+ *
+ *   CostBasis → costBasisPerShare          (direct read — no math, no error propagation)
+ *             → totalCostBasis ÷ shares    (only if costBasisPerShare missing)
+ *
+ * When derivedShares and quantity disagree significantly, we use a three-way
+ * vote with totalCostBasis ÷ costBasisPerShare to break the tie.
  */
 function crossValidate(raw: {
   symbol: string;
@@ -18,92 +27,68 @@ function crossValidate(raw: {
 }): { symbol: string; shares: number; costBasis: number | null; lastPrice: number | null } {
   const { symbol, quantity, lastPrice, currentValue, totalCostBasis, costBasisPerShare } = raw;
 
-  // ── Derive shares from multiple sources ──
-  const candidates: number[] = [];
+  // ── Step 1: Derive shares ──
+  const derivedFromPrice =
+    currentValue != null && currentValue > 0 && lastPrice != null && lastPrice > 0
+      ? currentValue / lastPrice
+      : null;
+  const derivedFromCost =
+    totalCostBasis != null && totalCostBasis > 0 && costBasisPerShare != null && costBasisPerShare > 0
+      ? totalCostBasis / costBasisPerShare
+      : null;
 
-  if (quantity && quantity > 0) {
-    candidates.push(quantity);
-  }
-  if (currentValue && lastPrice && lastPrice > 0) {
-    candidates.push(Math.round((currentValue / lastPrice) * 1000) / 1000);
-  }
-  if (totalCostBasis && costBasisPerShare && costBasisPerShare > 0) {
-    candidates.push(Math.round((totalCostBasis / costBasisPerShare) * 1000) / 1000);
-  }
+  let shares = 0;
 
-  let shares = quantity || 0;
+  if (derivedFromPrice !== null) {
+    // Primary source available — but sanity-check against quantity if present
+    if (
+      quantity != null &&
+      quantity > 0 &&
+      Math.abs(derivedFromPrice - quantity) / Math.max(derivedFromPrice, quantity) > 0.02
+    ) {
+      // Significant disagreement (>2%) — use third source as tiebreaker
+      if (derivedFromCost !== null) {
+        const priceAgreesWithCost =
+          Math.abs(derivedFromCost - derivedFromPrice) / Math.max(derivedFromCost, derivedFromPrice) < 0.02;
+        const quantityAgreesWithCost =
+          Math.abs(derivedFromCost - quantity) / Math.max(derivedFromCost, quantity) < 0.02;
 
-  if (candidates.length >= 2) {
-    let bestCount = 0;
-    let bestValue = candidates[0];
-    for (const c of candidates) {
-      let count = 0;
-      for (const other of candidates) {
-        if (other > 0 && Math.abs(c - other) / other < 0.01) count++;
+        if (priceAgreesWithCost) {
+          shares = derivedFromPrice; // price + cost agree
+        } else if (quantityAgreesWithCost) {
+          shares = quantity; // quantity + cost agree
+        } else {
+          shares = derivedFromPrice; // no consensus, trust price derivation
+        }
+      } else {
+        shares = derivedFromPrice; // no cost data, trust price derivation
       }
-      if (count > bestCount) {
-        bestCount = count;
-        bestValue = c;
-      }
+    } else {
+      shares = derivedFromPrice; // agrees with quantity or quantity not available
     }
-    shares = bestValue;
-  } else if (candidates.length === 1) {
-    shares = candidates[0];
+  } else if (quantity != null && quantity > 0) {
+    shares = quantity;
+  } else if (derivedFromCost !== null) {
+    shares = derivedFromCost;
   }
 
-  // ── Detect column confusion at the totals level ──
-  // If totalCostBasis ≈ currentValue, GPT likely read the "Current Value"
-  // column instead of the "Cost Basis" column. Don't trust it.
-  const totalCbLooksLikeCurrentValue =
-    totalCostBasis != null && currentValue != null && currentValue > 0 &&
-    Math.abs(totalCostBasis - currentValue) / currentValue < 0.05;
+  shares = Math.round(shares * 1000) / 1000;
 
-  const trustedTotalCb = totalCbLooksLikeCurrentValue ? null : totalCostBasis;
-
-  // ── Derive cost basis per share from two sources ──
-  const cbFromDivision =
-    trustedTotalCb != null && shares > 0
-      ? Math.round((trustedTotalCb / shares) * 100) / 100
-      : null;
-  const cbDirect =
-    costBasisPerShare != null
-      ? Math.round(costBasisPerShare * 100) / 100
-      : null;
-
-  // Check if a value suspiciously matches the current market price
-  const isNearLastPrice = (val: number | null): boolean => {
-    if (val == null || !lastPrice || lastPrice <= 0) return false;
-    return Math.abs(val - lastPrice) / lastPrice < 0.03;
-  };
-
+  // ── Step 2: Derive cost basis — ALWAYS prefer directly-read per-share ──
   let costBasis: number | null = null;
 
-  if (cbFromDivision !== null && cbDirect !== null) {
-    const agree =
-      Math.abs(cbFromDivision - cbDirect) / Math.max(cbFromDivision, cbDirect) < 0.05;
-
-    if (agree) {
-      // Both sources agree — use direct read (less math, fewer error propagation)
-      costBasis = cbDirect;
-    } else {
-      // They disagree — prefer the one that does NOT equal the current price.
-      // If costBasis = lastPrice, it's almost certainly column confusion.
-      const divMatchesPrice = isNearLastPrice(cbFromDivision);
-      const directMatchesPrice = isNearLastPrice(cbDirect);
-
-      if (divMatchesPrice && !directMatchesPrice) {
-        costBasis = cbDirect;
-      } else if (!divMatchesPrice && directMatchesPrice) {
-        costBasis = cbFromDivision;
-      } else {
-        // Both or neither match — prefer direct per-share reading
-        costBasis = cbDirect;
-      }
+  if (costBasisPerShare != null && costBasisPerShare > 0) {
+    costBasis = Math.round(costBasisPerShare * 100) / 100;
+  } else if (totalCostBasis != null && totalCostBasis > 0 && shares > 0) {
+    // Fallback: totalCostBasis ÷ shares
+    // Guard: reject if totalCostBasis ≈ currentValue (column confusion)
+    const looksLikeCurrentValue =
+      currentValue != null &&
+      currentValue > 0 &&
+      Math.abs(totalCostBasis - currentValue) / currentValue < 0.05;
+    if (!looksLikeCurrentValue) {
+      costBasis = Math.round((totalCostBasis / shares) * 100) / 100;
     }
-  } else if (cbFromDivision !== null) {
-    costBasis = cbFromDivision;
-  } else if (cbDirect !== null) {
-    costBasis = cbDirect;
   }
 
   return { symbol, shares, costBasis, lastPrice: lastPrice || null };
@@ -125,13 +110,13 @@ function portfolioSanityCheck(
   if (withBoth.length >= 2) {
     const matchCount = withBoth.filter((h) => {
       const diff = Math.abs(h.costBasis! - h.lastPrice!) / h.lastPrice!;
-      return diff < 0.05; // within 5%
+      return diff < 0.05;
     }).length;
 
-    // If > 60% of holdings have costBasis ≈ lastPrice, it's column confusion
     if (matchCount / withBoth.length > 0.6) {
       console.warn(
-        `[parse-image] Column confusion detected: ${matchCount}/${withBoth.length} holdings have costBasis ≈ lastPrice. Nulling all cost bases.`
+        `[parse-image] Column confusion detected: ${matchCount}/${withBoth.length} ` +
+          `holdings have costBasis ≈ lastPrice. Nulling all cost bases.`
       );
       return holdings.map((h) => ({
         symbol: h.symbol,
@@ -162,7 +147,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No image uploaded" }, { status: 400 });
     }
 
-    // Convert to base64
     const bytes = await file.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
     const mimeType = file.type || "image/png";
@@ -176,78 +160,82 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: "system",
-          content: `You are a precise financial data extractor. Your task is to extract portfolio holdings from a brokerage screenshot.
+          content: `You are a precise financial data extractor. Extract portfolio holdings from brokerage screenshots.
 
 ═══════════════════════════════════════════
-CRITICAL — READ THIS FIRST
+CRITICAL — COLUMN DISTINCTION
 ═══════════════════════════════════════════
 
-Brokerage screenshots have SEPARATE columns for:
-• "Last Price" / "Price" = the stock's CURRENT market price today
-• "Cost Basis" / "Average Cost" = what the investor ORIGINALLY PAID
-
-These are DIFFERENT values. The cost basis reflects the historical purchase price, which is usually DIFFERENT from the current price. If you find yourself extracting the same number for both lastPrice and costBasisPerShare on most rows, STOP — you are reading the wrong column.
+"Last Price" = CURRENT market price (what the stock trades at today).
+"Cost Basis" = what the investor ORIGINALLY PAID (purchase price).
+These are DIFFERENT columns with DIFFERENT values.
 
 ═══════════════════════════════════════════
-STEP 1: IDENTIFY THE LAYOUT
+STEP 1: IDENTIFY LAYOUT
 ═══════════════════════════════════════════
-1. What brokerage is this? (Fidelity, Schwab, Vanguard, Robinhood, etc.)
-2. List ALL column headers from LEFT to RIGHT exactly as they appear.
-3. Explicitly identify which column contains:
-   • Current stock price (the "Last Price" or "Price" column)
-   • Number of shares ("Quantity" or "Shares")
-   • Current total market value ("Market Value" or "Current Value")
-   • Total cost basis ("Cost Basis Total" — what was PAID in total)
-   • Per-share cost basis ("Cost Basis/Share" — what was PAID per share)
+1. Identify the brokerage (Fidelity, Schwab, Vanguard, etc.)
+2. List ALL column headers left to right
+3. Map each column to its data type
 
 ═══════════════════════════════════════════
-STEP 2: EXTRACT DATA ROW BY ROW
+STEP 2: ROW-BY-ROW EXTRACTION
 ═══════════════════════════════════════════
-For each stock row, read the value under each identified column.
-Write it out explicitly before producing JSON:
-"[SYMBOL]: Price col=$X | Shares col=Y | Value col=$Z | CostBasis Total col=$A | CostBasis/Share col=$B"
+For each row, write out values column by column:
+"[SYMBOL]: Price=$X | Value=$Y | Qty=Z | CB Total=$A | CB/Share=$B"
 
 ═══════════════════════════════════════════
-BROKERAGE-SPECIFIC NOTES
+FIDELITY SPECIFICS
 ═══════════════════════════════════════════
+Column order: Symbol | Description | Last Price | Change | Current Value | Quantity | Cost Basis | Gain/Loss
 
-FIDELITY:
-• Column order (left to right): Symbol | Description | Last Price | Today's Change | Current Value | Quantity | Cost Basis Total | Cost Basis/Share | Gain/Loss
-• STACKED CELLS — some columns show TWO lines of data:
-  - "Cost Basis" cell: TOP = total cost basis (e.g., $6,507.43), BOTTOM = per-share cost (e.g., $54.30)
-  - "Gain/Loss" cell: TOP = dollar gain/loss, BOTTOM = percentage
-  - "Quantity" cell: share count with 3 decimal places (e.g., 119.808)
-• IMPORTANT: The "Last Price" column and the "Cost Basis/Share" (bottom number in the cost basis cell) are in DIFFERENT columns — they are NOT the same number.
-• Skip: SPAXX, FCASH, FDRXX (cash positions), pending activity, totals row
-• Same ticker appearing multiple times = separate tax lots → separate entries
+STACKED CELLS (two lines per cell):
+• "Cost Basis" cell:
+  - TOP line = TOTAL cost basis (e.g., $14,775.00)
+  - BOTTOM line = per-share cost, has "/ Share" or "/Share" suffix (e.g., $49.25 / Share)
+  The TOP number is ALWAYS LARGER than the bottom when shares > 1.
+• "Gain/Loss" cell: TOP = dollars, BOTTOM = percentage
+• "Quantity": 3 decimal places for fractional shares (119.808, NOT 119808)
 
-EMPLOYER / 401k PLANS:
-• Long alphanumeric fund IDs → map to ETF proxies:
-  "S&P 500"/"500 INDEX" → "VOO"
-  "TOTAL MARKET" → "VTI"
-  "GROWTH" → "VUG"
-  "BOND"/"FIXED INCOME" → "BND"
-  "INTERNATIONAL" → "VXUS"
+CRITICAL: Read the per-share cost from the BOTTOM of the Cost Basis cell.
+It will have "/ Share" next to it. This is your costBasisPerShare field.
+The TOP number is totalCostBasis.
 
-OTHER BROKERAGES:
-• Extract whatever columns are visible. Use null for missing fields.
+IMPORTANT — DECIMAL POINTS:
+• Quantity ALWAYS has 3 decimal places (e.g., 195.217, not 1952, not 1990)
+• If a quantity looks like a large integer (>1000), re-examine for a missed decimal
+
+SKIP: SPAXX, FCASH, FDRXX (cash), pending activity, totals.
+Same ticker multiple times = separate tax lots → separate entries.
 
 ═══════════════════════════════════════════
-STEP 3: SELF-VERIFICATION
+EMPLOYER / 401k PLANS
 ═══════════════════════════════════════════
-Before producing JSON, verify:
-✓ quantity × lastPrice ≈ currentValue (within 5%) for each row
-✓ If both totalCostBasis and costBasisPerShare exist: totalCostBasis ÷ quantity ≈ costBasisPerShare
-✓ CRITICAL: costBasisPerShare should NOT equal lastPrice for most holdings.
-  If they're the same for most rows, you read the Price column as Cost Basis — go back and re-examine.
+Map fund descriptions to ETF proxies:
+"S&P 500"/"500 INDEX" → "VOO", "TOTAL MARKET" → "VTI",
+"GROWTH" → "VUG", "BOND"/"FIXED INCOME" → "BND",
+"INTERNATIONAL" → "VXUS"
+
+═══════════════════════════════════════════
+OTHER BROKERAGES
+═══════════════════════════════════════════
+Extract visible fields. Use null for missing.
+
+═══════════════════════════════════════════
+STEP 3: VERIFY BEFORE OUTPUT
+═══════════════════════════════════════════
+For EVERY row, check:
+✓ quantity × lastPrice ≈ currentValue (within 5%)
+  — If NOT, your quantity is likely wrong. Re-read it.
+✓ totalCostBasis ÷ quantity ≈ costBasisPerShare (within 5%)
+  — If NOT, re-read the cost basis cell (top = total, bottom = per-share).
+✓ costBasisPerShare ≠ lastPrice for most rows.
 
 ═══════════════════════════════════════════
 OUTPUT
 ═══════════════════════════════════════════
-After your analysis, output a JSON array:
+JSON array with ALL fields per row:
 [{"symbol":"AAPL","quantity":119.808,"lastPrice":182.50,"currentValue":21870.96,"totalCostBasis":6507.43,"costBasisPerShare":54.30}, ...]
-
-Use null for any field not visible in the screenshot.`,
+Use null for any field not visible.`,
         },
         {
           role: "user",
@@ -256,10 +244,10 @@ Use null for any field not visible in the screenshot.`,
               type: "text",
               text: `Extract all holdings from this brokerage screenshot.
 
-Follow the steps exactly:
-1. First identify the brokerage and column layout
-2. Then extract each row, mapping values to the correct columns
-3. Self-verify before producing JSON — especially check that costBasisPerShare is NOT the same as lastPrice`,
+1. Identify brokerage and columns
+2. Extract each row — read EVERY numeric field carefully
+3. Verify: quantity × lastPrice ≈ currentValue for each row
+4. Output JSON array`,
             },
             {
               type: "image_url",
@@ -290,10 +278,10 @@ Follow the steps exactly:
       costBasisPerShare: number | null;
     }> = JSON.parse(jsonMatch[0]);
 
-    // Per-holding cross-validation (detects column confusion per row)
+    // Per-holding cross-validation
     const validated = rawHoldings.map((h) => crossValidate(h));
 
-    // Portfolio-level sanity check (detects systemic column confusion)
+    // Portfolio-level sanity check
     const holdings = portfolioSanityCheck(validated);
 
     return NextResponse.json({ holdings });
