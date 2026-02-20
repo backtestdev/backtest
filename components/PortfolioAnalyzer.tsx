@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import StockLogo from "./StockLogo";
 import LoginGate from "./LoginGate";
@@ -46,6 +46,54 @@ interface AnalysisResult {
   aiAnalysis: string | null;
   priceNote: string;
 }
+
+interface ImportSummary {
+  totalHoldings: number;
+  brokersDetected: string[];
+  accountsDetected: string[];
+  skippedRows: number;
+}
+
+// ── Broker export instructions ──
+
+const BROKER_INSTRUCTIONS = [
+  {
+    name: "Fidelity",
+    steps: "Accounts & Trade → Portfolio → Positions → Download icon (top right) → CSV",
+  },
+  {
+    name: "Charles Schwab",
+    steps: "Accounts → Positions → Export → CSV",
+  },
+  {
+    name: "E*TRADE / Morgan Stanley",
+    steps: "Portfolio tab → Export → CSV",
+  },
+  {
+    name: "Merrill Edge",
+    steps: "Accounts → Account Resources → Download Account Data → Spreadsheets and Text → CSV",
+  },
+  {
+    name: "Vanguard",
+    steps: "Portfolio Watch → Download",
+  },
+  {
+    name: "Robinhood",
+    steps: 'Account → History → Export All (CSV sent via email). For current positions, use the "Export Portfolio" Chrome extension.',
+  },
+  {
+    name: "Webull",
+    steps: "Account page → Export icon (top right) → CSV sent to email. Or export from the app's Positions page.",
+  },
+  {
+    name: "Interactive Brokers",
+    steps: "Reports → Statements → Activity → CSV format. We parse the Open Positions section automatically.",
+  },
+  {
+    name: "SoFi",
+    steps: "Account → Transaction History → Export",
+  },
+];
 
 // Consolidated holding with optional lot breakdown
 interface ConsolidatedHolding {
@@ -438,6 +486,16 @@ function ConsolidatedHoldingRow({
 
 // ── Main Component ──
 
+interface SavedPortfolioItem {
+  id: string;
+  name: string;
+  holdings: Holding[];
+  analysis: AnalysisResult | null;
+  created_at: string;
+}
+
+const HOLDINGS_STORAGE_KEY = "portfolio_holdings_draft";
+
 export default function PortfolioAnalyzer() {
   const { isSignedIn } = useUser();
   const isGuest = !isSignedIn;
@@ -445,11 +503,114 @@ export default function PortfolioAnalyzer() {
   const [profile, setProfile] = useState<{ age?: number; netWorth?: string; riskTolerance?: string }>({});
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [imageLoading, setImageLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const holdingsRef = useRef<HTMLDivElement>(null);
   const [stockScores, setStockScores] = useState<Map<string, number>>(new Map());
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [selectedBroker, setSelectedBroker] = useState("");
+
+  // Saved portfolios
+  const [savedPortfolios, setSavedPortfolios] = useState<SavedPortfolioItem[]>([]);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [savingPortfolio, setSavingPortfolio] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Restore holdings from sessionStorage on mount (survives login redirect)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(HOLDINGS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Holding[];
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(h => h.symbol)) {
+          setHoldings(parsed);
+          sessionStorage.removeItem(HOLDINGS_STORAGE_KEY);
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Save holdings to sessionStorage on change (for login persistence)
+  useEffect(() => {
+    const hasData = holdings.some(h => h.symbol.trim());
+    if (hasData) {
+      try { sessionStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify(holdings)); } catch { /* ignore */ }
+    }
+  }, [holdings]);
+
+  // Fetch saved portfolios for logged-in users
+  useEffect(() => {
+    if (!isSignedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/portfolio/saved");
+        const data = await res.json();
+        if (!cancelled && data.portfolios) {
+          setSavedPortfolios(data.portfolios.map((p: Record<string, unknown>) => ({
+            id: p.id as string,
+            name: p.name as string,
+            holdings: p.holdings as Holding[],
+            analysis: p.analysis as AnalysisResult | null,
+            created_at: p.created_at as string,
+          })));
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isSignedIn]);
+
+  const handleSavePortfolio = useCallback(async () => {
+    if (!saveName.trim() || !result) return;
+    setSavingPortfolio(true);
+    try {
+      const res = await fetch("/api/portfolio/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: saveName.trim(), holdings, analysis: result }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSavedPortfolios(prev => [{
+          id: data.id,
+          name: saveName.trim(),
+          holdings,
+          analysis: result,
+          created_at: data.created_at,
+        }, ...prev]);
+        setSavedSuccess(true);
+        setShowSaveDialog(false);
+        setSaveName("");
+        setTimeout(() => setSavedSuccess(false), 3000);
+      }
+    } catch { /* ignore */ }
+    setSavingPortfolio(false);
+  }, [saveName, result, holdings]);
+
+  const handleDeletePortfolio = useCallback(async (id: string) => {
+    setDeletingId(id);
+    try {
+      await fetch(`/api/portfolio/saved?id=${id}`, { method: "DELETE" });
+      setSavedPortfolios(prev => prev.filter(p => p.id !== id));
+    } catch { /* ignore */ }
+    setDeletingId(null);
+  }, []);
+
+  const handleLoadPortfolio = useCallback((portfolio: SavedPortfolioItem) => {
+    setHoldings(portfolio.holdings);
+    if (portfolio.analysis) {
+      setResult(portfolio.analysis);
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  }, []);
 
   // Fetch backtest scores for portfolio holdings
   useEffect(() => {
@@ -492,18 +653,39 @@ export default function PortfolioAnalyzer() {
     setHoldings([...holdings, { symbol: "", shares: 0 }]);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCSVImport = useCallback(async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
 
-    setImageLoading(true);
+    // Validate
+    if (fileArray.length > 5) {
+      setError("Maximum 5 files allowed.");
+      return;
+    }
+    for (const f of fileArray) {
+      const name = f.name.toLowerCase();
+      if (!name.endsWith(".csv") && !name.endsWith(".xlsx") && !name.endsWith(".xls")) {
+        setError(`"${f.name}" is not a CSV or XLSX file.`);
+        return;
+      }
+      if (f.size > 10 * 1024 * 1024) {
+        setError(`"${f.name}" exceeds the 10 MB limit.`);
+        return;
+      }
+    }
+
+    setImportLoading(true);
     setError(null);
+    setImportSummary(null);
+    setImportWarnings([]);
 
     try {
       const formData = new FormData();
-      formData.append("image", file);
+      for (const f of fileArray) {
+        formData.append("files", f);
+      }
 
-      const res = await fetch("/api/portfolio/parse-image", { method: "POST", body: formData });
+      const res = await fetch("/api/portfolio/import", { method: "POST", body: formData });
       const data = await res.json();
 
       if (data.error) {
@@ -511,22 +693,55 @@ export default function PortfolioAnalyzer() {
         return;
       }
 
+      if (data.warnings && data.warnings.length > 0) {
+        setImportWarnings(data.warnings);
+      }
+
       if (data.holdings && data.holdings.length > 0) {
-        setHoldings(data.holdings.map((h: Holding) => ({
-          symbol: h.symbol?.toUpperCase() || "",
-          shares: h.shares || 0,
-          costBasis: h.costBasis || undefined,
-        })));
-      } else {
-        setError("Could not identify any holdings in the image. Try a clearer screenshot.");
+        // Map imported holdings to the form schema
+        setHoldings(
+          data.holdings
+            .filter((h: { assetType?: string }) => h.assetType !== "cash")
+            .map((h: { symbol?: string; quantity?: number; averageCostPerShare?: number | null }) => ({
+              symbol: (h.symbol || "").toUpperCase(),
+              shares: h.quantity || 0,
+              costBasis: h.averageCostPerShare ?? undefined,
+            }))
+        );
+        setImportSummary(data.summary);
+        setResult(null); // Clear previous analysis
+        // Auto-scroll to the holdings section
+        setTimeout(() => {
+          holdingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 150);
+      } else if (!data.warnings || data.warnings.length === 0) {
+        setError("No holdings found in the uploaded file(s). Check that you exported Positions, not transaction history.");
       }
     } catch {
-      setError("Failed to parse image. Please try again.");
+      setError("Failed to import portfolio data. Please try again.");
     } finally {
-      setImageLoading(false);
+      setImportLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  };
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleCSVImport(e.dataTransfer.files);
+    }
+  }, [handleCSVImport]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  }, []);
 
   const analyze = async () => {
     const validHoldings = holdings.filter((h) => h.symbol.trim() && h.shares > 0);
@@ -571,27 +786,71 @@ export default function PortfolioAnalyzer() {
           Enter your holdings for a full analysis with diversification, risk assessment, and AI-powered recommendations.
         </p>
 
-        {/* Screenshot upload zone */}
+        {/* Saved portfolios (logged-in users) */}
+        {isSignedIn && savedPortfolios.length > 0 && (
+          <div className="mt-5">
+            <h2 className="text-sm font-semibold text-th-text-2 mb-2">Saved Portfolios</h2>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {savedPortfolios.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex-shrink-0 w-56 bg-th-surface rounded-xl border border-th-border-light p-3 group hover:border-th-accent-border transition-colors"
+                >
+                  <button
+                    onClick={() => handleLoadPortfolio(p)}
+                    className="w-full text-left"
+                  >
+                    <p className="text-sm font-semibold text-th-text truncate">{p.name}</p>
+                    <p className="text-xs text-th-text-3 mt-1">
+                      {Array.isArray(p.holdings) ? p.holdings.length : 0} holdings
+                    </p>
+                    <p className="text-[10px] text-th-text-4 mt-0.5">
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </p>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeletePortfolio(p.id); }}
+                    disabled={deletingId === p.id}
+                    className="mt-2 text-[10px] text-th-text-4 hover:text-th-negative transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    {deletingId === p.id ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* CSV Import zone */}
         <div className="mt-6 sm:mt-8 bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
+            accept=".csv,.xlsx,.xls"
+            multiple
+            onChange={(e) => e.target.files && handleCSVImport(e.target.files)}
             className="hidden"
           />
-          <button
+
+          {/* Drop zone */}
+          <div
             onClick={() => fileInputRef.current?.click()}
-            disabled={imageLoading}
-            className="w-full border-2 border-dashed border-th-border rounded-xl p-6 hover:border-th-accent-border hover:bg-th-accent-bg transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            className={`w-full border-2 border-dashed rounded-xl p-6 transition-all cursor-pointer group ${
+              dragOver
+                ? "border-th-accent bg-th-accent-bg"
+                : "border-th-border hover:border-th-accent-border hover:bg-th-accent-bg"
+            } ${importLoading ? "opacity-50 cursor-not-allowed" : ""}`}
           >
-            {imageLoading ? (
+            {importLoading ? (
               <div className="flex flex-col items-center gap-2">
                 <svg className="animate-spin w-8 h-8 text-th-accent" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <p className="text-sm font-medium text-th-accent">Reading your portfolio screenshot...</p>
+                <p className="text-sm font-medium text-th-accent">Importing your portfolio...</p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
@@ -601,17 +860,79 @@ export default function PortfolioAnalyzer() {
                   </svg>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-th-text-2">Upload a screenshot of your portfolio</p>
+                  <p className="text-sm font-semibold text-th-text-2">
+                    {dragOver ? "Drop files here" : "Import your brokerage CSV or XLSX"}
+                  </p>
                   <p className="text-xs text-th-text-3 mt-1">
-                    Skip manual entry &mdash; AI will extract your tickers, shares, and cost basis automatically
+                    Drag &amp; drop or click to browse &mdash; supports Fidelity, Schwab, E*TRADE, Vanguard, and more
                   </p>
                 </div>
-                <p className="text-[11px] text-th-text-3 mt-1">
-                  Use your brokerage&apos;s &quot;Holdings&quot; or &quot;Positions&quot; view showing tickers and shares.
+                <p className="text-[11px] text-th-text-4 mt-1">
+                  .csv and .xlsx files, up to 10 MB each, max 5 files
                 </p>
               </div>
             )}
-          </button>
+          </div>
+
+          {/* Import summary */}
+          {importSummary && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-th-positive-bg text-th-positive font-medium">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                {importSummary.totalHoldings} holdings imported
+              </span>
+              {importSummary.brokersDetected.map((b) => (
+                <span key={b} className="px-2 py-1 rounded-full bg-th-accent-bg text-th-accent font-medium">
+                  {b}
+                </span>
+              ))}
+              {importSummary.accountsDetected.length > 1 && (
+                <span className="px-2 py-1 rounded-full bg-th-surface border border-th-border text-th-text-3">
+                  {importSummary.accountsDetected.length} accounts
+                </span>
+              )}
+              {importSummary.skippedRows > 0 && (
+                <span className="px-2 py-1 rounded-full bg-th-warning-bg text-th-warning">
+                  {importSummary.skippedRows} rows skipped
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Import warnings */}
+          {importWarnings.length > 0 && (
+            <div className="mt-3 p-3 rounded-lg bg-th-warning-bg border border-th-warning/20">
+              {importWarnings.map((w, i) => (
+                <p key={i} className="text-xs text-th-warning leading-relaxed">
+                  {w}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Broker export instructions — compact dropdown */}
+          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+            <label className="text-xs font-medium text-th-text-3 whitespace-nowrap">
+              How to export:
+            </label>
+            <select
+              value={selectedBroker}
+              onChange={(e) => setSelectedBroker(e.target.value)}
+              className="px-3 py-1.5 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border text-th-text-2"
+            >
+              <option value="">Select your broker...</option>
+              {BROKER_INSTRUCTIONS.map((b) => (
+                <option key={b.name} value={b.name}>{b.name}</option>
+              ))}
+            </select>
+            {selectedBroker && (
+              <p className="text-xs text-th-text-3 leading-relaxed">
+                {BROKER_INSTRUCTIONS.find(b => b.name === selectedBroker)?.steps}
+              </p>
+            )}
+          </div>
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-5">
@@ -621,7 +942,7 @@ export default function PortfolioAnalyzer() {
           </div>
 
           {/* Manual entry */}
-          <h2 className="text-sm font-semibold text-th-text-2 mb-3">Your Holdings</h2>
+          <h2 ref={holdingsRef} className="text-sm font-semibold text-th-text-2 mb-3">Your Holdings</h2>
 
           {/* Column headers */}
           <div className="flex items-center gap-2 sm:gap-3 mb-2 pl-0">
@@ -776,12 +1097,57 @@ export default function PortfolioAnalyzer() {
               </div>
             </div>
 
+            {/* Save portfolio button (logged-in users only) */}
+            {isSignedIn && !savedSuccess && !showSaveDialog && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowSaveDialog(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-th-accent bg-th-accent-bg border border-th-accent-border rounded-xl hover:bg-th-accent-muted transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+                  </svg>
+                  Save Analysis
+                </button>
+              </div>
+            )}
+            {showSaveDialog && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 max-w-md ml-auto">
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  placeholder="Name this portfolio..."
+                  className="flex-1 px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSavePortfolio(); }}
+                />
+                <button
+                  onClick={handleSavePortfolio}
+                  disabled={savingPortfolio || !saveName.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-th-accent rounded-lg hover:bg-th-accent-hover disabled:opacity-40 transition-colors"
+                >
+                  {savingPortfolio ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={() => { setShowSaveDialog(false); setSaveName(""); }}
+                  className="px-3 py-2 text-sm text-th-text-3 hover:text-th-text-2 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {savedSuccess && (
+              <p className="text-sm text-th-positive text-right font-medium">Portfolio saved!</p>
+            )}
+
             {/* Detailed results - gated for guests */}
             <LoginGate
               locked={isGuest}
               message="Sign up to view your full portfolio analysis"
               subMessage="Sector allocation, per-holding detail, gain/loss breakdown, and AI-powered recommendations"
               blur="heavy"
+              ctaPosition="top"
             >
               {/* AI Analysis — prominent placement */}
               {result.aiAnalysis && (

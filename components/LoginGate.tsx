@@ -15,6 +15,8 @@ interface LoginGateProps {
   blur?: "light" | "medium" | "heavy";
   /** Additional className for the wrapper */
   className?: string;
+  /** Where to position the CTA overlay: "center" (default) or "top" */
+  ctaPosition?: "center" | "top";
 }
 
 const BLUR_MAP = {
@@ -30,6 +32,7 @@ export default function LoginGate({
   locked,
   blur = "medium",
   className = "",
+  ctaPosition = "center",
 }: LoginGateProps) {
   if (!locked) return <>{children}</>;
 
@@ -44,7 +47,7 @@ export default function LoginGate({
       </div>
 
       {/* Overlay with CTA */}
-      <div className="absolute inset-0 flex items-center justify-center z-10">
+      <div className={`absolute inset-0 flex justify-center z-10 ${ctaPosition === "top" ? "items-start pt-8" : "items-center"}`}>
         <div className="bg-th-surface/90 backdrop-blur-sm border border-th-border rounded-2xl px-6 py-5 sm:px-8 sm:py-6 text-center shadow-lg max-w-sm mx-4">
           <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-th-accent-bg flex items-center justify-center">
             <svg

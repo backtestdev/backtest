@@ -36,31 +36,57 @@ async function readLeaderboardDb(): Promise<LeaderboardEntry[]> {
     const rows = await sql`
       SELECT id, name, description, return1yr, return5yr, return10yr, return20yr,
              matched_stocks as "matchedStocks", created_at as "createdAt", user_id,
-             parameters_json, parameters_hash, query_hash, created_by
+             parameters_json, parameters_hash, query_hash, created_by, is_public
       FROM leaderboard
+      WHERE is_public = TRUE OR is_public IS NULL
       ORDER BY return10yr DESC
       LIMIT ${MAX_ENTRIES}
     `;
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      return1yr: Number(row.return1yr),
-      return5yr: Number(row.return5yr),
-      return10yr: Number(row.return10yr),
-      return20yr: Number(row.return20yr),
-      matchedStocks: Number(row.matchedStocks),
-      createdAt: row.createdAt,
-      user_id: row.user_id,
-      created_by: row.created_by,
-      parameters_json: row.parameters_json,
-      parameters_hash: row.parameters_hash,
-      query_hash: row.query_hash,
-    }));
+    return rows.map(mapRowToEntry);
   } catch (error) {
     console.error("DB read failed, falling back to file:", error);
     return readLeaderboardFile();
   }
+}
+
+async function readUserStrategiesDb(userId: string): Promise<LeaderboardEntry[]> {
+  const sql = getDb();
+  if (!sql) return [];
+
+  try {
+    const rows = await sql`
+      SELECT id, name, description, return1yr, return5yr, return10yr, return20yr,
+             matched_stocks as "matchedStocks", created_at as "createdAt", user_id,
+             parameters_json, parameters_hash, query_hash, created_by, is_public
+      FROM leaderboard
+      WHERE user_id = ${userId}
+      ORDER BY return10yr DESC
+    `;
+    return rows.map(mapRowToEntry);
+  } catch (error) {
+    console.error("User strategies read failed:", error);
+    return [];
+  }
+}
+
+function mapRowToEntry(row: Record<string, unknown>): LeaderboardEntry {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: row.description as string,
+    return1yr: Number(row.return1yr),
+    return5yr: Number(row.return5yr),
+    return10yr: Number(row.return10yr),
+    return20yr: Number(row.return20yr),
+    matchedStocks: Number(row.matchedStocks),
+    createdAt: row.createdAt as string,
+    user_id: row.user_id as string | undefined,
+    created_by: row.created_by as string | undefined,
+    parameters_json: row.parameters_json as LeaderboardEntry["parameters_json"],
+    parameters_hash: row.parameters_hash as string | undefined,
+    query_hash: row.query_hash as string | undefined,
+    is_public: row.is_public as boolean | undefined,
+  };
 }
 
 async function checkDuplicateDb(
@@ -97,11 +123,12 @@ async function writeLeaderboardDb(entry: LeaderboardEntry): Promise<void> {
   await sql`
     INSERT INTO leaderboard (id, name, description, return1yr, return5yr, return10yr, return20yr,
                              matched_stocks, created_at, user_id, parameters_json, parameters_hash,
-                             query_hash, created_by)
+                             query_hash, created_by, is_public)
     VALUES (${entry.id}, ${entry.name}, ${entry.description}, ${entry.return1yr}, ${entry.return5yr},
             ${entry.return10yr}, ${entry.return20yr}, ${entry.matchedStocks}, ${entry.createdAt},
             ${entry.user_id ?? null}, ${JSON.stringify(entry.parameters_json) ?? null},
-            ${entry.parameters_hash ?? null}, ${entry.query_hash ?? null}, ${entry.created_by ?? null})
+            ${entry.parameters_hash ?? null}, ${entry.query_hash ?? null}, ${entry.created_by ?? null},
+            ${entry.is_public ?? true})
   `;
 }
 
@@ -113,9 +140,20 @@ function checkDuplicateFile(entries: LeaderboardEntry[], parametersHash: string)
 
 // --- Route handlers ---
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const entries = await readLeaderboardDb();
+    const { searchParams } = new URL(request.url);
+    const scope = searchParams.get("scope"); // "personal" for user's strategies
+    const forUserId = searchParams.get("userId");
+
+    let entries: LeaderboardEntry[];
+
+    if (scope === "personal" && forUserId) {
+      entries = await readUserStrategiesDb(forUserId);
+    } else {
+      entries = await readLeaderboardDb();
+    }
+
     entries.sort((a, b) => b.return10yr - a.return10yr);
 
     // Compute S&P 500 benchmark returns for each time period
@@ -126,7 +164,7 @@ export async function GET() {
       return20yr: Math.round(getSpyReturn(20) * 10) / 10,
     };
 
-    return NextResponse.json({ entries: entries.slice(0, MAX_ENTRIES), benchmarks });
+    return NextResponse.json({ entries, benchmarks });
   } catch (error) {
     console.error("Leaderboard read error:", error);
     return NextResponse.json({ entries: [], benchmarks: { return1yr: 0, return5yr: 0, return10yr: 0, return20yr: 0 } }, { status: 200 });
@@ -145,7 +183,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks, parameters_json, created_by } = body;
+    const { name, description, return1yr, return5yr, return10yr, return20yr, matchedStocks, parameters_json, created_by, is_public } = body;
 
     console.log("[Leaderboard POST] Received:", { name, description, userId, parameters_json: !!parameters_json });
 
@@ -210,6 +248,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const entryIsPublic = is_public !== false; // Default to public
+
     const newEntry: LeaderboardEntry = {
       id: uuidv4(),
       name,
@@ -225,6 +265,7 @@ export async function POST(request: NextRequest) {
       parameters_json: parameters_json ?? undefined,
       parameters_hash: parametersHash ?? undefined,
       query_hash: queryHash ?? undefined,
+      is_public: entryIsPublic,
     };
 
     await writeLeaderboardDb(newEntry);
@@ -238,5 +279,44 @@ export async function POST(request: NextRequest) {
       { error: "Failed to save to leaderboard." },
       { status: 500 }
     );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "Missing strategy ID" }, { status: 400 });
+    }
+
+    const sql = getDb();
+    if (!sql) {
+      // File-based fallback
+      const entries = await readLeaderboardFile();
+      const idx = entries.findIndex((e) => e.id === id && e.user_id === userId);
+      if (idx === -1) {
+        return NextResponse.json({ error: "Strategy not found or not owned by you" }, { status: 404 });
+      }
+      entries.splice(idx, 1);
+      await writeLeaderboardFile(entries);
+      return NextResponse.json({ success: true });
+    }
+
+    // Only delete if owned by the user
+    const result = await sql`DELETE FROM leaderboard WHERE id = ${id} AND user_id = ${userId} RETURNING id`;
+    if (result.length === 0) {
+      return NextResponse.json({ error: "Strategy not found or not owned by you" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[Leaderboard DELETE] Error:", error);
+    return NextResponse.json({ error: "Failed to delete strategy" }, { status: 500 });
   }
 }
