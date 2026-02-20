@@ -1,12 +1,14 @@
 /**
- * Admin endpoint to populate historical annual returns from Yahoo Finance.
+ * Admin endpoint to populate historical annual returns and monthly prices
+ * from Yahoo Finance.
  *
  * GET  /api/admin/refresh-prices — Vercel Cron handler (weekly)
  * POST /api/admin/refresh-prices — Manual trigger via admin UI
  *
  * Fetches 20+ years of monthly price data from Yahoo Finance for all
  * stocks in the database (plus SPY for benchmark), computes annual
- * returns, and stores them in the stock_annual_returns table.
+ * returns, and stores them in stock_annual_returns. Also stores monthly
+ * close prices in stock_prices (used by Signal Tracker charts).
  *
  * This is a separate step from refresh-data (FMP fundamentals) because:
  *   - Yahoo Finance is free with no API key required
@@ -92,8 +94,8 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
 
   // Flatten all rows into a single array for batched inserts
   const allRows: { symbol: string; year: number; annualReturn: number; yearEndClose: number | null }[] = [];
-  for (const [symbol, annualReturns] of Array.from(returns.entries())) {
-    for (const ret of annualReturns) {
+  for (const [symbol, priceResult] of Array.from(returns.entries())) {
+    for (const ret of priceResult.annualReturns) {
       allRows.push({ symbol, year: ret.year, annualReturn: ret.annualReturn, yearEndClose: ret.yearEndClose });
     }
   }
@@ -117,6 +119,49 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
   }
 
   log.push(`Inserted ${insertedRows} annual return records for ${returns.size} symbols`);
+
+  // ── Store monthly prices in stock_prices ───────────────────────────
+  log.push("Writing monthly prices to stock_prices...");
+
+  // Ensure stock_prices table exists
+  await sql`
+    CREATE TABLE IF NOT EXISTS stock_prices (
+      id SERIAL PRIMARY KEY,
+      symbol VARCHAR(10) NOT NULL,
+      date DATE NOT NULL,
+      close DECIMAL(12,4) NOT NULL,
+      UNIQUE(symbol, date)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_stock_prices_symbol ON stock_prices(symbol)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_stock_prices_date ON stock_prices(date)`;
+
+  // Clear and re-insert
+  await sql`DELETE FROM stock_prices`;
+
+  const allPriceRows: { symbol: string; date: string; close: number }[] = [];
+  for (const [symbol, priceResult] of Array.from(returns.entries())) {
+    for (const mp of priceResult.monthlyPrices) {
+      allPriceRows.push({ symbol, date: mp.date, close: mp.close });
+    }
+  }
+
+  let insertedPrices = 0;
+  for (let i = 0; i < allPriceRows.length; i += BATCH_SIZE) {
+    const batch = allPriceRows.slice(i, i + BATCH_SIZE);
+    const placeholders = batch.map((_, idx) => {
+      const b = idx * 3;
+      return `($${b + 1}, $${b + 2}, $${b + 3})`;
+    }).join(", ");
+    const params = batch.flatMap(r => [r.symbol, r.date, r.close]);
+    const query = `INSERT INTO stock_prices (symbol, date, close)
+       VALUES ${placeholders}
+       ON CONFLICT (symbol, date) DO UPDATE SET close = EXCLUDED.close`;
+    await sql.query(query, params);
+    insertedPrices += batch.length;
+  }
+
+  log.push(`Inserted ${insertedPrices} monthly price records for ${returns.size} symbols`);
 
   // Update metadata
   await sql`
@@ -151,7 +196,8 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
 
   return {
     symbols: { total: allSymbols.length, succeeded, failed },
-    records: insertedRows,
+    annualReturnRecords: insertedRows,
+    monthlyPriceRecords: insertedPrices,
     spy: {
       years: spyCheck.length,
       range: spyCheck.length > 0
@@ -254,7 +300,7 @@ export async function GET(request: NextRequest) {
   try {
     console.log(`[${trigger}] Starting price refresh...`);
     const result = await runPriceRefresh(sql);
-    console.log(`[${trigger}] Price refresh complete: ${result.symbols.succeeded} symbols, ${result.records} records`);
+    console.log(`[${trigger}] Price refresh complete: ${result.symbols.succeeded} symbols, ${result.annualReturnRecords} annual returns, ${result.monthlyPriceRecords} monthly prices`);
 
     // Release lock
     try { await sql`DELETE FROM stock_meta WHERE key = 'price_refresh_lock'`; } catch { /* ignore */ }
