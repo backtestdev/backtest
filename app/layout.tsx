@@ -20,9 +20,9 @@ const geistSans = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Backtest AI Tool - Test Stock Market Strategies",
+  title: "AI Stock Screener - Screen Stocks with Natural Language",
   description:
-    "Test any stock market investment strategy using plain English. See how it would have performed over the last 10 years.",
+    "Screen stocks using natural language and see how your criteria performed over the last 20 years with backtested results.",
 };
 
 export default function RootLayout({

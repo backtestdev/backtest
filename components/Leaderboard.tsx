@@ -179,7 +179,7 @@ export default function Leaderboard({ onSelectStrategy, refreshKey, activeTab: e
           <div className="min-w-[480px]">
             {/* Header */}
             <div className="grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 border-b border-th-border-light items-center">
-              <div className={`${tab === "personal" ? "col-span-4" : "col-span-5"} text-xs font-medium text-th-text-3 uppercase tracking-wider`}>
+              <div className="col-span-5 text-xs font-medium text-th-text-3 uppercase tracking-wider">
                 Strategy
               </div>
               <div className="col-span-2 text-right hidden md:block">
@@ -194,24 +194,21 @@ export default function Leaderboard({ onSelectStrategy, refreshKey, activeTab: e
               <div className="col-span-2 md:col-span-1 text-right">
                 <SortHeader field="return1yr" label="1yr" />
               </div>
-              {tab === "personal" && (
-                <div className="col-span-1 text-right" />
-              )}
             </div>
 
             {/* Rows */}
             {sorted.map((entry, index) => (
               <div
                 key={entry.id}
-                className="w-full grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 sm:py-4 hover:bg-th-hover transition-colors text-left border-b border-th-border-light last:border-0 items-center min-h-[44px] cursor-pointer"
+                className="group/row w-full grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 sm:py-4 hover:bg-th-hover transition-colors text-left border-b border-th-border-light last:border-0 items-center min-h-[44px] cursor-pointer"
                 onClick={() => onSelectStrategy(entry.description)}
               >
-                <div className={`${tab === "personal" ? "col-span-4" : "col-span-5"}`}>
+                <div className="col-span-5">
                   <div className="flex items-start gap-2 sm:gap-3">
                     <span className="text-sm font-medium text-th-text-4 w-5 mt-0.5 flex-shrink-0">
                       {index + 1}
                     </span>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-semibold text-th-text truncate sm:whitespace-normal">
                           {entry.name}
@@ -220,6 +217,25 @@ export default function Leaderboard({ onSelectStrategy, refreshKey, activeTab: e
                           <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-th-inset text-th-text-4 whitespace-nowrap">
                             Private
                           </span>
+                        )}
+                        {tab === "personal" && (
+                          <button
+                            onClick={(e) => handleDelete(entry.id, e)}
+                            disabled={deletingId === entry.id}
+                            className="ml-auto flex-shrink-0 p-1 text-th-text-4 opacity-0 group-hover/row:opacity-100 hover:text-th-negative transition-all rounded-md hover:bg-th-negative-bg"
+                            title="Delete strategy"
+                          >
+                            {deletingId === entry.id ? (
+                              <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                              </svg>
+                            )}
+                          </button>
                         )}
                       </div>
                       <p className="text-xs text-th-text-3 mt-0.5 line-clamp-2 hidden sm:block">
@@ -260,27 +276,6 @@ export default function Leaderboard({ onSelectStrategy, refreshKey, activeTab: e
                     {entry.return1yr.toFixed(1)}%
                   </span>
                 </div>
-                {tab === "personal" && (
-                  <div className="col-span-1 text-right">
-                    <button
-                      onClick={(e) => handleDelete(entry.id, e)}
-                      disabled={deletingId === entry.id}
-                      className="p-1.5 text-th-text-4 hover:text-th-negative transition-colors rounded-lg hover:bg-th-negative-bg"
-                      title="Delete strategy"
-                    >
-                      {deletingId === entry.id ? (
-                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
           </div>

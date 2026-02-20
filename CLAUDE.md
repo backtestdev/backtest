@@ -189,10 +189,10 @@ Configured in `vercel.json`:
 
 ### App Modules
 The app has four modules accessible from the top nav (`components/Navigation.tsx`):
-1. **Backtest** (`/`) — Core strategy backtesting tool
-2. **Signal Explorer** (`/signals`) — Beta. Quintile analysis of 25 metrics vs historical returns
-3. **Stock Screener** (`/screener`) — Beta. Filterable table with Backtest Score (1-100)
-4. **Portfolio Analyzer** (`/portfolio`) — Beta. Manual entry + screenshot upload, AI analysis
+1. **Signal Tracker** (`/`) — Signal tracking dashboard
+2. **AI Stock Screener** (`/backtest`) — Core tool: screen stocks using natural language, with backtested performance over long time periods
+3. **AI Stock Analyzer** (`/screener`) — Filterable table with Backtest Score (1-100), per-stock AI analysis
+4. **AI Portfolio Analyzer** (`/portfolio`) — Beta. Manual entry + screenshot upload, AI analysis
 
 All beta modules use static analysis (current metrics, not point-in-time). This limitation is clearly disclosed in each module's UI.
 
