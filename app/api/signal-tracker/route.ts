@@ -4,6 +4,9 @@ import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 import { v4 as uuidv4 } from "uuid";
 import { NeonQueryFunction } from "@neondatabase/serverless";
+import YahooFinance from "yahoo-finance2";
+
+const yf = new YahooFinance({ suppressNotices: ["ripHistorical"] });
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -163,6 +166,40 @@ function getMonthEnds(startDate: string, endDate: string): string[] {
   return dates;
 }
 
+// --- Build price lookup from DB rows (DATE columns come as strings from Neon) ---
+
+function buildPriceLookup(rows: Record<string, unknown>[]): Map<string, Map<string, number>> {
+  const lookup = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    const sym = row.symbol as string;
+    const dateStr = String(row.date).slice(0, 10);
+    if (!lookup.has(sym)) lookup.set(sym, new Map());
+    lookup.get(sym)!.set(dateStr, Number(row.close_price));
+  }
+  return lookup;
+}
+
+// --- Fetch SPY monthly prices via Yahoo Finance (fallback when stock_prices lacks SPY) ---
+
+async function fetchSpyPricesFromYahoo(): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+  try {
+    const start = new Date(INCEPTION_DATE);
+    const end = new Date();
+    const result = await yf.chart("SPY", { period1: start, period2: end, interval: "1d" });
+    if (result?.quotes?.length) {
+      for (const q of result.quotes as { date: Date; close?: number | null }[]) {
+        if (q.close != null && q.close > 0) {
+          prices.set(q.date.toISOString().slice(0, 10), Math.round(q.close * 100) / 100);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[Signal Tracker] Yahoo Finance SPY fetch failed:", e);
+  }
+  return prices;
+}
+
 // --- Generate initial backdated picks ---
 
 async function generateInitialPicks(sql: Sql) {
@@ -172,6 +209,7 @@ async function generateInitialPicks(sql: Sql) {
     .filter((s) => qualifiesForPick(s.score, s.marketCapB))
     .sort((a, b) => b.score - a.score);
 
+  console.log(`[Signal Tracker] ${qualifying.length} qualifying stocks for initial picks`);
   if (qualifying.length === 0) return;
 
   // Get historical prices from inception to now
@@ -183,28 +221,25 @@ async function generateInitialPicks(sql: Sql) {
     ORDER BY symbol, date
   `;
 
-  const priceLookup = new Map<string, Map<string, number>>();
-  for (const row of priceRows) {
-    const sym = row.symbol as string;
-    if (!priceLookup.has(sym)) priceLookup.set(sym, new Map());
-    priceLookup.get(sym)!.set((row.date as Date).toISOString().slice(0, 10), Number(row.close_price));
-  }
+  console.log(`[Signal Tracker] Found ${priceRows.length} price rows for ${symbols.length} symbols`);
+  const priceLookup = buildPriceLookup(priceRows);
 
   // Calculate return from inception to latest price — prefer outperformers
   const withReturns = qualifying
     .filter((s) => {
       const p = priceLookup.get(s.symbol);
-      return p && p.size > 5;
+      return p && p.size > 0;
     })
     .map((s) => {
       const prices = priceLookup.get(s.symbol)!;
       const sorted = Array.from(prices.keys()).sort();
       const first = prices.get(sorted[0])!;
       const last = prices.get(sorted[sorted.length - 1])!;
-      return { ...s, returnPct: ((last - first) / first) * 100, dates: sorted };
+      return { ...s, returnPct: first > 0 ? ((last - first) / first) * 100 : 0, dates: sorted };
     })
     .sort((a, b) => b.returnPct - a.returnPct);
 
+  console.log(`[Signal Tracker] ${withReturns.length} stocks with price data`);
   const selected = withReturns.slice(0, 22);
   if (selected.length === 0) return;
 
@@ -221,15 +256,31 @@ async function generateInitialPicks(sql: Sql) {
   ];
 
   let idx = 0;
+  let inserted = 0;
   for (const { month, count } of schedule) {
     for (let i = 0; i < count && idx < selected.length; i++, idx++) {
       const stock = selected[idx];
       const prices = priceLookup.get(stock.symbol)!;
       // Pick a date near the middle of the month
       const monthDates = stock.dates.filter((d) => d.startsWith(month));
-      if (monthDates.length === 0) continue;
-      const pickDate = monthDates[Math.floor(monthDates.length / 2)];
-      const entryPrice = prices.get(pickDate)!;
+      // If no data for this month, use the earliest available date
+      let pickDate: string;
+      let entryPrice: number;
+      if (monthDates.length > 0) {
+        pickDate = monthDates[Math.floor(monthDates.length / 2)];
+        entryPrice = prices.get(pickDate)!;
+      } else {
+        // Use the closest available date to the month
+        const allDates = Array.from(prices.keys()).sort();
+        const target = `${month}-15`;
+        pickDate = allDates.reduce((closest, d) =>
+          Math.abs(new Date(d).getTime() - new Date(target).getTime()) <
+          Math.abs(new Date(closest).getTime() - new Date(target).getTime()) ? d : closest
+        );
+        entryPrice = prices.get(pickDate)!;
+      }
+
+      if (!entryPrice || entryPrice <= 0) continue;
 
       await sql`
         INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
@@ -237,8 +288,10 @@ async function generateInitialPicks(sql: Sql) {
                 ${stock.marketCapB * 1e9}, ${stock.score}, ${generateThesis(stock)},
                 ${pickDate}, ${entryPrice}, 'active')
       `;
+      inserted++;
     }
   }
+  console.log(`[Signal Tracker] Inserted ${inserted} backdated picks`);
 }
 
 // --- Compute monthly performance ---
@@ -261,22 +314,22 @@ async function computePerformance(
     WHERE symbol = ANY(${symbols}) AND date >= ${INCEPTION_DATE}
     ORDER BY symbol, date
   `;
-  const priceLookup = new Map<string, Map<string, number>>();
-  for (const row of priceRows) {
-    const sym = row.symbol as string;
-    if (!priceLookup.has(sym)) priceLookup.set(sym, new Map());
-    priceLookup.get(sym)!.set((row.date as Date).toISOString().slice(0, 10), Number(row.close_price));
-  }
+  const priceLookup = buildPriceLookup(priceRows);
 
-  // Fetch SPY prices for benchmark
+  // Fetch SPY prices for benchmark — try DB first, Yahoo Finance fallback
   const spyRows = await sql`
     SELECT date, close_price FROM stock_prices
     WHERE symbol = 'SPY' AND date >= ${INCEPTION_DATE}
     ORDER BY date
   `;
-  const spyPrices = new Map<string, number>();
+  let spyPrices = new Map<string, number>();
   for (const row of spyRows) {
-    spyPrices.set((row.date as Date).toISOString().slice(0, 10), Number(row.close_price));
+    spyPrices.set(String(row.date).slice(0, 10), Number(row.close_price));
+  }
+  // Fallback: if no SPY in stock_prices, fetch from Yahoo Finance
+  if (spyPrices.size === 0) {
+    console.log("[Signal Tracker] SPY not in stock_prices, fetching from Yahoo Finance");
+    spyPrices = await fetchSpyPricesFromYahoo();
   }
 
   const spyStart = getClosestPrice(spyPrices, INCEPTION_DATE);

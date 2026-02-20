@@ -7,7 +7,7 @@ import { useTheme } from "./ThemeProvider";
 
 const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode }[] = [
   {
-    href: "/signal-tracker",
+    href: "/",
     label: "Signal Tracker",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -16,7 +16,7 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
     ),
   },
   {
-    href: "/",
+    href: "/backtest",
     label: "Backtest Tool",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
