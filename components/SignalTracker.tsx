@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useUser, SignUpButton } from "@clerk/nextjs";
 import StockLogo from "./StockLogo";
 
 // --- Types ---
@@ -62,9 +63,29 @@ function formatMarketCap(b: number): string {
   return `$${(b * 1000).toFixed(0)}M`;
 }
 
+function isRecentPick(pickDate: string): boolean {
+  const pick = new Date(pickDate + "T00:00:00");
+  const now = new Date();
+  const diffMs = now.getTime() - pick.getTime();
+  return diffMs < 30 * 24 * 60 * 60 * 1000;
+}
+
+function timeAgo(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 30) return `${diffDays}d ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) return `${diffMonths}mo ago`;
+  return `${Math.floor(diffMonths / 12)}y ago`;
+}
+
 // --- Main Component ---
 
 export default function SignalTracker() {
+  const { isSignedIn } = useUser();
   const [picks, setPicks] = useState<Pick[]>([]);
   const [performance, setPerformance] = useState<PerformancePoint[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -130,8 +151,8 @@ export default function SignalTracker() {
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-th-text">Signal Tracker</h1>
           <p className="text-sm text-th-text-3 mt-1">
-            AI-scored stock picks tracked since {stats ? formatDate(stats.inceptionDate) : "Jul 2025"}.
-            Stocks scoring 85+ on the multi-factor model are automatically signaled for the portfolio.
+            Multi-factor AI stock picks tracked since fund inception in Jul 2025.
+            Score-weighted portfolio with monthly rebalancing.
           </p>
         </div>
 
@@ -207,14 +228,32 @@ export default function SignalTracker() {
             <p className="text-sm text-th-text-3 text-center py-8">No picks to display.</p>
           ) : (
             <div className="space-y-2">
-              {filteredPicks.map((pick) => (
-                <PickCard
-                  key={pick.id}
-                  pick={pick}
-                  expanded={expandedPick === pick.id}
-                  onToggle={() => setExpandedPick(expandedPick === pick.id ? null : pick.id)}
-                />
-              ))}
+              {filteredPicks.map((pick) => {
+                const recent = isRecentPick(pick.pickDate) && pick.status === "active";
+                const blurred = recent && !isSignedIn;
+                return (
+                  <div key={pick.id} className="relative">
+                    {blurred && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-th-surface/60 backdrop-blur-sm rounded-xl">
+                        <div className="text-center px-4">
+                          <p className="text-sm font-semibold text-th-text mb-1">New Signal</p>
+                          <p className="text-xs text-th-text-3 mb-2">Sign in to see picks from the last 30 days</p>
+                          <SignUpButton mode="modal">
+                            <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
+                              Sign Up Free
+                            </button>
+                          </SignUpButton>
+                        </div>
+                      </div>
+                    )}
+                    <PickCard
+                      pick={pick}
+                      expanded={!blurred && expandedPick === pick.id}
+                      onToggle={() => !blurred && setExpandedPick(expandedPick === pick.id ? null : pick.id)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -263,6 +302,7 @@ function PickCard({ pick, expanded, onToggle }: {
   const returnColor = pick.returnPct != null
     ? pick.returnPct >= 0 ? "text-th-positive" : "text-th-negative"
     : "text-th-text-3";
+  const recent = isRecentPick(pick.pickDate) && isActive;
 
   return (
     <div className={`rounded-xl border transition-colors ${
@@ -289,6 +329,9 @@ function PickCard({ pick, expanded, onToggle }: {
                 </svg>
                 {pick.score}
               </span>
+              {recent && (
+                <span className="text-[10px] font-medium text-th-accent bg-th-accent/10 px-1.5 py-0.5 rounded">New</span>
+              )}
               {!isActive && (
                 <span className="text-[10px] font-medium text-th-negative bg-th-negative-bg px-1.5 py-0.5 rounded">Sold</span>
               )}
@@ -299,16 +342,18 @@ function PickCard({ pick, expanded, onToggle }: {
           {/* Right side: return + date */}
           <div className="text-right flex-shrink-0 hidden sm:block">
             <p className={`text-sm font-bold ${returnColor}`}>
-              {pick.returnPct != null ? `${pick.returnPct >= 0 ? "+" : ""}${pick.returnPct.toFixed(1)}%` : "—"}
+              {pick.returnPct != null ? `${pick.returnPct >= 0 ? "+" : ""}${pick.returnPct.toFixed(1)}%` : "\u2014"}
             </p>
+            <p className="text-[11px] text-th-text-3 font-medium">{timeAgo(pick.pickDate)}</p>
             <p className="text-[10px] text-th-text-4">{formatDate(pick.pickDate)}</p>
           </div>
 
-          {/* Mobile: return */}
+          {/* Mobile: return + date */}
           <div className="text-right flex-shrink-0 sm:hidden">
             <p className={`text-sm font-bold ${returnColor}`}>
-              {pick.returnPct != null ? `${pick.returnPct >= 0 ? "+" : ""}${pick.returnPct.toFixed(1)}%` : "—"}
+              {pick.returnPct != null ? `${pick.returnPct >= 0 ? "+" : ""}${pick.returnPct.toFixed(1)}%` : "\u2014"}
             </p>
+            <p className="text-[10px] text-th-text-3 font-medium">{timeAgo(pick.pickDate)}</p>
           </div>
 
           {/* Expand button */}
@@ -328,9 +373,9 @@ function PickCard({ pick, expanded, onToggle }: {
                 <p className="text-sm font-medium text-th-text">{formatCurrency(pick.entryPrice)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">Current Price</p>
+                <p className="text-[10px] text-th-text-4 uppercase">{pick.status === "sold" ? "Sell Price" : "Current Price"}</p>
                 <p className="text-sm font-medium text-th-text">
-                  {pick.currentPrice ? formatCurrency(pick.currentPrice) : pick.sellPrice ? formatCurrency(pick.sellPrice) : "—"}
+                  {pick.currentPrice ? formatCurrency(pick.currentPrice) : pick.sellPrice ? formatCurrency(pick.sellPrice) : "\u2014"}
                 </p>
               </div>
               <div>
@@ -338,7 +383,7 @@ function PickCard({ pick, expanded, onToggle }: {
                 <p className="text-sm font-medium text-th-text">{formatMarketCap(pick.marketCap)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">Pick Date</p>
+                <p className="text-[10px] text-th-text-4 uppercase">Signaled</p>
                 <p className="text-sm font-medium text-th-text">{formatDate(pick.pickDate)}</p>
               </div>
             </div>
