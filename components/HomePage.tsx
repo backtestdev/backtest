@@ -173,16 +173,16 @@ export default function HomePage() {
       <header className="pt-8 sm:pt-12 md:pt-16 pb-4 text-center px-4">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-th-accent-bg border border-th-accent-border rounded-full text-xs font-medium text-th-accent-text mb-4">
           <span className="w-1.5 h-1.5 rounded-full bg-th-accent animate-pulse" />
-          AI-Powered Strategy Testing
+          AI-Powered Stock Screening
         </div>
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-th-text tracking-tight">
-          Backtest AI Tool
+          AI Stock Screener
         </h1>
         <p className="mt-3 text-base sm:text-lg text-th-text-3 max-w-lg mx-auto leading-relaxed">
-          Test any stock market strategy using plain English.
+          Screen stocks using natural language.
           <br className="hidden sm:block" />
           <span className="sm:hidden"> </span>
-          See how it would have performed over the last 10 years.
+          See how your criteria performed over the last 20 years.
         </p>
       </header>
 

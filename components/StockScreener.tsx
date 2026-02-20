@@ -283,7 +283,7 @@ export default function StockScreener() {
       <div className="max-w-6xl mx-auto">
         {/* Hero section */}
         <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-th-text tracking-tight">AI Stock Screener</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-th-text tracking-tight">AI Stock Analyzer</h1>
           <p className="mt-2 text-sm sm:text-base text-th-text-3 max-w-xl mx-auto">
             Search any stock for AI-powered analysis, or browse all stocks ranked by our multi-factor Backtest Score.
           </p>

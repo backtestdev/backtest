@@ -9,7 +9,7 @@ interface PageProps {
 export function generateMetadata({ params }: PageProps) {
   const symbol = params.ticker.toUpperCase();
   return {
-    title: `${symbol} - AI Stock Screener`,
+    title: `${symbol} - AI Stock Analyzer`,
     description: `AI-powered research and analysis for ${symbol}`,
   };
 }
