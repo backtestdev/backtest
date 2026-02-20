@@ -361,12 +361,22 @@ export async function GET(request: NextRequest) {
     });
 
     if (yhResult?.quotes?.length) {
-      priceHistory = yhResult.quotes
-        .filter((q: { date: Date; close?: number | null }) => q.close != null && q.close > 0)
-        .map((q: { date: Date; close?: number | null }) => ({
-          date: q.date.toISOString().slice(0, 10),
-          price: Math.round((q.close as number) * 100) / 100,
-        }));
+      const now = new Date();
+      const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      // Deduplicate by year-month (keep last entry per month for most accurate close)
+      const byMonth = new Map<string, { date: string; price: number }>();
+      for (const q of yhResult.quotes as { date: Date; close?: number | null }[]) {
+        if (q.close == null || q.close <= 0) continue;
+        const dateStr = q.date.toISOString().slice(0, 10);
+        const ym = dateStr.slice(0, 7);
+        byMonth.set(ym, { date: dateStr, price: Math.round(q.close * 100) / 100 });
+      }
+
+      // Remove current (incomplete) month
+      byMonth.delete(currentYM);
+
+      priceHistory = Array.from(byMonth.values()).sort((a, b) => a.date.localeCompare(b.date));
     }
   } catch {
     // Yahoo Finance unavailable — chart will be empty
