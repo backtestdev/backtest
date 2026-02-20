@@ -20,18 +20,29 @@ export interface AnnualReturn {
   yearEndClose: number;
 }
 
+export interface MonthlyPrice {
+  date: string;  // "2025-07-15"
+  close: number;
+}
+
+export interface PriceResult {
+  annualReturns: AnnualReturn[];
+  monthlyPrices: MonthlyPrice[];
+}
+
 /**
  * Fetches monthly chart data from Yahoo Finance and computes
- * annual returns for a given stock symbol.
+ * annual returns for a given stock symbol. Also returns raw monthly
+ * close prices for storage in stock_prices.
  *
  * @param symbol - Ticker symbol (e.g. "AAPL", "SPY")
  * @param years - Number of years of history to fetch (default 21)
- * @returns Array of annual returns sorted by year ascending
+ * @returns Annual returns and monthly close prices
  */
 export async function fetchAnnualReturns(
   symbol: string,
   years: number = 21
-): Promise<AnnualReturn[]> {
+): Promise<PriceResult> {
   const endDate = new Date();
   const startDate = new Date();
   // Fetch one extra year so we have a baseline for the first year's return
@@ -44,8 +55,11 @@ export async function fetchAnnualReturns(
   });
 
   if (!result || !result.quotes || result.quotes.length === 0) {
-    return [];
+    return { annualReturns: [], monthlyPrices: [] };
   }
+
+  // Collect monthly close prices for stock_prices table
+  const monthlyPrices: MonthlyPrice[] = [];
 
   // Find the last close price for each year (December or last available month)
   // Prefer adjclose for split/dividend-adjusted total returns
@@ -58,6 +72,12 @@ export async function fetchAnnualReturns(
 
     if (close == null || close <= 0) continue;
 
+    // Store monthly price
+    monthlyPrices.push({
+      date: row.date.toISOString().slice(0, 10),
+      close: Math.round(close * 100) / 100,
+    });
+
     const existing = yearEndCloses.get(year);
     if (!existing || month > existing.month) {
       yearEndCloses.set(year, { month, close });
@@ -66,7 +86,7 @@ export async function fetchAnnualReturns(
 
   // Compute year-over-year returns
   const sortedYears = Array.from(yearEndCloses.keys()).sort((a, b) => a - b);
-  const returns: AnnualReturn[] = [];
+  const annualReturns: AnnualReturn[] = [];
 
   for (let i = 1; i < sortedYears.length; i++) {
     const year = sortedYears[i];
@@ -74,7 +94,7 @@ export async function fetchAnnualReturns(
     const currClose = yearEndCloses.get(year)!.close;
 
     if (prevClose > 0) {
-      returns.push({
+      annualReturns.push({
         year,
         annualReturn:
           Math.round(((currClose - prevClose) / prevClose) * 1e6) / 1e6,
@@ -83,7 +103,7 @@ export async function fetchAnnualReturns(
     }
   }
 
-  return returns;
+  return { annualReturns, monthlyPrices };
 }
 
 /**
@@ -107,8 +127,8 @@ export async function fetchBulkAnnualReturns(
     symbol: string,
     ok: boolean
   ) => void
-): Promise<Map<string, AnnualReturn[]>> {
-  const results = new Map<string, AnnualReturn[]>();
+): Promise<Map<string, PriceResult>> {
+  const results = new Map<string, PriceResult>();
   let completed = 0;
 
   for (let i = 0; i < symbols.length; i += concurrency) {
@@ -116,15 +136,15 @@ export async function fetchBulkAnnualReturns(
 
     const batchResults = await Promise.allSettled(
       batch.map(async (symbol) => {
-        const returns = await fetchAnnualReturns(symbol, years);
-        return { symbol, returns };
+        const data = await fetchAnnualReturns(symbol, years);
+        return { symbol, data };
       })
     );
 
     for (const result of batchResults) {
       completed++;
-      if (result.status === "fulfilled" && result.value.returns.length > 0) {
-        results.set(result.value.symbol, result.value.returns);
+      if (result.status === "fulfilled" && result.value.data.annualReturns.length > 0) {
+        results.set(result.value.symbol, result.value.data);
         onProgress?.(completed, symbols.length, result.value.symbol, true);
       } else {
         const sym =
