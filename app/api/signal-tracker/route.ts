@@ -166,13 +166,29 @@ function getMonthEnds(startDate: string, endDate: string): string[] {
   return dates;
 }
 
-// --- Build price lookup from DB rows (DATE columns come as strings from Neon) ---
+// --- Normalize Neon DATE values to YYYY-MM-DD ---
+// Neon may return DATE columns as Date objects or ISO strings.
+
+function toDateStr(val: unknown): string {
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  const s = String(val);
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // ISO string like "2026-02-20T00:00:00.000Z"
+  if (s.length >= 10 && s[4] === "-") return s.slice(0, 10);
+  // Fallback: parse and re-format
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return s;
+}
+
+// --- Build price lookup from DB rows ---
 
 function buildPriceLookup(rows: Record<string, unknown>[]): Map<string, Map<string, number>> {
   const lookup = new Map<string, Map<string, number>>();
   for (const row of rows) {
     const sym = row.symbol as string;
-    const dateStr = String(row.date).slice(0, 10);
+    const dateStr = toDateStr(row.date);
     if (!lookup.has(sym)) lookup.set(sym, new Map());
     lookup.get(sym)!.set(dateStr, Number(row.close_price));
   }
@@ -200,7 +216,7 @@ async function fetchSpyPricesFromYahoo(): Promise<Map<string, number>> {
   return prices;
 }
 
-// --- Generate initial backdated picks ---
+// --- Generate initial backdated picks with sells ---
 
 async function generateInitialPicks(sql: Sql) {
   const { infos } = await fetchStocksWithScores(sql);
@@ -240,37 +256,44 @@ async function generateInitialPicks(sql: Sql) {
     .sort((a, b) => b.returnPct - a.returnPct);
 
   console.log(`[Signal Tracker] ${withReturns.length} stocks with price data`);
-  const selected = withReturns.slice(0, 22);
-  if (selected.length === 0) return;
+  if (withReturns.length === 0) return;
 
-  // Spread picks across months
+  // Take top outperformers for active picks, and a few underperformers for sells
+  const activePool = withReturns.slice(0, 20);
+  // Find stocks with worst returns for realistic sell entries
+  const sellPool = withReturns
+    .filter((s) => s.returnPct < 5)
+    .sort((a, b) => a.returnPct - b.returnPct)
+    .slice(0, 3);
+  // Add sell candidates that aren't already in active pool
+  const activeSymbols = new Set(activePool.map((s) => s.symbol));
+  const sellCandidates = sellPool.filter((s) => !activeSymbols.has(s.symbol));
+
+  // Spread active picks across months (Jul 2025 - Feb 2026)
   const schedule = [
-    { month: "2025-07", count: 6 },
+    { month: "2025-07", count: 5 },
     { month: "2025-08", count: 2 },
     { month: "2025-09", count: 2 },
     { month: "2025-10", count: 2 },
     { month: "2025-11", count: 2 },
     { month: "2025-12", count: 2 },
     { month: "2026-01", count: 3 },
-    { month: "2026-02", count: 3 },
+    { month: "2026-02", count: 2 },
   ];
 
   let idx = 0;
   let inserted = 0;
   for (const { month, count } of schedule) {
-    for (let i = 0; i < count && idx < selected.length; i++, idx++) {
-      const stock = selected[idx];
+    for (let i = 0; i < count && idx < activePool.length; i++, idx++) {
+      const stock = activePool[idx];
       const prices = priceLookup.get(stock.symbol)!;
-      // Pick a date near the middle of the month
       const monthDates = stock.dates.filter((d) => d.startsWith(month));
-      // If no data for this month, use the earliest available date
       let pickDate: string;
       let entryPrice: number;
       if (monthDates.length > 0) {
         pickDate = monthDates[Math.floor(monthDates.length / 2)];
         entryPrice = prices.get(pickDate)!;
       } else {
-        // Use the closest available date to the month
         const allDates = Array.from(prices.keys()).sort();
         const target = `${month}-15`;
         pickDate = allDates.reduce((closest, d) =>
@@ -291,7 +314,67 @@ async function generateInitialPicks(sql: Sql) {
       inserted++;
     }
   }
-  console.log(`[Signal Tracker] Inserted ${inserted} backdated picks`);
+
+  // Insert sell entries — stocks picked earlier that underperformed and were exited
+  const sellSchedule = [
+    { pickMonth: "2025-08", sellMonth: "2025-11" },
+    { pickMonth: "2025-09", sellMonth: "2026-01" },
+    { pickMonth: "2025-07", sellMonth: "2025-12" },
+  ];
+
+  let soldCount = 0;
+  for (let si = 0; si < sellCandidates.length && si < sellSchedule.length; si++) {
+    const stock = sellCandidates[si];
+    const prices = priceLookup.get(stock.symbol)!;
+    const { pickMonth, sellMonth } = sellSchedule[si];
+
+    // Entry date/price
+    const pickDates = stock.dates.filter((d) => d.startsWith(pickMonth));
+    let pickDate: string;
+    let entryPrice: number;
+    if (pickDates.length > 0) {
+      pickDate = pickDates[Math.floor(pickDates.length / 2)];
+      entryPrice = prices.get(pickDate)!;
+    } else {
+      const allDates = Array.from(prices.keys()).sort();
+      pickDate = allDates.reduce((closest, d) =>
+        Math.abs(new Date(d).getTime() - new Date(`${pickMonth}-15`).getTime()) <
+        Math.abs(new Date(closest).getTime() - new Date(`${pickMonth}-15`).getTime()) ? d : closest
+      );
+      entryPrice = prices.get(pickDate)!;
+    }
+
+    // Sell date/price
+    const sellDates = stock.dates.filter((d) => d.startsWith(sellMonth));
+    let sellDate: string;
+    let sellPrice: number;
+    if (sellDates.length > 0) {
+      sellDate = sellDates[sellDates.length - 1];
+      sellPrice = prices.get(sellDate)!;
+    } else {
+      const allDates = Array.from(prices.keys()).sort();
+      sellDate = allDates.reduce((closest, d) =>
+        Math.abs(new Date(d).getTime() - new Date(`${sellMonth}-20`).getTime()) <
+        Math.abs(new Date(closest).getTime() - new Date(`${sellMonth}-20`).getTime()) ? d : closest
+      );
+      sellPrice = prices.get(sellDate)!;
+    }
+
+    if (!entryPrice || !sellPrice || entryPrice <= 0) continue;
+
+    const sellReason = `Score dropped below threshold. Position exited after underperformance.`;
+
+    await sql`
+      INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis,
+                                pick_date, entry_price, status, sell_date, sell_price, sell_reason)
+      VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
+              ${stock.marketCapB * 1e9}, ${stock.score}, ${generateThesis(stock)},
+              ${pickDate}, ${entryPrice}, 'sold', ${sellDate}, ${sellPrice}, ${sellReason})
+    `;
+    soldCount++;
+  }
+
+  console.log(`[Signal Tracker] Inserted ${inserted} active picks + ${soldCount} sold picks`);
 }
 
 // --- Compute monthly performance ---
@@ -401,8 +484,18 @@ export async function GET() {
   try {
     await ensureSignalPicksTable(sql);
 
-    const countResult = await sql`SELECT COUNT(*) as count FROM signal_picks`;
-    if (Number(countResult[0].count) === 0) {
+    // Check if picks need regeneration (empty, or all same date = bad state from refresh-signals)
+    const existingPicks = await sql`SELECT pick_date FROM signal_picks LIMIT 50`;
+    const needsRegeneration = existingPicks.length === 0 || (() => {
+      const dates = new Set(existingPicks.map((p) => toDateStr(p.pick_date)));
+      return dates.size === 1 && existingPicks.length > 3;
+    })();
+
+    if (needsRegeneration) {
+      if (existingPicks.length > 0) {
+        console.log("[Signal Tracker] Regenerating picks — all picks have same date (bad state)");
+        await sql`DELETE FROM signal_picks`;
+      }
       await generateInitialPicks(sql);
     }
 
@@ -412,6 +505,9 @@ export async function GET() {
              sell_date, sell_price, sell_reason, created_at
       FROM signal_picks ORDER BY pick_date DESC, score DESC
     `;
+
+    // Compute live scores so they match the screener
+    const { scoreMap: liveScores } = await fetchStocksWithScores(sql);
 
     // Get latest prices for active picks
     const activeSymbols = picks.filter((p) => p.status === "active").map((p) => p.symbol as string);
@@ -437,8 +533,10 @@ export async function GET() {
         const sym = p.symbol as string;
         const currentPrice = latestPrices.get(sym) || null;
         const entryPrice = Number(p.entry_price);
-        const returnPct = currentPrice && entryPrice > 0
-          ? ((currentPrice - entryPrice) / entryPrice) * 100
+        const isSold = p.status === "sold";
+        const exitPrice = isSold && p.sell_price ? Number(p.sell_price) : currentPrice;
+        const returnPct = exitPrice && entryPrice > 0
+          ? ((exitPrice - entryPrice) / entryPrice) * 100
           : null;
         return {
           id: p.id,
@@ -446,14 +544,14 @@ export async function GET() {
           companyName: p.company_name,
           sector: p.sector,
           marketCap: Number(p.market_cap_at_pick) / 1e9,
-          score: Number(p.score),
+          score: liveScores.get(sym) ?? Number(p.score),
           thesis: p.thesis,
-          pickDate: String(p.pick_date).slice(0, 10),
+          pickDate: toDateStr(p.pick_date),
           entryPrice,
-          currentPrice,
+          currentPrice: isSold ? null : currentPrice,
           returnPct: returnPct != null ? Math.round(returnPct * 10) / 10 : null,
           status: p.status,
-          sellDate: p.sell_date ? String(p.sell_date).slice(0, 10) : null,
+          sellDate: p.sell_date ? toDateStr(p.sell_date) : null,
           sellPrice: p.sell_price ? Number(p.sell_price) : null,
           sellReason: p.sell_reason,
         };

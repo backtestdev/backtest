@@ -185,6 +185,16 @@ const RECOMMENDATION_CONFIG: Record<string, { label: string; angle: number }> = 
   STRONG_SELL: { label: "Strong Sell", angle: 8 },
 };
 
+// Derive recommendation from backtest score (single source of truth)
+function scoreToRecommendation(score: number | null): string {
+  if (score == null) return "HOLD";
+  if (score >= 85) return "STRONG_BUY";
+  if (score >= 65) return "BUY";
+  if (score >= 40) return "HOLD";
+  if (score >= 20) return "SELL";
+  return "STRONG_SELL";
+}
+
 // ── Format recommendation strings for display ──────────────────────
 
 function formatRecommendationText(text: string): string {
@@ -278,7 +288,11 @@ export default function StockDetail({ ticker }: { ticker: string }) {
 
   const f = data.fundamentals;
   const report = data.report;
-  const recConfig = report ? RECOMMENDATION_CONFIG[report.recommendation] || RECOMMENDATION_CONFIG.HOLD : null;
+  // Recommendation driven by backtest score (single source of truth), not AI
+  const recommendation = scoreToRecommendation(backtestScore);
+  const recConfig = (report || backtestScore != null)
+    ? RECOMMENDATION_CONFIG[recommendation] || RECOMMENDATION_CONFIG.HOLD
+    : null;
 
   const weightedTarget = report
     ? (report.bullCase.targetPrice * report.bullCase.probability +
@@ -352,15 +366,15 @@ export default function StockDetail({ ticker }: { ticker: string }) {
               </div>
             </div>
 
-            {/* Recommendation gauge */}
-            {report && recConfig && (
+            {/* Recommendation gauge — driven by backtest score */}
+            {recConfig && (
               <div className="flex-shrink-0 w-full sm:w-44">
                 <RecommendationGauge
-                  recommendation={report.recommendation}
+                  recommendation={recommendation}
                   label={recConfig.label}
                   angle={recConfig.angle}
                 />
-                {weightedTarget != null && (
+                {report && weightedTarget != null && (
                   <div className="text-center mt-1">
                     <p className="text-xs text-th-text-3">
                       Target: <span className="font-semibold text-th-text-2">${weightedTarget.toFixed(2)}</span>
