@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
+import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
 import { computeBacktestScore } from "@/lib/backtestScore";
 
 export const dynamic = "force-dynamic";
@@ -100,10 +100,13 @@ export async function GET(request: NextRequest) {
     const scoreMap = computeBacktestScore(enriched);
 
     // Deduplicate GOOG/GOOGL — keep GOOGL (Class A), drop GOOG (Class C)
+    // Also exclude blocklisted symbols (non-operating entities)
     const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
-    const dedupedStocks = googlExists
-      ? allStocks.filter((s) => s.symbol !== "GOOG")
-      : allStocks;
+    const dedupedStocks = allStocks.filter((s) => {
+      if (SYMBOL_EXCLUSIONS.has(s.symbol as string)) return false;
+      if (googlExists && s.symbol === "GOOG") return false;
+      return true;
+    });
 
     // Build result with all fields
     let filtered = dedupedStocks.map((stock) => ({

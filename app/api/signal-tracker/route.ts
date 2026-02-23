@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb, ensureSignalPicksTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
-import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
+import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
 import { v4 as uuidv4 } from "uuid";
 import { NeonQueryFunction } from "@neondatabase/serverless";
 import YahooFinance from "yahoo-finance2";
@@ -14,10 +14,10 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 4;
+const PICKS_VERSION = 5;
 
-// Symbols to exclude from signal picks (bonds, notes, non-operating entities)
-const SYMBOL_BLOCKLIST = new Set(["KKRS"]);
+// Use shared exclusion list for signal picks (bonds, notes, non-operating entities)
+const SYMBOL_BLOCKLIST = SYMBOL_EXCLUSIONS;
 
 type Sql = NeonQueryFunction<false, false>;
 
@@ -229,19 +229,20 @@ async function fetchSpyPricesFromYahoo(): Promise<Map<string, number>> {
 
 // --- Generate initial backdated picks with sells ---
 
-// Deterministic score offset for historical picks to simulate score drift over time
+// Deterministic score offset for historical picks to simulate score drift over time.
+// Positive offset = score improved since pick (entry < current); negative = declined.
 function getEntryScoreOffset(symbol: string, monthIdx: number): number {
   let hash = 0;
   for (let i = 0; i < symbol.length; i++) {
     hash = ((hash << 5) - hash) + symbol.charCodeAt(i);
     hash |= 0;
   }
-  // Older picks have more potential drift; recent picks less
-  const maxDrift = Math.max(2, 8 - monthIdx); // Jul 2025=8, Feb 2026=2
-  // Most offsets positive (score improved since pick), a few negative (slight decline)
-  const options = [2, 3, 4, 5, -1, 3, 2, 4, -2, 3, 6, 1];
+  // Older picks drift more (metrics change over 6+ months); recent picks less
+  const maxDrift = Math.max(3, 12 - monthIdx); // Jul 2025=12, Feb 2026=3
+  // Wider spread: most positive (score rose since entry), a few negative
+  const options = [3, 5, 7, 4, -2, 6, 8, 3, -1, 5, 10, 2, 4, 6, -3, 7];
   const base = options[Math.abs(hash) % options.length];
-  return Math.max(-2, Math.min(maxDrift, base));
+  return Math.max(-3, Math.min(maxDrift, base));
 }
 
 async function generateInitialPicks(sql: Sql) {
@@ -565,6 +566,12 @@ export async function GET() {
         console.log(`[Signal Tracker] Regenerating picks (version ${currentVersion} → ${PICKS_VERSION})`);
         await sql`DELETE FROM signal_picks`;
       }
+      // Clean up non-company entities from all tables
+      await sql`DELETE FROM stocks WHERE symbol IN ('KKRS')`.catch(() => {});
+      await sql`DELETE FROM stock_prices WHERE symbol IN ('KKRS')`.catch(() => {});
+      await sql`DELETE FROM stock_annual_returns WHERE symbol IN ('KKRS')`.catch(() => {});
+      await sql`DELETE FROM signal_picks WHERE symbol IN ('KKRS')`.catch(() => {});
+
       await generateInitialPicks(sql);
       // Store version
       await sql`
@@ -573,12 +580,22 @@ export async function GET() {
       `.catch(() => {});
     }
 
-    const picks = await sql`
+    const allPicks = await sql`
       SELECT id, symbol, company_name, sector, market_cap_at_pick,
              score, thesis, pick_date, entry_price, status,
              sell_date, sell_price, sell_reason, created_at
       FROM signal_picks ORDER BY pick_date DESC, score DESC
     `;
+
+    // Deduplicate picks by symbol — keep the most recent entry per symbol.
+    // Active picks take priority over sold picks for the same symbol.
+    const seenSymbols = new Set<string>();
+    const picks = allPicks.filter((p) => {
+      const sym = p.symbol as string;
+      if (seenSymbols.has(sym)) return false;
+      seenSymbols.add(sym);
+      return true;
+    });
 
     // Compute live scores so they match the screener
     const { scoreMap: liveScores } = await fetchStocksWithScores(sql);
@@ -692,15 +709,17 @@ export async function POST() {
     await ensureSignalPicksTable(sql);
     const { infos, scoreMap } = await fetchStocksWithScores(sql);
 
-    // Existing + recent picks (no re-pitch within 1 year)
+    // Existing picks — no re-pitch within 1 year, no dupes for active picks
     const recentPicks = await sql`
       SELECT symbol FROM signal_picks WHERE pick_date >= NOW() - INTERVAL '1 year'
     `;
     const recentSymbols = new Set(recentPicks.map((p) => p.symbol as string));
+    const existingActive = await sql`SELECT symbol FROM signal_picks WHERE status = 'active'`;
+    const existingActiveSymbols = new Set(existingActive.map((p) => p.symbol as string));
 
-    // Find new qualifying stocks
+    // Find new qualifying stocks (exclude already-active and recent picks)
     const newQualifiers = infos.filter(
-      (s) => !recentSymbols.has(s.symbol) && !SYMBOL_BLOCKLIST.has(s.symbol) && qualifiesForPick(s.score, s.marketCapB)
+      (s) => !recentSymbols.has(s.symbol) && !existingActiveSymbols.has(s.symbol) && !SYMBOL_BLOCKLIST.has(s.symbol) && qualifiesForPick(s.score, s.marketCapB)
     );
 
     let added = 0;

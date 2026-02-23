@@ -45,6 +45,8 @@ function hashCode(s: string): number {
 
 // Track tickers whose logos failed / were placeholders.
 const failedTickers = new Set<string>();
+// Track tickers whose logos loaded successfully — prevents flicker on remount.
+const loadedTickers = new Set<string>();
 // Cache light-logo detection across renders so we don't re-probe.
 const lightLogoTickers = new Set<string>();
 
@@ -56,7 +58,7 @@ interface StockLogoProps {
 
 export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProps) {
   const [imgFailed, setImgFailed] = useState(() => failedTickers.has(ticker));
-  const [imgReady, setImgReady] = useState(false);
+  const [imgReady, setImgReady] = useState(() => loadedTickers.has(ticker) && !failedTickers.has(ticker));
   const [isLightLogo, setIsLightLogo] = useState(() => lightLogoTickers.has(ticker));
 
   const colors = (sector && SECTOR_COLORS[sector]) ||
@@ -78,6 +80,7 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
       markFailed();
       return;
     }
+    loadedTickers.add(ticker);
     setImgReady(true);
 
     // Already detected for this ticker
