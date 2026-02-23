@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 2;
+const PICKS_VERSION = 3;
 
 type Sql = NeonQueryFunction<false, false>;
 
@@ -22,8 +22,7 @@ type Sql = NeonQueryFunction<false, false>;
 
 function qualifiesForPick(score: number, marketCapB: number): boolean {
   if (score >= 95) return true;
-  if (score >= 90 && marketCapB < 20) return true;
-  if (score >= 85 && marketCapB < 10) return true;
+  if (score >= 90 && marketCapB < 10) return true;
   return false;
 }
 
@@ -165,6 +164,11 @@ function getMonthEnds(startDate: string, endDate: string): string[] {
   while (cursor <= end) {
     dates.push(cursor.toISOString().slice(0, 10));
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 2, 0);
+  }
+  // Include today as the final data point for the current incomplete month
+  const todayStr = end.toISOString().slice(0, 10);
+  if (dates.length === 0 || dates[dates.length - 1] !== todayStr) {
+    dates.push(todayStr);
   }
   return dates;
 }
@@ -522,16 +526,40 @@ export async function GET() {
     // Compute live scores so they match the screener
     const { scoreMap: liveScores } = await fetchStocksWithScores(sql);
 
-    // Get latest prices for active picks
+    // Get latest prices for active picks — use Yahoo Finance for live quotes
     const activeSymbols = picks.filter((p) => p.status === "active").map((p) => p.symbol as string);
     const latestPrices = new Map<string, number>();
     if (activeSymbols.length > 0) {
-      const priceRows = await sql`
-        SELECT DISTINCT ON (symbol) symbol, close_price
-        FROM stock_prices WHERE symbol = ANY(${activeSymbols})
-        ORDER BY symbol, date DESC
-      `;
-      for (const r of priceRows) latestPrices.set(r.symbol as string, Number(r.close_price));
+      // Try Yahoo Finance for live quotes first
+      try {
+        const quotes = await Promise.allSettled(
+          activeSymbols.map(async (sym) => {
+            const q = await yf.quote(sym);
+            return { symbol: sym, price: q?.regularMarketPrice ?? null };
+          })
+        );
+        for (const result of quotes) {
+          if (result.status === "fulfilled" && result.value.price != null) {
+            latestPrices.set(result.value.symbol, Math.round(result.value.price * 100) / 100);
+          }
+        }
+      } catch (e) {
+        console.error("[Signal Tracker] Yahoo Finance quote fetch failed:", e);
+      }
+      // Fallback: fill any missing from stock_prices table
+      const missingSymbols = activeSymbols.filter((s) => !latestPrices.has(s));
+      if (missingSymbols.length > 0) {
+        const priceRows = await sql`
+          SELECT DISTINCT ON (symbol) symbol, close_price
+          FROM stock_prices WHERE symbol = ANY(${missingSymbols})
+          ORDER BY symbol, date DESC
+        `;
+        for (const r of priceRows) {
+          if (!latestPrices.has(r.symbol as string)) {
+            latestPrices.set(r.symbol as string, Number(r.close_price));
+          }
+        }
+      }
     }
 
     const performance = await computePerformance(sql, picks);
@@ -540,6 +568,9 @@ export async function GET() {
     const latest = performance.length > 0 ? performance[performance.length - 1] : null;
     const totalRet = latest ? ((latest.portfolioValue / INITIAL_CAPITAL) - 1) * 100 : 0;
     const benchRet = latest ? ((latest.benchmarkValue / INITIAL_CAPITAL) - 1) * 100 : 0;
+
+    // Compute fund value for display
+    const fundValue = latest ? latest.portfolioValue : INITIAL_CAPITAL;
 
     return NextResponse.json({
       picks: picks.map((p) => {
@@ -551,13 +582,23 @@ export async function GET() {
         const returnPct = exitPrice && entryPrice > 0
           ? ((exitPrice - entryPrice) / entryPrice) * 100
           : null;
+
+        // Extract sell score from sell_reason text if present
+        let sellScore: number | null = null;
+        if (p.sell_reason) {
+          const match = String(p.sell_reason).match(/current:\s*(\d+)/);
+          if (match) sellScore = Number(match[1]);
+        }
+
         return {
           id: p.id,
           symbol: sym,
           companyName: p.company_name,
           sector: p.sector,
           marketCap: Number(p.market_cap_at_pick) / 1e9,
-          score: liveScores.get(sym) ?? Number(p.score),
+          entryScore: Number(p.score),
+          currentScore: liveScores.get(sym) ?? null,
+          sellScore,
           thesis: p.thesis,
           pickDate: toDateStr(p.pick_date),
           entryPrice,
@@ -570,6 +611,7 @@ export async function GET() {
         };
       }),
       performance,
+      fundValue: Math.round(fundValue * 100) / 100,
       stats: {
         totalReturn: Math.round(totalRet * 10) / 10,
         benchmarkReturn: Math.round(benchRet * 10) / 10,
@@ -629,12 +671,15 @@ export async function POST() {
       }
     }
 
-    // Check for sells: active picks with score < 70
+    // Check for sells: active picks whose score explicitly dropped below 60
+    // Only sell if the stock was actually found in scoreMap (avoid false sells from missing data)
     const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
     let sold = 0;
     for (const pick of activePicks) {
-      const score = scoreMap.get(pick.symbol as string) || 0;
-      if (score < 70) {
+      const score = scoreMap.get(pick.symbol as string);
+      // Skip if stock not found in scoreMap — don't sell on missing data
+      if (score == null) continue;
+      if (score < 60) {
         const pr = await sql`
           SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1
         `;

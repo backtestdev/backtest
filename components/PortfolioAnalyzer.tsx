@@ -130,9 +130,9 @@ const SECTOR_COLORS: Record<string, string> = {
 // ── Helpers ──
 
 function formatCurrency(v: number): string {
+  if (Math.abs(v) >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(1)}B`;
   if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  return `$${v.toFixed(2)}`;
+  return v.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function consolidateHoldings(holdings: EnrichedHolding[]): ConsolidatedHolding[] {

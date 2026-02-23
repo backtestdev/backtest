@@ -172,7 +172,7 @@ function formatCurrency(val: number | null): string {
   if (Math.abs(val) >= 1e12) return `$${(val / 1e12).toFixed(1)}T`;
   if (Math.abs(val) >= 1e9) return `$${(val / 1e9).toFixed(1)}B`;
   if (Math.abs(val) >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
-  return `$${val.toFixed(2)}`;
+  return val.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // ── Recommendation config ────────────────────────────────────────────
@@ -790,7 +790,7 @@ function PriceChart({ data }: { data: PriceHistoryPoint[] }) {
         <g key={i}>
           <line x1={pad.left} y1={tick.y} x2={width - pad.right} y2={tick.y} stroke="var(--border-light)" strokeWidth="1" />
           <text x={pad.left - 8} y={tick.y + 4} textAnchor="end" className="text-[11px]" fill="var(--text-2)">
-            ${tick.price >= 1000 ? (tick.price / 1000).toFixed(0) + "k" : tick.price.toFixed(0)}
+            ${ Math.round(tick.price).toLocaleString("en-US") }
           </text>
         </g>
       ))}

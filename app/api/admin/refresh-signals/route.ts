@@ -4,8 +4,8 @@
  * GET  /api/admin/refresh-signals — Vercel Cron handler (daily)
  * POST /api/admin/refresh-signals — Manual trigger
  *
- * Checks for new stocks qualifying for picks (score >= 85 with market cap
- * rules) and marks sells for stocks whose score dropped below 70.
+ * Checks for new stocks qualifying for picks (score >= 90 with market cap
+ * rules) and marks sells for stocks whose score dropped below 60.
  *
  * Vercel cron sends GET with Authorization: Bearer <CRON_SECRET>.
  * Manual trigger uses x-admin-secret header.
@@ -22,8 +22,7 @@ export const maxDuration = 60;
 
 function qualifiesForPick(score: number, marketCapB: number): boolean {
   if (score >= 95) return true;
-  if (score >= 90 && marketCapB < 20) return true;
-  if (score >= 85 && marketCapB < 10) return true;
+  if (score >= 90 && marketCapB < 10) return true;
   return false;
 }
 
@@ -149,12 +148,15 @@ async function refreshSignals() {
     }
   }
 
-  // Check for sells: active picks with score < 70
+  // Check for sells: active picks whose score explicitly dropped below 60
+  // Only sell if the stock was actually found in scoreMap (avoid false sells from missing data)
   const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
   let sold = 0;
   for (const pick of activePicks) {
-    const score = scoreMap.get(pick.symbol as string) || 0;
-    if (score < 70) {
+    const score = scoreMap.get(pick.symbol as string);
+    // Skip if stock not found in scoreMap — don't sell on missing data
+    if (score == null) continue;
+    if (score < 60) {
       const pr = await sql`SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1`;
       const sellPrice = pr.length > 0 ? Number(pr[0].close_price) : null;
       const today = new Date().toISOString().slice(0, 10);
