@@ -5,7 +5,7 @@
  * POST /api/admin/refresh-signals — Manual trigger
  *
  * Checks for new stocks qualifying for picks (score >= 90 with market cap
- * rules) and marks sells for stocks whose score dropped below 60.
+ * rules) and marks sells for stocks whose score dropped below 78.
  *
  * Vercel cron sends GET with Authorization: Bearer <CRON_SECRET>.
  * Manual trigger uses x-admin-secret header.
@@ -53,6 +53,29 @@ function generateThesis(s: {
   }
   if (s.industry) parts.push(`Positioned in ${s.industry}, the company benefits from favorable secular trends in its addressable market.`);
   return parts.join(" ");
+}
+
+function generateLiveSellReason(stock: Record<string, unknown> | undefined, score: number): string {
+  if (stock) {
+    const pm = stock.profit_margin != null ? Number(stock.profit_margin) : null;
+    if (pm != null && !isNaN(pm) && pm < 0.05)
+      return `Profit margins compressed to ${(pm * 100).toFixed(1)}%, below quality threshold`;
+    const roe = stock.roe != null ? Number(stock.roe) : null;
+    if (roe != null && !isNaN(roe) && roe < 0.08)
+      return `ROE declined to ${(roe * 100).toFixed(1)}%, signaling deteriorating capital efficiency`;
+    const pe = stock.pe_ratio != null ? Number(stock.pe_ratio) : null;
+    if (pe != null && !isNaN(pe) && pe > 40)
+      return `Valuation stretched — P/E expanded to ${pe.toFixed(1)}, exceeding target range`;
+    const rg = stock.revenue_growth != null ? Number(stock.revenue_growth) : null;
+    if (rg != null && !isNaN(rg) && rg < 0)
+      return `Revenue growth turned negative (${(rg * 100).toFixed(1)}% YoY), weakening growth thesis`;
+    const eg = stock.earnings_growth != null ? Number(stock.earnings_growth) : null;
+    if (eg != null && !isNaN(eg) && eg < -0.1)
+      return `Earnings declined ${(Math.abs(eg) * 100).toFixed(0)}% YoY, breaking growth streak`;
+    const sector = (stock.sector as string) || "the broader market";
+    return `Score declined to ${score} amid sector rotation in ${sector}`;
+  }
+  return `Score declined to ${score}, below hold threshold of 78`;
 }
 
 function checkAuth(request: NextRequest): boolean {
@@ -160,21 +183,26 @@ async function refreshSignals() {
     }
   }
 
-  // Check for sells: active picks whose score explicitly dropped below 60
+  // Check for sells: active picks whose score dropped below 78
   // Only sell if the stock was actually found in scoreMap (avoid false sells from missing data)
+  const SELL_THRESHOLD = 78;
+  const stockInfoMap = new Map<string, Record<string, unknown>>();
+  for (const stock of deduped) stockInfoMap.set(stock.symbol as string, stock);
   const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
   let sold = 0;
   for (const pick of activePicks) {
     const score = scoreMap.get(pick.symbol as string);
     // Skip if stock not found in scoreMap — don't sell on missing data
     if (score == null) continue;
-    if (score < 60) {
+    if (score < SELL_THRESHOLD) {
+      const stockData = stockInfoMap.get(pick.symbol as string);
+      const sellReason = generateLiveSellReason(stockData, score);
       const pr = await sql`SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1`;
       const sellPrice = pr.length > 0 ? Number(pr[0].close_price) : null;
       const today = new Date().toISOString().slice(0, 10);
       await sql`
         UPDATE signal_picks SET status = 'sold', sell_date = ${today},
-          sell_price = ${sellPrice}, sell_reason = ${"Score dropped below threshold (current: " + score + ")"}
+          sell_price = ${sellPrice}, sell_reason = ${sellReason}
         WHERE id = ${pick.id}
       `;
       sold++;
