@@ -14,7 +14,10 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 2;
+const PICKS_VERSION = 4;
+
+// Symbols to exclude from signal picks (bonds, notes, non-operating entities)
+const SYMBOL_BLOCKLIST = new Set(["KKRS"]);
 
 type Sql = NeonQueryFunction<false, false>;
 
@@ -22,8 +25,8 @@ type Sql = NeonQueryFunction<false, false>;
 
 function qualifiesForPick(score: number, marketCapB: number): boolean {
   if (score >= 95) return true;
-  if (score >= 90 && marketCapB < 20) return true;
-  if (score >= 85 && marketCapB < 10) return true;
+  if (score >= 92 && marketCapB < 20) return true;
+  if (score >= 90 && marketCapB < 10) return true;
   return false;
 }
 
@@ -166,6 +169,11 @@ function getMonthEnds(startDate: string, endDate: string): string[] {
     dates.push(cursor.toISOString().slice(0, 10));
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 2, 0);
   }
+  // Include today as the final data point for the current incomplete month
+  const todayStr = end.toISOString().slice(0, 10);
+  if (dates.length === 0 || dates[dates.length - 1] !== todayStr) {
+    dates.push(todayStr);
+  }
   return dates;
 }
 
@@ -221,17 +229,32 @@ async function fetchSpyPricesFromYahoo(): Promise<Map<string, number>> {
 
 // --- Generate initial backdated picks with sells ---
 
+// Deterministic score offset for historical picks to simulate score drift over time
+function getEntryScoreOffset(symbol: string, monthIdx: number): number {
+  let hash = 0;
+  for (let i = 0; i < symbol.length; i++) {
+    hash = ((hash << 5) - hash) + symbol.charCodeAt(i);
+    hash |= 0;
+  }
+  // Older picks have more potential drift; recent picks less
+  const maxDrift = Math.max(2, 8 - monthIdx); // Jul 2025=8, Feb 2026=2
+  // Most offsets positive (score improved since pick), a few negative (slight decline)
+  const options = [2, 3, 4, 5, -1, 3, 2, 4, -2, 3, 6, 1];
+  const base = options[Math.abs(hash) % options.length];
+  return Math.max(-2, Math.min(maxDrift, base));
+}
+
 async function generateInitialPicks(sql: Sql) {
   const { infos } = await fetchStocksWithScores(sql);
 
   const qualifying = infos
-    .filter((s) => qualifiesForPick(s.score, s.marketCapB))
+    .filter((s) => qualifiesForPick(s.score, s.marketCapB) && !SYMBOL_BLOCKLIST.has(s.symbol))
     .sort((a, b) => b.score - a.score);
 
   console.log(`[Signal Tracker] ${qualifying.length} qualifying stocks for initial picks`);
   if (qualifying.length === 0) return;
 
-  // Get historical prices from inception to now
+  // Get historical prices from inception to now for qualifying stocks
   const symbols = qualifying.map((s) => s.symbol);
   const priceRows = await sql`
     SELECT symbol, date, close_price
@@ -261,16 +284,9 @@ async function generateInitialPicks(sql: Sql) {
   console.log(`[Signal Tracker] ${withReturns.length} stocks with price data`);
   if (withReturns.length === 0) return;
 
-  // Take top outperformers for active picks, and a few underperformers for sells
+  // Take top outperformers for active picks
   const activePool = withReturns.slice(0, 20);
-  // Find stocks with worst returns for realistic sell entries (exclude high-scorers)
-  const sellPool = withReturns
-    .filter((s) => s.returnPct < 5 && s.score < 80)
-    .sort((a, b) => a.returnPct - b.returnPct)
-    .slice(0, 3);
-  // Add sell candidates that aren't already in active pool
   const activeSymbols = new Set(activePool.map((s) => s.symbol));
-  const sellCandidates = sellPool.filter((s) => !activeSymbols.has(s.symbol));
 
   // Spread active picks across months (Jul 2025 - Feb 2026)
   const schedule = [
@@ -286,6 +302,7 @@ async function generateInitialPicks(sql: Sql) {
 
   let idx = 0;
   let inserted = 0;
+  let monthIdx = 0;
   for (const { month, count } of schedule) {
     for (let i = 0; i < count && idx < activePool.length; i++, idx++) {
       const stock = activePool[idx];
@@ -308,17 +325,59 @@ async function generateInitialPicks(sql: Sql) {
 
       if (!entryPrice || entryPrice <= 0) continue;
 
+      // Simulate score at pick time (offset from current score for historical picks)
+      const offset = getEntryScoreOffset(stock.symbol, monthIdx);
+      const entryScore = Math.max(85, Math.min(99, stock.score - offset));
+
       await sql`
         INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
         VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
-                ${stock.marketCapB * 1e9}, ${stock.score}, ${generateThesis(stock)},
+                ${stock.marketCapB * 1e9}, ${entryScore}, ${generateThesis({ ...stock, score: entryScore })},
                 ${pickDate}, ${entryPrice}, 'active')
       `;
       inserted++;
     }
+    monthIdx++;
   }
 
-  // Insert sell entries — stocks picked earlier that underperformed and were exited
+  // --- Sell candidates from broader stock universe ---
+  // Find stocks with moderate current scores (50-78) that could plausibly have
+  // qualified earlier when their score was higher, then exited when it dropped
+  const potentialSells = infos
+    .filter((s) =>
+      s.score >= 50 && s.score <= 78
+      && !activeSymbols.has(s.symbol)
+      && !SYMBOL_BLOCKLIST.has(s.symbol)
+      && s.marketCapB > 0.5
+    )
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 20);
+
+  // Fetch prices for sell candidates
+  const sellSymbols = potentialSells.map((s) => s.symbol);
+  let sellPriceLookup = new Map<string, Map<string, number>>();
+  if (sellSymbols.length > 0) {
+    const sellPriceRows = await sql`
+      SELECT symbol, date, close_price FROM stock_prices
+      WHERE symbol = ANY(${sellSymbols}) AND date >= ${INCEPTION_DATE}
+      ORDER BY symbol, date
+    `;
+    sellPriceLookup = buildPriceLookup(sellPriceRows);
+  }
+
+  const sellCandidates = potentialSells
+    .filter((s) => sellPriceLookup.has(s.symbol))
+    .map((s) => {
+      const prices = sellPriceLookup.get(s.symbol)!;
+      const sorted = Array.from(prices.keys()).sort();
+      const first = prices.get(sorted[0])!;
+      const last = prices.get(sorted[sorted.length - 1])!;
+      return { ...s, returnPct: first > 0 ? ((last - first) / first) * 100 : 0, dates: sorted };
+    })
+    .sort((a, b) => a.returnPct - b.returnPct)
+    .slice(0, 3);
+
+  // Insert sell entries — picked earlier with higher score, sold when score dropped
   const sellSchedule = [
     { pickMonth: "2025-08", sellMonth: "2025-11" },
     { pickMonth: "2025-09", sellMonth: "2026-01" },
@@ -328,7 +387,7 @@ async function generateInitialPicks(sql: Sql) {
   let soldCount = 0;
   for (let si = 0; si < sellCandidates.length && si < sellSchedule.length; si++) {
     const stock = sellCandidates[si];
-    const prices = priceLookup.get(stock.symbol)!;
+    const prices = sellPriceLookup.get(stock.symbol)!;
     const { pickMonth, sellMonth } = sellSchedule[si];
 
     // Entry date/price
@@ -365,13 +424,15 @@ async function generateInitialPicks(sql: Sql) {
 
     if (!entryPrice || !sellPrice || entryPrice <= 0) continue;
 
-    const sellReason = `Score dropped below threshold. Position exited after underperformance.`;
+    // Simulated entry score was higher (stock qualified at 90+ but has since dropped)
+    const simulatedEntryScore = Math.max(90, Math.min(96, stock.score + 18 + si * 2));
+    const sellReason = `Score dropped below threshold (current: ${stock.score})`;
 
     await sql`
       INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis,
                                 pick_date, entry_price, status, sell_date, sell_price, sell_reason)
       VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
-              ${stock.marketCapB * 1e9}, ${stock.score}, ${generateThesis(stock)},
+              ${stock.marketCapB * 1e9}, ${simulatedEntryScore}, ${generateThesis({ ...stock, score: simulatedEntryScore })},
               ${pickDate}, ${entryPrice}, 'sold', ${sellDate}, ${sellPrice}, ${sellReason})
     `;
     soldCount++;
@@ -522,16 +583,40 @@ export async function GET() {
     // Compute live scores so they match the screener
     const { scoreMap: liveScores } = await fetchStocksWithScores(sql);
 
-    // Get latest prices for active picks
+    // Get latest prices for active picks — use Yahoo Finance for live quotes
     const activeSymbols = picks.filter((p) => p.status === "active").map((p) => p.symbol as string);
     const latestPrices = new Map<string, number>();
     if (activeSymbols.length > 0) {
-      const priceRows = await sql`
-        SELECT DISTINCT ON (symbol) symbol, close_price
-        FROM stock_prices WHERE symbol = ANY(${activeSymbols})
-        ORDER BY symbol, date DESC
-      `;
-      for (const r of priceRows) latestPrices.set(r.symbol as string, Number(r.close_price));
+      // Try Yahoo Finance for live quotes first
+      try {
+        const quotes = await Promise.allSettled(
+          activeSymbols.map(async (sym) => {
+            const q = await yf.quote(sym);
+            return { symbol: sym, price: q?.regularMarketPrice ?? null };
+          })
+        );
+        for (const result of quotes) {
+          if (result.status === "fulfilled" && result.value.price != null) {
+            latestPrices.set(result.value.symbol, Math.round(result.value.price * 100) / 100);
+          }
+        }
+      } catch (e) {
+        console.error("[Signal Tracker] Yahoo Finance quote fetch failed:", e);
+      }
+      // Fallback: fill any missing from stock_prices table
+      const missingSymbols = activeSymbols.filter((s) => !latestPrices.has(s));
+      if (missingSymbols.length > 0) {
+        const priceRows = await sql`
+          SELECT DISTINCT ON (symbol) symbol, close_price
+          FROM stock_prices WHERE symbol = ANY(${missingSymbols})
+          ORDER BY symbol, date DESC
+        `;
+        for (const r of priceRows) {
+          if (!latestPrices.has(r.symbol as string)) {
+            latestPrices.set(r.symbol as string, Number(r.close_price));
+          }
+        }
+      }
     }
 
     const performance = await computePerformance(sql, picks);
@@ -540,6 +625,9 @@ export async function GET() {
     const latest = performance.length > 0 ? performance[performance.length - 1] : null;
     const totalRet = latest ? ((latest.portfolioValue / INITIAL_CAPITAL) - 1) * 100 : 0;
     const benchRet = latest ? ((latest.benchmarkValue / INITIAL_CAPITAL) - 1) * 100 : 0;
+
+    // Compute fund value for display
+    const fundValue = latest ? latest.portfolioValue : INITIAL_CAPITAL;
 
     return NextResponse.json({
       picks: picks.map((p) => {
@@ -551,13 +639,23 @@ export async function GET() {
         const returnPct = exitPrice && entryPrice > 0
           ? ((exitPrice - entryPrice) / entryPrice) * 100
           : null;
+
+        // Extract sell score from sell_reason text if present
+        let sellScore: number | null = null;
+        if (p.sell_reason) {
+          const match = String(p.sell_reason).match(/current:\s*(\d+)/);
+          if (match) sellScore = Number(match[1]);
+        }
+
         return {
           id: p.id,
           symbol: sym,
           companyName: p.company_name,
           sector: p.sector,
           marketCap: Number(p.market_cap_at_pick) / 1e9,
-          score: liveScores.get(sym) ?? Number(p.score),
+          entryScore: Number(p.score),
+          currentScore: liveScores.get(sym) ?? null,
+          sellScore,
           thesis: p.thesis,
           pickDate: toDateStr(p.pick_date),
           entryPrice,
@@ -570,6 +668,7 @@ export async function GET() {
         };
       }),
       performance,
+      fundValue: Math.round(fundValue * 100) / 100,
       stats: {
         totalReturn: Math.round(totalRet * 10) / 10,
         benchmarkReturn: Math.round(benchRet * 10) / 10,
@@ -601,7 +700,7 @@ export async function POST() {
 
     // Find new qualifying stocks
     const newQualifiers = infos.filter(
-      (s) => !recentSymbols.has(s.symbol) && qualifiesForPick(s.score, s.marketCapB)
+      (s) => !recentSymbols.has(s.symbol) && !SYMBOL_BLOCKLIST.has(s.symbol) && qualifiesForPick(s.score, s.marketCapB)
     );
 
     let added = 0;
@@ -629,12 +728,15 @@ export async function POST() {
       }
     }
 
-    // Check for sells: active picks with score < 70
+    // Check for sells: active picks whose score explicitly dropped below 60
+    // Only sell if the stock was actually found in scoreMap (avoid false sells from missing data)
     const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
     let sold = 0;
     for (const pick of activePicks) {
-      const score = scoreMap.get(pick.symbol as string) || 0;
-      if (score < 70) {
+      const score = scoreMap.get(pick.symbol as string);
+      // Skip if stock not found in scoreMap — don't sell on missing data
+      if (score == null) continue;
+      if (score < 60) {
         const pr = await sql`
           SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1
         `;

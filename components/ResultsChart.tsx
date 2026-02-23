@@ -22,8 +22,7 @@ interface ResultsChartProps {
 
 function formatDollar(value: number): string {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
-  return `$${value}`;
+  return "$" + Math.round(value).toLocaleString("en-US");
 }
 
 // Strip " YTD" from axis labels — keep just the year number

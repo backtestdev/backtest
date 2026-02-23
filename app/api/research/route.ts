@@ -361,9 +361,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (yhResult?.quotes?.length) {
-      const now = new Date();
-      const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
       // Deduplicate by year-month (keep last entry per month for most accurate close)
       const byMonth = new Map<string, { date: string; price: number }>();
       for (const q of yhResult.quotes as { date: Date; close?: number | null }[]) {
@@ -372,9 +369,6 @@ export async function GET(request: NextRequest) {
         const ym = dateStr.slice(0, 7);
         byMonth.set(ym, { date: dateStr, price: Math.round(q.close * 100) / 100 });
       }
-
-      // Remove current (incomplete) month
-      byMonth.delete(currentYM);
 
       priceHistory = Array.from(byMonth.values()).sort((a, b) => a.date.localeCompare(b.date));
     }

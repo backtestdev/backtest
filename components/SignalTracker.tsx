@@ -13,7 +13,9 @@ interface Pick {
   companyName: string;
   sector: string;
   marketCap: number;
-  score: number;
+  entryScore: number;
+  currentScore: number | null;
+  sellScore: number | null;
   thesis: string;
   pickDate: string;
   entryPrice: number;
@@ -54,7 +56,11 @@ function formatShortDate(dateStr: string): string {
 }
 
 function formatCurrency(val: number): string {
-  return `$${val.toFixed(2)}`;
+  return val.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDollarWhole(val: number): string {
+  return val.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function formatMarketCap(b: number): string {
@@ -89,6 +95,7 @@ export default function SignalTracker() {
   const [picks, setPicks] = useState<Pick[]>([]);
   const [performance, setPerformance] = useState<PerformancePoint[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [fundValue, setFundValue] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedPick, setExpandedPick] = useState<string | null>(null);
@@ -102,6 +109,7 @@ export default function SignalTracker() {
         setPicks(data.picks || []);
         setPerformance(data.performance || []);
         setStats(data.stats || null);
+        setFundValue(data.fundValue ?? null);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -158,7 +166,12 @@ export default function SignalTracker() {
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+            <StatCard
+              label="Fund Value"
+              value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"}
+              color="neutral"
+            />
             <StatCard
               label="Fund Return"
               value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(1)}%`}
@@ -291,6 +304,24 @@ function StatCard({ label, value, subtitle, color }: {
   );
 }
 
+// --- Score Badge ---
+
+function ScoreBadge({ score, size = "sm" }: { score: number; size?: "sm" | "xs" }) {
+  const colorClass = score >= 90 ? "bg-th-positive-bg text-th-positive-text"
+    : score >= 80 ? "bg-th-warning-bg text-th-warning-text"
+    : "bg-th-bar text-th-text-3";
+  const sizeClass = size === "xs" ? "text-[9px] px-1 py-0.5" : "text-[10px] px-1.5 py-0.5";
+
+  return (
+    <span className={`inline-flex items-center gap-0.5 rounded font-bold ${colorClass} ${sizeClass}`}>
+      <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292Z" />
+      </svg>
+      {score}
+    </span>
+  );
+}
+
 // --- Pick Card ---
 
 function PickCard({ pick, expanded, onToggle }: {
@@ -303,6 +334,12 @@ function PickCard({ pick, expanded, onToggle }: {
     ? pick.returnPct >= 0 ? "text-th-positive" : "text-th-negative"
     : "text-th-text-3";
   const recent = isRecentPick(pick.pickDate) && isActive;
+
+  // Display score: for active picks show current score (with entry fallback),
+  // for sold picks show entry score (what it was signalled at)
+  const displayScore = isActive
+    ? (pick.currentScore ?? pick.entryScore)
+    : pick.entryScore;
 
   return (
     <div className={`rounded-xl border transition-colors ${
@@ -319,16 +356,7 @@ function PickCard({ pick, expanded, onToggle }: {
               <Link href={`/screener/${pick.symbol}`} className="font-semibold text-th-text hover:text-th-accent transition-colors">
                 {pick.symbol}
               </Link>
-              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                pick.score >= 90 ? "bg-th-positive-bg text-th-positive-text"
-                : pick.score >= 80 ? "bg-th-warning-bg text-th-warning-text"
-                : "bg-th-bar text-th-text-3"
-              }`}>
-                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292Z" />
-                </svg>
-                {pick.score}
-              </span>
+              <ScoreBadge score={displayScore} />
               {recent && (
                 <span className="text-[10px] font-medium text-th-accent bg-th-accent/10 px-1.5 py-0.5 rounded">New</span>
               )}
@@ -367,6 +395,32 @@ function PickCard({ pick, expanded, onToggle }: {
         {/* Expanded details */}
         {expanded && (
           <div className="mt-3 pt-3 border-t border-th-border-light">
+            {/* Score history row */}
+            <div className="flex items-center gap-3 mb-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-th-text-4 uppercase">Entry Score</span>
+                <ScoreBadge score={pick.entryScore} size="xs" />
+              </div>
+              {isActive && pick.currentScore != null && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-th-text-4 uppercase">Current</span>
+                  <ScoreBadge score={pick.currentScore} size="xs" />
+                </div>
+              )}
+              {!isActive && pick.sellScore != null && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-th-text-4 uppercase">At Sell</span>
+                  <ScoreBadge score={pick.sellScore} size="xs" />
+                </div>
+              )}
+              {!isActive && pick.currentScore != null && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-th-text-4 uppercase">Current</span>
+                  <ScoreBadge score={pick.currentScore} size="xs" />
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Entry Price</p>
@@ -375,7 +429,9 @@ function PickCard({ pick, expanded, onToggle }: {
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">{pick.status === "sold" ? "Sell Price" : "Current Price"}</p>
                 <p className="text-sm font-medium text-th-text">
-                  {pick.currentPrice ? formatCurrency(pick.currentPrice) : pick.sellPrice ? formatCurrency(pick.sellPrice) : "\u2014"}
+                  {pick.status === "sold" && pick.sellPrice ? formatCurrency(pick.sellPrice)
+                    : pick.currentPrice ? formatCurrency(pick.currentPrice)
+                    : "\u2014"}
                 </p>
               </div>
               <div>
@@ -393,10 +449,12 @@ function PickCard({ pick, expanded, onToggle }: {
                 <p className="text-xs text-th-text-2 leading-relaxed">{pick.thesis}</p>
               </div>
             )}
-            {pick.sellReason && (
+            {!isActive && pick.sellDate && (
               <div className="mt-2 p-2 rounded-lg bg-th-negative-bg border border-th-negative-border">
-                <p className="text-xs text-th-negative">{pick.sellReason}</p>
-                {pick.sellDate && <p className="text-[10px] text-th-text-4 mt-0.5">Sold on {formatDate(pick.sellDate)}</p>}
+                <p className="text-xs text-th-negative">
+                  Position exited{pick.sellScore != null ? ` — score dropped to ${pick.sellScore}` : ""}.
+                </p>
+                <p className="text-[10px] text-th-text-4 mt-0.5">Sold on {formatDate(pick.sellDate)}</p>
               </div>
             )}
           </div>
@@ -439,6 +497,12 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
     y: pad.top + chartH - pct * chartH,
   }));
 
+  // Format chart dollar values with commas
+  function formatChartDollar(v: number): string {
+    if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
+    return "$" + Math.round(v).toLocaleString("en-US");
+  }
+
   // X-axis labels
   const dateLabels: { label: string; x: number }[] = [];
   const step = Math.max(1, Math.floor(data.length / 6));
@@ -463,7 +527,7 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
         <g key={i}>
           <line x1={pad.left} y1={t.y} x2={width - pad.right} y2={t.y} stroke="var(--border-light)" strokeWidth="1" />
           <text x={pad.left - 8} y={t.y + 4} textAnchor="end" className="text-[11px]" fill="var(--text-2)">
-            ${t.value >= 10000 ? (t.value / 1000).toFixed(1) + "k" : t.value.toFixed(0)}
+            {formatChartDollar(t.value)}
           </text>
         </g>
       ))}
@@ -500,15 +564,15 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
       {/* Hover tooltip */}
       {hp && hd && (
         <g>
-          <rect x={Math.max(pad.left, Math.min(width - pad.right - 130, hp.x - 65))} y={pad.top - 2}
-            width="130" height="42" rx="8" fill="var(--tooltip-bg)" stroke="var(--border)" strokeWidth="1" />
-          <text x={Math.max(pad.left + 65, Math.min(width - pad.right - 65, hp.x))} y={pad.top + 14}
+          <rect x={Math.max(pad.left, Math.min(width - pad.right - 150, hp.x - 75))} y={pad.top - 2}
+            width="150" height="42" rx="8" fill="var(--tooltip-bg)" stroke="var(--border)" strokeWidth="1" />
+          <text x={Math.max(pad.left + 75, Math.min(width - pad.right - 75, hp.x))} y={pad.top + 14}
             textAnchor="middle" className="text-[11px] font-semibold" fill="var(--accent)">
-            Fund: ${hd.portfolioValue.toFixed(0)}
+            Fund: {formatChartDollar(hd.portfolioValue)}
           </text>
-          <text x={Math.max(pad.left + 65, Math.min(width - pad.right - 65, hp.x))} y={pad.top + 28}
+          <text x={Math.max(pad.left + 75, Math.min(width - pad.right - 75, hp.x))} y={pad.top + 28}
             textAnchor="middle" className="text-[11px]" fill="var(--text-3)">
-            S&P: ${hd.benchmarkValue.toFixed(0)} &middot; {formatShortDate(hd.date)}
+            S&P: {formatChartDollar(hd.benchmarkValue)} &middot; {formatShortDate(hd.date)}
           </text>
         </g>
       )}

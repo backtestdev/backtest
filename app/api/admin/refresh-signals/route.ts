@@ -4,15 +4,15 @@
  * GET  /api/admin/refresh-signals — Vercel Cron handler (daily)
  * POST /api/admin/refresh-signals — Manual trigger
  *
- * Checks for new stocks qualifying for picks (score >= 85 with market cap
- * rules) and marks sells for stocks whose score dropped below 70.
+ * Checks for new stocks qualifying for picks (score >= 90 with market cap
+ * rules) and marks sells for stocks whose score dropped below 60.
  *
  * Vercel cron sends GET with Authorization: Bearer <CRON_SECRET>.
  * Manual trigger uses x-admin-secret header.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, ensureSignalPicksTable } from "@/lib/db";
+import { getDb, ensureSignalPicksTable, ensureSignalScoreHistoryTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 import { v4 as uuidv4 } from "uuid";
@@ -20,10 +20,13 @@ import { v4 as uuidv4 } from "uuid";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// Symbols to exclude from signal picks (bonds, notes, non-operating entities)
+const SYMBOL_BLOCKLIST = new Set(["KKRS"]);
+
 function qualifiesForPick(score: number, marketCapB: number): boolean {
   if (score >= 95) return true;
-  if (score >= 90 && marketCapB < 20) return true;
-  if (score >= 85 && marketCapB < 10) return true;
+  if (score >= 92 && marketCapB < 20) return true;
+  if (score >= 90 && marketCapB < 10) return true;
   return false;
 }
 
@@ -105,9 +108,11 @@ async function refreshSignals() {
   // Find new qualifying stocks
   const newQualifiers = deduped
     .filter((s) => {
-      const score = scoreMap.get(s.symbol as string) || 0;
+      const sym = s.symbol as string;
+      if (SYMBOL_BLOCKLIST.has(sym)) return false;
+      const score = scoreMap.get(sym) || 0;
       const mcapB = (Number(s.market_cap) || 0) / 1e9;
-      return !recentSymbols.has(s.symbol as string) && qualifiesForPick(score, mcapB);
+      return !recentSymbols.has(sym) && qualifiesForPick(score, mcapB);
     })
     .map((s) => ({
       symbol: s.symbol as string,
@@ -149,12 +154,15 @@ async function refreshSignals() {
     }
   }
 
-  // Check for sells: active picks with score < 70
+  // Check for sells: active picks whose score explicitly dropped below 60
+  // Only sell if the stock was actually found in scoreMap (avoid false sells from missing data)
   const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
   let sold = 0;
   for (const pick of activePicks) {
-    const score = scoreMap.get(pick.symbol as string) || 0;
-    if (score < 70) {
+    const score = scoreMap.get(pick.symbol as string);
+    // Skip if stock not found in scoreMap — don't sell on missing data
+    if (score == null) continue;
+    if (score < 60) {
       const pr = await sql`SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1`;
       const sellPrice = pr.length > 0 ? Number(pr[0].close_price) : null;
       const today = new Date().toISOString().slice(0, 10);
@@ -167,7 +175,24 @@ async function refreshSignals() {
     }
   }
 
-  return { success: true, added, sold, checked: activePicks.length };
+  // Record weekly score snapshot for all active signal picks
+  await ensureSignalScoreHistoryTable(sql);
+  const today = new Date().toISOString().slice(0, 10);
+  const activeAfterSells = await sql`SELECT symbol FROM signal_picks WHERE status = 'active'`;
+  const snapshotSymbols = activeAfterSells.map((p) => p.symbol as string);
+  let recorded = 0;
+  for (const sym of snapshotSymbols) {
+    const score = scoreMap.get(sym);
+    if (score == null) continue;
+    await sql`
+      INSERT INTO signal_score_history (symbol, score, recorded_at)
+      VALUES (${sym}, ${score}, ${today})
+      ON CONFLICT (symbol, recorded_at) DO UPDATE SET score = EXCLUDED.score
+    `.catch(() => {});
+    recorded++;
+  }
+
+  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded };
 }
 
 // GET: Vercel Cron handler
