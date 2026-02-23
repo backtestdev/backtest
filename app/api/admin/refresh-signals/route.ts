@@ -14,14 +14,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, ensureSignalPicksTable, ensureSignalScoreHistoryTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
-import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
+import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
 import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Symbols to exclude from signal picks (bonds, notes, non-operating entities)
-const SYMBOL_BLOCKLIST = new Set(["KKRS"]);
+// Use shared exclusion list for signal picks (bonds, notes, non-operating entities)
+const SYMBOL_BLOCKLIST = SYMBOL_EXCLUSIONS;
 
 function qualifiesForPick(score: number, marketCapB: number): boolean {
   if (score >= 95) return true;
@@ -92,24 +92,30 @@ async function refreshSignals() {
       AND company_name !~* ${NON_COMPANY_PATTERN}
   `;
 
-  const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
-  const deduped = googlExists ? allStocks.filter((s) => s.symbol !== "GOOG") : allStocks;
-
-  const enriched = deduped.map((stock) => {
+  // Score on full set (before dedup) to match screener & signal-tracker percentiles.
+  // Scoring after dedup would remove GOOG and shift percentile rankings for ALL stocks.
+  const enriched = allStocks.map((stock) => {
     const mcapB = (Number(stock.market_cap) || 0) / 1e9;
     return { ...(stock as unknown as Record<string, unknown>), log_market_cap: mcapB > 0 ? Math.log10(mcapB) : -1 };
   });
   const scoreMap = computeBacktestScore(enriched);
 
-  // Recent picks (no re-pitch within 1 year)
+  // Dedup GOOG/GOOGL after scoring
+  const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
+  const deduped = googlExists ? allStocks.filter((s) => s.symbol !== "GOOG") : allStocks;
+
+  // Existing picks — no re-pitch within 1 year, no dupes for active picks
   const recentPicks = await sql`SELECT symbol FROM signal_picks WHERE pick_date >= NOW() - INTERVAL '1 year'`;
   const recentSymbols = new Set(recentPicks.map((p) => p.symbol as string));
+  const existingActive = await sql`SELECT symbol FROM signal_picks WHERE status = 'active'`;
+  const activeSymbols = new Set(existingActive.map((p) => p.symbol as string));
 
-  // Find new qualifying stocks
+  // Find new qualifying stocks (exclude already-active and recent picks)
   const newQualifiers = deduped
     .filter((s) => {
       const sym = s.symbol as string;
       if (SYMBOL_BLOCKLIST.has(sym)) return false;
+      if (activeSymbols.has(sym)) return false;
       const score = scoreMap.get(sym) || 0;
       const mcapB = (Number(s.market_cap) || 0) / 1e9;
       return !recentSymbols.has(sym) && qualifiesForPick(score, mcapB);
@@ -175,13 +181,18 @@ async function refreshSignals() {
     }
   }
 
-  // Record weekly score snapshot for all active signal picks
+  // Record score snapshot for all active signal picks + all high-scoring stocks (score >= 80).
+  // Tracking a broader set allows monitoring candidates before they become signals.
   await ensureSignalScoreHistoryTable(sql);
   const today = new Date().toISOString().slice(0, 10);
   const activeAfterSells = await sql`SELECT symbol FROM signal_picks WHERE status = 'active'`;
-  const snapshotSymbols = activeAfterSells.map((p) => p.symbol as string);
+  const snapshotSymbols = new Set(activeAfterSells.map((p) => p.symbol as string));
+  // Also track all high-scoring stocks for trend analysis
+  scoreMap.forEach((score, sym) => {
+    if (score >= 80) snapshotSymbols.add(sym);
+  });
   let recorded = 0;
-  for (const sym of snapshotSymbols) {
+  for (const sym of Array.from(snapshotSymbols)) {
     const score = scoreMap.get(sym);
     if (score == null) continue;
     await sql`

@@ -6,6 +6,12 @@
  * warrants/rights/units, LPs, finance subsidiaries with debt issuances,
  * and entries with percentage rates in the name (bond coupons).
  */
+/**
+ * Specific ticker symbols to exclude from all views (screener, signals, etc.).
+ * These are non-operating entities (funds, bonds, notes) that bypass the regex filter.
+ */
+export const SYMBOL_EXCLUSIONS = new Set(["KKRS"]);
+
 export const NON_COMPANY_PATTERN = [
   // Funds & ETFs
   '\\y(ETF|ETN)\\y',

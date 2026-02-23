@@ -46,7 +46,9 @@ export function computeBacktestScore(stocks: Record<string, unknown>[]): Map<str
 
     if (values.length < 10) continue;
 
-    values.sort((a, b) => a.value - b.value);
+    // Tiebreaker on symbol ensures deterministic percentile assignment
+    // when two stocks share the same metric value (prevents score flapping).
+    values.sort((a, b) => a.value - b.value || a.symbol.localeCompare(b.symbol));
     for (let i = 0; i < values.length; i++) {
       const percentile = i / (values.length - 1);
       const contribution = factor.weight > 0
