@@ -447,6 +447,24 @@ export async function ensureSignalPicksTable(sql: NeonQueryFunction<false, false
   await sql`CREATE INDEX IF NOT EXISTS idx_signal_picks_date ON signal_picks(pick_date)`;
 }
 
+/**
+ * Ensures the signal_score_history table exists for tracking score snapshots over time.
+ * Recorded weekly by the refresh-signals cron job.
+ */
+export async function ensureSignalScoreHistoryTable(sql: NeonQueryFunction<false, false>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS signal_score_history (
+      id SERIAL PRIMARY KEY,
+      symbol VARCHAR(10) NOT NULL,
+      score INTEGER NOT NULL,
+      recorded_at DATE NOT NULL,
+      UNIQUE(symbol, recorded_at)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_score_history_symbol ON signal_score_history(symbol)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_score_history_date ON signal_score_history(recorded_at)`;
+}
+
 export function generateParametersHash(params: unknown): string {
   const sortedJson = JSON.stringify(params, Object.keys(params as Record<string, unknown>).sort());
   return createHash("sha256").update(sortedJson).digest("hex").slice(0, 16);

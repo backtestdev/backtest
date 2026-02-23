@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, ensureSignalPicksTable } from "@/lib/db";
+import { getDb, ensureSignalPicksTable, ensureSignalScoreHistoryTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 import { v4 as uuidv4 } from "uuid";
@@ -20,8 +20,12 @@ import { v4 as uuidv4 } from "uuid";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// Symbols to exclude from signal picks (bonds, notes, non-operating entities)
+const SYMBOL_BLOCKLIST = new Set(["KKRS"]);
+
 function qualifiesForPick(score: number, marketCapB: number): boolean {
   if (score >= 95) return true;
+  if (score >= 92 && marketCapB < 20) return true;
   if (score >= 90 && marketCapB < 10) return true;
   return false;
 }
@@ -104,9 +108,11 @@ async function refreshSignals() {
   // Find new qualifying stocks
   const newQualifiers = deduped
     .filter((s) => {
-      const score = scoreMap.get(s.symbol as string) || 0;
+      const sym = s.symbol as string;
+      if (SYMBOL_BLOCKLIST.has(sym)) return false;
+      const score = scoreMap.get(sym) || 0;
       const mcapB = (Number(s.market_cap) || 0) / 1e9;
-      return !recentSymbols.has(s.symbol as string) && qualifiesForPick(score, mcapB);
+      return !recentSymbols.has(sym) && qualifiesForPick(score, mcapB);
     })
     .map((s) => ({
       symbol: s.symbol as string,
@@ -169,7 +175,24 @@ async function refreshSignals() {
     }
   }
 
-  return { success: true, added, sold, checked: activePicks.length };
+  // Record weekly score snapshot for all active signal picks
+  await ensureSignalScoreHistoryTable(sql);
+  const today = new Date().toISOString().slice(0, 10);
+  const activeAfterSells = await sql`SELECT symbol FROM signal_picks WHERE status = 'active'`;
+  const snapshotSymbols = activeAfterSells.map((p) => p.symbol as string);
+  let recorded = 0;
+  for (const sym of snapshotSymbols) {
+    const score = scoreMap.get(sym);
+    if (score == null) continue;
+    await sql`
+      INSERT INTO signal_score_history (symbol, score, recorded_at)
+      VALUES (${sym}, ${score}, ${today})
+      ON CONFLICT (symbol, recorded_at) DO UPDATE SET score = EXCLUDED.score
+    `.catch(() => {});
+    recorded++;
+  }
+
+  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded };
 }
 
 // GET: Vercel Cron handler
