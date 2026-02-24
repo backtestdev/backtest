@@ -484,6 +484,20 @@ export async function ensureSignalScoreHistoryTable(sql: NeonQueryFunction<false
   await sql`CREATE INDEX IF NOT EXISTS idx_score_history_date ON signal_score_history(recorded_at)`;
 }
 
+/**
+ * Ensures the user_usage table exists for tracking backtest usage per month.
+ */
+export async function ensureUserUsageTable(sql: NeonQueryFunction<false, false>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_usage (
+      user_id TEXT NOT NULL,
+      usage_month TEXT NOT NULL,
+      backtest_count INT DEFAULT 0,
+      PRIMARY KEY (user_id, usage_month)
+    )
+  `;
+}
+
 export function generateParametersHash(params: unknown): string {
   const sortedJson = JSON.stringify(params, Object.keys(params as Record<string, unknown>).sort());
   return createHash("sha256").update(sortedJson).digest("hex").slice(0, 16);

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useState, useEffect } from "react";
 import { useTheme } from "./ThemeProvider";
+import { useUser } from "@clerk/nextjs";
+import { useSubscription } from "./SubscriptionProvider";
 
 const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode }[] = [
   {
@@ -69,8 +71,31 @@ function ThemeToggle() {
   );
 }
 
+function UpgradeButton() {
+  const pathname = usePathname();
+  const isActive = pathname === "/pricing";
+
+  return (
+    <Link
+      href="/pricing"
+      className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+        isActive
+          ? "bg-th-accent text-white"
+          : "text-th-accent bg-th-accent-bg border border-th-accent-border hover:bg-th-accent-muted"
+      }`}
+    >
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+      </svg>
+      Upgrade
+    </Link>
+  );
+}
+
 export default function Navigation() {
   const pathname = usePathname();
+  const { isSignedIn } = useUser();
+  const { isPremium } = useSubscription();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile menu on route change
@@ -87,6 +112,8 @@ export default function Navigation() {
     }
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
+
+  const showUpgrade = isSignedIn && !isPremium;
 
   return (
     <>
@@ -117,6 +144,11 @@ export default function Navigation() {
             </Link>
           );
         })}
+        {showUpgrade && (
+          <div className="ml-1">
+            <UpgradeButton />
+          </div>
+        )}
         <div className="ml-2 border-l border-th-border-light pl-2">
           <ThemeToggle />
         </div>
@@ -177,6 +209,18 @@ export default function Navigation() {
                   </Link>
                 );
               })}
+              {showUpgrade && (
+                <Link
+                  href="/pricing"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-base font-semibold text-th-accent rounded-xl hover:bg-th-accent-bg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+                  </svg>
+                  Upgrade to Premium
+                </Link>
+              )}
             </nav>
           </div>
         </>
