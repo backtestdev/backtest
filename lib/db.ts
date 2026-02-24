@@ -177,6 +177,23 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
     END $$
   `;
 
+  // Add columns that were added after initial table creation
+  // (CREATE TABLE IF NOT EXISTS won't add new columns to existing tables)
+  await sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='latest_fiscal_date') THEN
+        ALTER TABLE stocks ADD COLUMN latest_fiscal_date DATE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='revenue_growth_positive_3yr_count') THEN
+        ALTER TABLE stocks ADD COLUMN revenue_growth_positive_3yr_count INT DEFAULT 0;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='net_income_growth_positive_3yr_count') THEN
+        ALTER TABLE stocks ADD COLUMN net_income_growth_positive_3yr_count INT DEFAULT 0;
+      END IF;
+    END $$
+  `;
+
   // Historical prices table (for charts)
   await sql`
     CREATE TABLE IF NOT EXISTS stock_prices (
