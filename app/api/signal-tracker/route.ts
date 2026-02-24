@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 8;
+const PICKS_VERSION = 9;
 // Score threshold below which active picks are sold
 const SELL_THRESHOLD = 78;
 
@@ -358,7 +358,7 @@ async function generateInitialPicks(sql: Sql) {
   const { infos } = await fetchStocksWithScores(sql);
 
   const qualifying = infos
-    .filter((s) => qualifiesForPick(s.score, s.marketCapB) && !SYMBOL_BLOCKLIST.has(s.symbol))
+    .filter((s) => !SYMBOL_BLOCKLIST.has(s.symbol) && (qualifiesForPick(s.score, s.marketCapB) || PRIORITY_RECENT.has(s.symbol)))
     .sort((a, b) => b.score - a.score);
 
   console.log(`[Signal Tracker] ${qualifying.length} qualifying stocks for initial picks`);
