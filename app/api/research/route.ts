@@ -191,12 +191,13 @@ export async function GET(request: NextRequest) {
   const { userId } = await auth();
   const isAuthenticated = !!userId;
 
-  // Fetch FMP data in parallel (4 endpoints)
-  const [profileArr, incomeArr, metricsArr, ratiosArr] = await Promise.all([
+  // Fetch FMP data in parallel (5 endpoints)
+  const [profileArr, incomeArr, metricsArr, ratiosArr, quarterlyIncomeArr] = await Promise.all([
     fetchFMP<FMPProfile[]>(`/profile?symbol=${ticker}`),
     fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${ticker}&period=annual&limit=5`),
     fetchFMP<FMPKeyMetrics[]>(`/key-metrics?symbol=${ticker}&period=annual&limit=4`),
     fetchFMP<FMPRatios[]>(`/ratios?symbol=${ticker}&period=annual&limit=4`),
+    fetchFMP<FMPIncomeStatement[]>(`/income-statement?symbol=${ticker}&period=quarter&limit=4`),
   ]);
 
   const profile = profileArr?.[0];
@@ -347,6 +348,16 @@ export async function GET(request: NextRequest) {
     eps: stmt.epsDiluted,
   })).reverse();
 
+  // Quarterly trend (most recent 4 quarters, oldest first)
+  const quarterlyTrend = (quarterlyIncomeArr || []).map((stmt) => ({
+    date: stmt.date,
+    revenue: stmt.revenue,
+    netIncome: stmt.netIncome,
+    grossProfit: stmt.grossProfit,
+    netMargin: stmt.netIncomeRatio,
+    eps: stmt.epsDiluted,
+  })).reverse();
+
   // Historical prices for chart — live from Yahoo Finance (monthly, ~2 years)
   let priceHistory: { date: string; price: number }[] = [];
   try {
@@ -442,6 +453,7 @@ Rules:
     source: "fmp",
     fundamentals,
     revenueTrend,
+    quarterlyTrend,
     priceHistory,
     report,
   });

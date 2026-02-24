@@ -81,6 +81,7 @@ interface ResearchData {
   source: string;
   fundamentals: Fundamentals;
   revenueTrend?: RevenueTrendPoint[];
+  quarterlyTrend?: RevenueTrendPoint[];
   priceHistory?: PriceHistoryPoint[];
   report: AIReport | null;
   error?: string;
@@ -183,6 +184,12 @@ function formatCurrency(val: number | null): string {
   if (Math.abs(val) >= 1e9) return `$${(val / 1e9).toFixed(1)}B`;
   if (Math.abs(val) >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
   return val.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatQuarterLabel(dateStr: string): string {
+  const [year, month] = dateStr.split("-");
+  const q = Math.ceil(parseInt(month, 10) / 3);
+  return `Q${q} '${year.slice(2)}`;
 }
 
 // ── Recommendation config ────────────────────────────────────────────
@@ -495,6 +502,33 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
           </div>
         )}
 
+        {/* Quarterly Revenue & Earnings */}
+        {data.quarterlyTrend && data.quarterlyTrend.length > 1 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
+              <h2 className="text-sm font-semibold text-th-text mb-4">Quarterly Revenue</h2>
+              <VerticalBarChart
+                data={data.quarterlyTrend}
+                dataKey="revenue"
+                color="bg-th-accent"
+                formatValue={(v) => formatCurrency(v)}
+                labelFormat="quarter"
+              />
+            </div>
+            <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">
+              <h2 className="text-sm font-semibold text-th-text mb-4">Quarterly Net Income</h2>
+              <VerticalBarChart
+                data={data.quarterlyTrend}
+                dataKey="netIncome"
+                color="bg-th-positive-bar"
+                negativeColor="bg-th-negative"
+                formatValue={(v) => formatCurrency(v)}
+                labelFormat="quarter"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Auth gate for AI report */}
         {!isSignedIn && !report && (
           <div className="bg-th-accent-bg rounded-2xl border border-th-accent-border p-6 sm:p-8 mb-4 text-center">
@@ -650,12 +684,13 @@ function RecommendationGauge({ recommendation, label, angle }: {
 
 // ── Vertical Bar Chart ───────────────────────────────────────────────
 
-function VerticalBarChart({ data, dataKey, color, negativeColor, formatValue }: {
+function VerticalBarChart({ data, dataKey, color, negativeColor, formatValue, labelFormat }: {
   data: RevenueTrendPoint[];
   dataKey: "revenue" | "netIncome" | "grossProfit";
   color: string;
   negativeColor?: string;
   formatValue: (v: number) => string;
+  labelFormat?: "year" | "quarter";
 }) {
   const values = data.map((d) => (d as unknown as Record<string, number>)[dataKey] || 0);
   const maxVal = Math.max(...values.map(Math.abs));
@@ -674,7 +709,9 @@ function VerticalBarChart({ data, dataKey, color, negativeColor, formatValue }: 
         const isNeg = val < 0;
         const barHeight = maxVal > 0 ? (Math.abs(val) / totalRange) * chartHeight : 0;
         const barColor = isNeg ? (negativeColor || "bg-th-negative") : color;
-        const year = point.date.slice(0, 4);
+        const barLabel = labelFormat === "quarter"
+          ? formatQuarterLabel(point.date)
+          : point.date.slice(0, 4);
 
         return (
           <div key={i} className="flex-1 flex flex-col items-center" style={{ height: chartHeight + 30 }}>
@@ -694,7 +731,7 @@ function VerticalBarChart({ data, dataKey, color, negativeColor, formatValue }: 
             {isNeg && (
               <p className="text-[9px] text-th-negative mt-0.5 whitespace-nowrap">{formatValue(val)}</p>
             )}
-            <p className="text-[10px] text-th-text-3 mt-auto pt-1 font-medium">{year}</p>
+            <p className="text-[10px] text-th-text-3 mt-auto pt-1 font-medium">{barLabel}</p>
           </div>
         );
       })}
