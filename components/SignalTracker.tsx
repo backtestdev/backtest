@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useUser, SignUpButton } from "@clerk/nextjs";
 import { useSubscription } from "./SubscriptionProvider";
-import UpgradeGate from "./UpgradeGate";
+
 
 import StockLogo from "./StockLogo";
 
@@ -252,80 +252,79 @@ export default function SignalTracker() {
             <p className="text-sm text-th-text-3 text-center py-8">No picks to display.</p>
           ) : (
             <div className="space-y-2">
-              {filter === "active" && !isSignedIn && (
-                <div className="flex items-center justify-between bg-th-surface rounded-xl border border-th-accent-border px-5 py-3.5">
-                  <div>
-                    <p className="text-sm font-semibold text-th-text">Active Signals</p>
-                    <p className="text-xs text-th-text-3 mt-0.5">Create a free account to see current stock picks and allocations</p>
-                  </div>
-                  <SignUpButton mode="modal">
-                    <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
-                      Sign Up Free
-                    </button>
-                  </SignUpButton>
-                </div>
-              )}
-              {filteredPicks.map((pick) => {
-                const visibility = getPickVisibility(pick);
-                const isSample = isSignedIn && !isPremium && pick.status === "active" && mostRecentActivePick?.id === pick.id;
+              {(() => {
+                // Build visible picks and a single CTA based on auth/tier
+                const visiblePicks: Pick[] = [];
+                let hiddenActiveCount = 0;
+
+                filteredPicks.forEach((pick) => {
+                  const vis = getPickVisibility(pick);
+                  if (vis === "visible") {
+                    visiblePicks.push(pick);
+                  } else {
+                    hiddenActiveCount++;
+                  }
+                });
+
+                const isFreeUser = isSignedIn && !isPremium;
+                const isGuest = !isSignedIn;
 
                 return (
-                  <div key={pick.id} className="relative">
-                    {isSample && (
-                      <div className="absolute -top-2 right-3 z-20">
-                        <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-th-accent text-white rounded-full shadow-sm">
-                          Premium Sample
-                        </span>
-                      </div>
-                    )}
-
-                    {visibility === "login" && filter !== "active" && (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-th-surface/60 backdrop-blur-sm rounded-xl">
-                        <div className="text-center px-4">
-                          <p className="text-sm font-semibold text-th-text mb-1">Active Signal</p>
-                          <p className="text-xs text-th-text-3 mb-2">Create a free account to see active stock picks</p>
-                          <SignUpButton mode="modal">
-                            <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
-                              Sign Up Free
-                            </button>
-                          </SignUpButton>
+                  <>
+                    {/* Show the sample pick with badge for free users */}
+                    {visiblePicks.map((pick) => {
+                      const isSample = isFreeUser && pick.status === "active" && mostRecentActivePick?.id === pick.id;
+                      return (
+                        <div key={pick.id} className="relative">
+                          {isSample && (
+                            <div className="absolute -top-2 right-3 z-20">
+                              <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-th-accent text-white rounded-full shadow-sm">
+                                Premium Sample
+                              </span>
+                            </div>
+                          )}
+                          <PickCard
+                            pick={pick}
+                            expanded={expandedPick === pick.id}
+                            onToggle={() => setExpandedPick(expandedPick === pick.id ? null : pick.id)}
+                          />
                         </div>
+                      );
+                    })}
+
+                    {/* Single CTA for hidden active picks */}
+                    {hiddenActiveCount > 0 && isFreeUser && (
+                      <div className="flex items-center justify-between bg-th-accent-bg rounded-xl border border-th-accent-border px-5 py-4">
+                        <div>
+                          <p className="text-sm font-semibold text-th-text">
+                            {hiddenActiveCount} more active signal{hiddenActiveCount > 1 ? "s" : ""} available
+                          </p>
+                          <p className="text-xs text-th-text-3 mt-0.5">Upgrade to Premium for all signals with live scoring</p>
+                        </div>
+                        <Link href="/pricing" className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
+                          Upgrade
+                        </Link>
                       </div>
                     )}
 
-                    {visibility === "upgrade" ? (
-                      <UpgradeGate
-                        locked={true}
-                        message="Upgrade for all active signals"
-                        subMessage="Get every signal with live scoring and email alerts"
-                        blur="medium"
-                      >
-                        <PickCard pick={pick} expanded={false} onToggle={() => {}} />
-                      </UpgradeGate>
-                    ) : (
-                      <PickCard
-                        pick={pick}
-                        expanded={(visibility === "visible") && expandedPick === pick.id}
-                        onToggle={() => visibility === "visible" && setExpandedPick(expandedPick === pick.id ? null : pick.id)}
-                      />
+                    {hiddenActiveCount > 0 && isGuest && (
+                      <div className="flex items-center justify-between bg-th-surface rounded-xl border border-th-accent-border px-5 py-4">
+                        <div>
+                          <p className="text-sm font-semibold text-th-text">
+                            {hiddenActiveCount} active signal{hiddenActiveCount > 1 ? "s" : ""} hidden
+                          </p>
+                          <p className="text-xs text-th-text-3 mt-0.5">Create a free account to see a preview of active stock picks</p>
+                        </div>
+                        <SignUpButton mode="modal">
+                          <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
+                            Sign Up Free
+                          </button>
+                        </SignUpButton>
+                      </div>
                     )}
-                  </div>
+                  </>
                 );
-              })}
-
-              {isSignedIn && !isPremium && filter !== "sold" && activePicks.length > 1 && (
-                <div className="flex items-center justify-between bg-th-accent-bg rounded-xl border border-th-accent-border px-5 py-3.5 mt-2">
-                  <div>
-                    <p className="text-sm font-semibold text-th-text">
-                      {activePicks.length - 1} more active signal{activePicks.length - 1 > 1 ? "s" : ""} available
-                    </p>
-                    <p className="text-xs text-th-text-3 mt-0.5">Upgrade to Premium for all signals with email notifications</p>
-                  </div>
-                  <Link href="/pricing" className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
-                    Upgrade
-                  </Link>
-                </div>
-              )}
+              })()}
             </div>
           )}
         </div>
