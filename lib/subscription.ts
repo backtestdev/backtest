@@ -35,12 +35,21 @@ export const STRIPE_PRICE_IDS = {
 /**
  * Determine tier from Clerk user publicMetadata.
  * Returns "free" if no metadata or plan not set to "premium".
+ * Premium passes auto-expire based on premiumPassExpiresAt.
  */
 export function getTierFromMetadata(
   publicMetadata: Record<string, unknown> | undefined | null
 ): SubscriptionTier {
   if (!publicMetadata) return "free";
-  return publicMetadata.plan === "premium" ? "premium" : "free";
+  if (publicMetadata.plan !== "premium") return "free";
+
+  // If this is a premium pass (no Stripe subscription), check expiry
+  const passExpiry = publicMetadata.premiumPassExpiresAt as number | undefined;
+  if (passExpiry && !publicMetadata.stripeSubscriptionId) {
+    if (Date.now() / 1000 > passExpiry) return "free";
+  }
+
+  return "premium";
 }
 
 /**

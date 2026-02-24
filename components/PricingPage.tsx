@@ -263,10 +263,84 @@ export default function PricingPage() {
           </div>
         </div>
 
+        {/* Redeem code — subtle, below FAQ */}
+        {isSignedIn && !isPremium && <RedeemCode />}
+
         <p className="text-center mt-12 text-[10px] text-th-text-4">
           For educational purposes only. Not financial advice.
         </p>
       </div>
+    </div>
+  );
+}
+
+function RedeemCode() {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const handleRedeem = async () => {
+    if (!code.trim()) return;
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResult({ ok: true, message: data.message });
+        setCode("");
+        // Reload after a moment so Clerk metadata refreshes
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setResult({ ok: false, message: data.error || "Something went wrong." });
+      }
+    } catch {
+      setResult({ ok: false, message: "Something went wrong." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mt-10 text-center">
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="text-xs text-th-text-4 hover:text-th-text-3 transition-colors"
+        >
+          Have an access code?
+        </button>
+      ) : (
+        <div className="max-w-xs mx-auto space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleRedeem()}
+              placeholder="Enter code"
+              className="flex-1 px-3 py-2 text-sm text-th-text bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border placeholder:text-th-text-4"
+            />
+            <button
+              onClick={handleRedeem}
+              disabled={submitting || !code.trim()}
+              className="px-4 py-2 text-sm font-medium text-th-accent bg-th-accent-bg border border-th-accent-border rounded-lg hover:bg-th-accent-muted transition-colors disabled:opacity-40"
+            >
+              {submitting ? "..." : "Redeem"}
+            </button>
+          </div>
+          {result && (
+            <p className={`text-xs ${result.ok ? "text-th-positive" : "text-th-negative"}`}>
+              {result.message}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
