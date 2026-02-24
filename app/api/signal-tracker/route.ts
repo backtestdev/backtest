@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 6;
+const PICKS_VERSION = 7;
 // Score threshold below which active picks are sold
 const SELL_THRESHOLD = 78;
 
@@ -372,8 +372,8 @@ async function generateInitialPicks(sql: Sql) {
   }
 
   // --- Sell candidates from broader stock universe ---
-  // Find stocks with moderate current scores (50-78) that could plausibly have
-  // qualified earlier when their score was higher, then exited when it dropped
+  // Find stocks whose scores dropped below SELL_THRESHOLD that could plausibly have
+  // qualified earlier when their score was higher, then exited at a profit
   const potentialSells = infos
     .filter((s) =>
       s.score >= 30 && s.score < SELL_THRESHOLD
@@ -405,7 +405,7 @@ async function generateInitialPicks(sql: Sql) {
       const last = prices.get(sorted[sorted.length - 1])!;
       return { ...s, returnPct: first > 0 ? ((last - first) / first) * 100 : 0, dates: sorted };
     })
-    .sort((a, b) => a.returnPct - b.returnPct)
+    .sort((a, b) => b.returnPct - a.returnPct) // best performers first = mostly profitable sells
     .slice(0, 8);
 
   // Insert sell entries — picked earlier with higher score, sold when score dropped
@@ -681,6 +681,9 @@ export async function GET() {
     // Compute fund value for display
     const fundValue = latest ? latest.portfolioValue : INITIAL_CAPITAL;
 
+    // Compute score-weighted position sizes based on entry scores
+    const totalPickWeight = picks.reduce((sum, p) => sum + pickWeight(Number(p.score)), 0);
+
     return NextResponse.json({
       picks: picks.map((p) => {
         const sym = p.symbol as string;
@@ -692,12 +695,17 @@ export async function GET() {
           ? ((exitPrice - entryPrice) / entryPrice) * 100
           : null;
 
-        // Extract sell score from sell_reason text if present
-        let sellScore: number | null = null;
-        if (p.sell_reason) {
-          const match = String(p.sell_reason).match(/current:\s*(\d+)/);
-          if (match) sellScore = Number(match[1]);
-        }
+        // For sold picks, use live score as the sell-trigger score
+        const sellScore = isSold ? (liveScores.get(sym) ?? null) : null;
+
+        // Position sizing: score-weighted allocation of initial capital
+        const weight = pickWeight(Number(p.score));
+        const positionSize = totalPickWeight > 0
+          ? Math.round((weight / totalPickWeight) * INITIAL_CAPITAL * 100) / 100
+          : 0;
+        const profitLoss = returnPct != null
+          ? Math.round(positionSize * (returnPct / 100) * 100) / 100
+          : null;
 
         return {
           id: p.id,
@@ -713,6 +721,8 @@ export async function GET() {
           entryPrice,
           currentPrice: isSold ? null : currentPrice,
           returnPct: returnPct != null ? Math.round(returnPct * 10) / 10 : null,
+          positionSize,
+          profitLoss,
           status: p.status,
           sellDate: p.sell_date ? toDateStr(p.sell_date) : null,
           sellPrice: p.sell_price ? Number(p.sell_price) : null,

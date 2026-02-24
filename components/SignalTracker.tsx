@@ -21,6 +21,8 @@ interface Pick {
   entryPrice: number;
   currentPrice: number | null;
   returnPct: number | null;
+  positionSize: number;
+  profitLoss: number | null;
   status: string;
   sellDate: string | null;
   sellPrice: number | null;
@@ -421,7 +423,11 @@ function PickCard({ pick, expanded, onToggle }: {
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-3">
+              <div>
+                <p className="text-[10px] text-th-text-4 uppercase">Invested</p>
+                <p className="text-sm font-medium text-th-text">{formatCurrency(pick.positionSize)}</p>
+              </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Entry Price</p>
                 <p className="text-sm font-medium text-th-text">{formatCurrency(pick.entryPrice)}</p>
@@ -431,6 +437,14 @@ function PickCard({ pick, expanded, onToggle }: {
                 <p className="text-sm font-medium text-th-text">
                   {pick.status === "sold" && pick.sellPrice ? formatCurrency(pick.sellPrice)
                     : pick.currentPrice ? formatCurrency(pick.currentPrice)
+                    : "\u2014"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-th-text-4 uppercase">P&L</p>
+                <p className={`text-sm font-bold ${pick.profitLoss != null && pick.profitLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                  {pick.profitLoss != null
+                    ? `${pick.profitLoss >= 0 ? "+" : ""}${formatCurrency(pick.profitLoss)}`
                     : "\u2014"}
                 </p>
               </div>
@@ -450,11 +464,25 @@ function PickCard({ pick, expanded, onToggle }: {
               </div>
             )}
             {!isActive && pick.sellDate && (
-              <div className="mt-2 p-2 rounded-lg bg-th-negative-bg border border-th-negative-border">
-                <p className="text-xs text-th-negative">
-                  Position exited{pick.sellScore != null ? ` — score dropped to ${pick.sellScore}` : ""}.
+              <div className={`mt-2 p-2.5 rounded-lg border ${
+                pick.profitLoss != null && pick.profitLoss >= 0
+                  ? "bg-th-positive-bg/50 border-th-positive-border"
+                  : "bg-th-negative-bg/50 border-th-negative-border"
+              }`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs text-th-text-2 flex-1">
+                    {pick.sellReason || "Position exited"}
+                  </p>
+                  {pick.profitLoss != null && (
+                    <p className={`text-xs font-bold flex-shrink-0 ${pick.profitLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                      {pick.profitLoss >= 0 ? "+" : ""}{formatCurrency(pick.profitLoss)}
+                    </p>
+                  )}
+                </div>
+                <p className="text-[10px] text-th-text-4 mt-1">
+                  Sold on {formatDate(pick.sellDate)}
+                  {pick.sellPrice ? ` at ${formatCurrency(pick.sellPrice)}` : ""}
                 </p>
-                <p className="text-[10px] text-th-text-4 mt-0.5">Sold on {formatDate(pick.sellDate)}</p>
               </div>
             )}
           </div>
