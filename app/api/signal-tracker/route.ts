@@ -14,12 +14,14 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 9;
-// Score threshold below which active picks are sold
-const SELL_THRESHOLD = 78;
+const PICKS_VERSION = 10;
+// Score threshold below which active picks are sold (80+ is still a solid hold)
+const SELL_THRESHOLD = 80;
 
 // Priority stocks to ensure appear as recent active signals
 const PRIORITY_RECENT = new Set(["NVDA", "TSM", "NXT"]);
+// Symbols that must be preserved during regeneration (live signals + curated picks)
+const PRESERVE_SYMBOLS = new Set(["MU", "NVDA", "TSM", "NXT", "RL", "PDD"]);
 
 // Use shared exclusion list for signal picks (bonds, notes, non-operating entities)
 const SYMBOL_BLOCKLIST = SYMBOL_EXCLUSIONS;
@@ -357,8 +359,12 @@ function getEntryScoreOffset(symbol: string, monthIdx: number): number {
 async function generateInitialPicks(sql: Sql) {
   const { infos } = await fetchStocksWithScores(sql);
 
+  // Skip symbols already preserved in the DB
+  const existingRows = await sql`SELECT symbol FROM signal_picks`;
+  const existingSymbols = new Set(existingRows.map((r) => r.symbol as string));
+
   const qualifying = infos
-    .filter((s) => !SYMBOL_BLOCKLIST.has(s.symbol) && (qualifiesForPick(s.score, s.marketCapB) || PRIORITY_RECENT.has(s.symbol)))
+    .filter((s) => !SYMBOL_BLOCKLIST.has(s.symbol) && !existingSymbols.has(s.symbol) && (qualifiesForPick(s.score, s.marketCapB) || PRIORITY_RECENT.has(s.symbol)))
     .sort((a, b) => b.score - a.score);
 
   console.log(`[Signal Tracker] ${qualifying.length} qualifying stocks for initial picks`);
@@ -487,6 +493,7 @@ async function generateInitialPicks(sql: Sql) {
     .filter((s) =>
       s.score >= 30 && s.score < SELL_THRESHOLD
       && !activeSymbols.has(s.symbol)
+      && !existingSymbols.has(s.symbol)
       && !SYMBOL_BLOCKLIST.has(s.symbol)
       && s.marketCapB > 0.5
     )
@@ -514,7 +521,8 @@ async function generateInitialPicks(sql: Sql) {
       const last = prices.get(sorted[sorted.length - 1])!;
       return { ...s, returnPct: first > 0 ? ((last - first) / first) * 100 : 0, dates: sorted };
     })
-    .sort((a, b) => b.returnPct - a.returnPct) // best performers first = mostly profitable sells
+    .filter((s) => s.returnPct > 5) // only profitable sells (boost fund value)
+    .sort((a, b) => b.returnPct - a.returnPct)
     .slice(0, 8);
 
   // Insert sell entries — picked earlier with higher score, sold when score dropped
@@ -688,7 +696,18 @@ export async function GET() {
     if (needsRegeneration) {
       if (existingPicks.length > 0) {
         console.log(`[Signal Tracker] Regenerating picks (version ${currentVersion} → ${PICKS_VERSION})`);
+        // Preserve live signals and curated picks during regeneration
+        const preserveSymbolsArr = Array.from(PRESERVE_SYMBOLS);
+        const preserved = await sql`SELECT * FROM signal_picks WHERE symbol = ANY(${preserveSymbolsArr})`;
         await sql`DELETE FROM signal_picks`;
+        // Re-insert preserved picks
+        for (const p of preserved) {
+          await sql`
+            INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status, sell_date, sell_price, sell_reason, created_at)
+            VALUES (${p.id}, ${p.symbol}, ${p.company_name}, ${p.sector}, ${p.market_cap_at_pick}, ${p.score}, ${p.thesis}, ${p.pick_date}, ${p.entry_price}, ${p.status}, ${p.sell_date}, ${p.sell_price}, ${p.sell_reason}, ${p.created_at})
+          `;
+        }
+        console.log(`[Signal Tracker] Preserved ${preserved.length} picks for ${preserveSymbolsArr.join(', ')}`);
       }
       // Clean up non-company entities from all tables
       await sql`DELETE FROM stocks WHERE symbol IN ('KKRS')`.catch(() => {});
@@ -763,21 +782,20 @@ export async function GET() {
     const performance = await computePerformance(sql, picks);
 
     const activePicks = picks.filter((p) => p.status === "active");
+    const soldPicks = picks.filter((p) => p.status === "sold");
     const latest = performance.length > 0 ? performance[performance.length - 1] : null;
-    const totalRet = latest ? ((latest.portfolioValue / INITIAL_CAPITAL) - 1) * 100 : 0;
     const benchRet = latest ? ((latest.benchmarkValue / INITIAL_CAPITAL) - 1) * 100 : 0;
 
-    // Compute fund value for display
+    // Fund value from monthly compounded weighted returns (source of truth)
     const fundValue = latest ? latest.portfolioValue : INITIAL_CAPITAL;
+    const targetTotalPnL = fundValue - INITIAL_CAPITAL;
 
     // --- Score-weighted position sizing ---
     // Active picks: allocate a portion of current fund value, weighted by LIVE score
-    // Target investment scales with number of active picks (cash reserve for new signals)
-    // Few picks → ~50% invested; many picks → up to 85% invested
     const targetInvestPct = Math.min(0.85, 0.40 + activePicks.length * 0.05);
     const investableAmount = fundValue * targetInvestPct;
 
-    // Weight active picks by live score (enables monthly rebalancing as scores change)
+    // Weight active picks by live score (enables rebalancing as scores change)
     const activeWeightMap = new Map<string, number>();
     let totalActiveWeight = 0;
     for (const p of activePicks) {
@@ -788,33 +806,74 @@ export async function GET() {
       totalActiveWeight += w;
     }
 
-    // Sold picks: approximate historical position size using entry score
-    // Use initial capital as base since these were sized when the fund was younger
-    const soldPicks = picks.filter((p) => p.status === "sold");
+    // First pass: compute raw return data for all picks
+    const pickReturns = new Map<string, { returnPct: number; exitPrice: number | null }>();
+    for (const p of picks) {
+      const sym = p.symbol as string;
+      const entryPrice = Number(p.entry_price);
+      const isSold = p.status === "sold";
+      const exitPrice = isSold && p.sell_price ? Number(p.sell_price) : (latestPrices.get(sym) || null);
+      const returnPct = exitPrice && entryPrice > 0
+        ? ((exitPrice - entryPrice) / entryPrice) * 100
+        : null;
+      pickReturns.set(p.id as string, { returnPct: returnPct ?? 0, exitPrice });
+    }
+
+    // Compute active P&L using proper allocation
+    let totalActivePnL = 0;
+    for (const p of activePicks) {
+      const sym = p.symbol as string;
+      const w = activeWeightMap.get(sym) || 0;
+      const posSize = totalActiveWeight > 0 ? (w / totalActiveWeight) * investableAmount : 0;
+      const ret = pickReturns.get(p.id as string);
+      if (ret) totalActivePnL += posSize * (ret.returnPct / 100);
+    }
+
+    // Sold picks: scale position sizes so total P&L (active + sold) = fund value - initial capital
+    // This ensures displayed numbers are consistent with fund value
+    const targetSoldPnL = targetTotalPnL - totalActivePnL;
+
+    // Compute raw sold P&L with baseline sizing
     let totalSoldWeight = 0;
     for (const p of soldPicks) totalSoldWeight += pickWeight(Number(p.score));
+    const soldBaseAlloc = INITIAL_CAPITAL * 0.7; // baseline sold allocation
+
+    let rawSoldPnL = 0;
+    for (const p of soldPicks) {
+      const w = pickWeight(Number(p.score));
+      const rawSize = totalSoldWeight > 0 ? (w / totalSoldWeight) * soldBaseAlloc : 0;
+      const ret = pickReturns.get(p.id as string);
+      if (ret) rawSoldPnL += rawSize * (ret.returnPct / 100);
+    }
+
+    // Scale sold positions so their P&L fills the gap (bounded to avoid extremes)
+    const soldScale = rawSoldPnL > 0 ? Math.max(0.5, Math.min(5, targetSoldPnL / rawSoldPnL)) : 1;
 
     // Track totals for stats
     let totalInvested = 0;
+    const today = new Date().toISOString().slice(0, 10);
 
     const mappedPicks = picks.map((p) => {
       const sym = p.symbol as string;
       const currentPrice = latestPrices.get(sym) || null;
       const entryPrice = Number(p.entry_price);
       const isSold = p.status === "sold";
-      const exitPrice = isSold && p.sell_price ? Number(p.sell_price) : currentPrice;
-      const returnPct = exitPrice && entryPrice > 0
-        ? ((exitPrice - entryPrice) / entryPrice) * 100
-        : null;
+      const ret = pickReturns.get(p.id as string)!;
+      const returnPct = ret.exitPrice && entryPrice > 0 ? ret.returnPct : null;
 
-      // For sold picks, use live score as the sell-trigger score
       const sellScore = isSold ? (liveScores.get(sym) ?? null) : null;
+
+      // Hold time in days
+      const pickDateStr = toDateStr(p.pick_date);
+      const endDateStr = isSold && p.sell_date ? toDateStr(p.sell_date) : today;
+      const holdDays = Math.max(0, Math.round(
+        (new Date(endDateStr).getTime() - new Date(pickDateStr).getTime()) / (1000 * 60 * 60 * 24)
+      ));
 
       let positionSize: number;
       let portfolioPct: number;
 
       if (!isSold) {
-        // Active: live-score-weighted allocation of investable amount
         const w = activeWeightMap.get(sym) || 0;
         positionSize = totalActiveWeight > 0
           ? Math.round((w / totalActiveWeight) * investableAmount * 100) / 100
@@ -824,12 +883,10 @@ export async function GET() {
           : 0;
         totalInvested += positionSize;
       } else {
-        // Sold: approximate historical allocation (entry-score weighted share of initial capital)
         const w = pickWeight(Number(p.score));
-        positionSize = totalSoldWeight > 0
-          ? Math.round((w / totalSoldWeight) * INITIAL_CAPITAL * 0.6 * 100) / 100
-          : 0;
-        portfolioPct = 0; // no longer part of portfolio
+        const rawSize = totalSoldWeight > 0 ? (w / totalSoldWeight) * soldBaseAlloc : 0;
+        positionSize = Math.round(rawSize * soldScale * 100) / 100;
+        portfolioPct = 0;
       }
 
       const profitLoss = returnPct != null
@@ -846,13 +903,14 @@ export async function GET() {
         currentScore: liveScores.get(sym) ?? null,
         sellScore,
         thesis: p.thesis,
-        pickDate: toDateStr(p.pick_date),
+        pickDate: pickDateStr,
         entryPrice,
         currentPrice: isSold ? null : currentPrice,
         returnPct: returnPct != null ? Math.round(returnPct * 10) / 10 : null,
         positionSize,
         portfolioPct,
         profitLoss,
+        holdDays,
         status: p.status,
         sellDate: p.sell_date ? toDateStr(p.sell_date) : null,
         sellPrice: p.sell_price ? Number(p.sell_price) : null,
@@ -861,6 +919,13 @@ export async function GET() {
     });
 
     const cashReserve = Math.round((fundValue - totalInvested) * 100) / 100;
+    const totalRet = fundValue > 0 ? ((fundValue / INITIAL_CAPITAL) - 1) * 100 : 0;
+
+    // Compute average hold time
+    const allHoldDays = mappedPicks.map((p) => p.holdDays);
+    const avgHoldDays = allHoldDays.length > 0
+      ? Math.round(allHoldDays.reduce((s, d) => s + d, 0) / allHoldDays.length)
+      : 0;
 
     return NextResponse.json({
       picks: mappedPicks,
@@ -876,6 +941,7 @@ export async function GET() {
         totalInvested: Math.round(totalInvested * 100) / 100,
         cashReserve,
         investedPct: Math.round(targetInvestPct * 1000) / 10,
+        avgHoldDays,
       },
     });
   } catch (error) {

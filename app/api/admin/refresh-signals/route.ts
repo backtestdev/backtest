@@ -5,7 +5,7 @@
  * POST /api/admin/refresh-signals — Manual trigger
  *
  * Checks for new stocks qualifying for picks (score >= 90 with market cap
- * rules) and marks sells for stocks whose score dropped below 78.
+ * rules) and marks sells for stocks whose score dropped below 80.
  *
  * Vercel cron sends GET with Authorization: Bearer <CRON_SECRET>.
  * Manual trigger uses x-admin-secret header.
@@ -183,9 +183,9 @@ async function refreshSignals() {
     }
   }
 
-  // Check for sells: active picks whose score dropped below 78
+  // Check for sells: active picks whose score dropped below 80
   // Only sell if the stock was actually found in scoreMap (avoid false sells from missing data)
-  const SELL_THRESHOLD = 78;
+  const SELL_THRESHOLD = 80;
   const stockInfoMap = new Map<string, Record<string, unknown>>();
   for (const stock of deduped) stockInfoMap.set(stock.symbol as string, stock);
   const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
