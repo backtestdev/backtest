@@ -500,22 +500,22 @@ export default function StockScreener() {
 
         {/* Table */}
         <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto shadow-sm">
-          <div className="min-w-[600px]">
+          <div className="min-w-[420px]">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-th-border-light items-center">
+          <div className="grid grid-cols-10 sm:grid-cols-12 gap-1 sm:gap-2 px-3 sm:px-4 py-3 border-b border-th-border-light items-center">
             <div className="col-span-3 text-xs font-medium text-th-text-3 uppercase tracking-wider">
               Stock
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 sm:col-span-2">
               <SortHeader field="backtest_score" label="Score" />
             </div>
-            <div className="col-span-1 text-right">
+            <div className="col-span-2 sm:col-span-1 text-right">
               <SortHeader field="market_cap" label="MCap" className="text-right" />
             </div>
-            <div className="col-span-1 text-right">
+            <div className="col-span-2 sm:col-span-1 text-right">
               <SortHeader field="earnings_yield" label="Earn Yld" className="text-right" />
             </div>
-            <div className="col-span-1 text-right">
+            <div className="col-span-1 text-right hidden sm:block">
               <SortHeader field="pe_ratio" label="P/E" className="text-right" />
             </div>
             <div className="col-span-1 text-right hidden md:block">
@@ -554,18 +554,18 @@ export default function StockScreener() {
               <button
                 key={stock.symbol}
                 onClick={() => !isGuest && navigateToStock(stock.symbol)}
-                className={`w-full grid grid-cols-12 gap-2 px-4 py-3 border-b border-th-border-light last:border-0 items-center transition-colors text-left min-h-[44px] ${
+                className={`w-full grid grid-cols-10 sm:grid-cols-12 gap-1 sm:gap-2 px-3 sm:px-4 py-3 border-b border-th-border-light last:border-0 items-center transition-colors text-left min-h-[44px] ${
                   isGuest ? "cursor-default" : "hover:bg-th-accent-bg/40 cursor-pointer"
                 }`}
               >
-                <div className="col-span-3 min-w-0 flex items-center gap-2">
+                <div className="col-span-3 min-w-0 flex items-center gap-1.5 sm:gap-2">
                   <StockLogo ticker={stock.symbol} sector={stock.sector} />
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-th-text truncate">{stock.symbol}</p>
-                    <p className="text-xs text-th-text-3 truncate">{stock.name}</p>
+                    <p className="text-xs sm:text-sm font-semibold text-th-text truncate">{stock.symbol}</p>
+                    <p className="text-[10px] sm:text-xs text-th-text-3 truncate">{stock.name}</p>
                   </div>
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-2 sm:col-span-2">
                   {blurScore ? (
                     <div className="blur-[5px] select-none pointer-events-none">
                       <ScoreBar score={stock.backtestScore} />
@@ -574,26 +574,26 @@ export default function StockScreener() {
                     <ScoreBar score={stock.backtestScore} />
                   )}
                 </div>
-                <div className="col-span-1 text-right text-sm text-th-text-2">
+                <div className="col-span-2 sm:col-span-1 text-right text-xs sm:text-sm text-th-text-2">
                   {formatMarketCap(stock.marketCap)}
                 </div>
-                <div className="col-span-1 text-right text-sm text-th-text-2">
+                <div className="col-span-2 sm:col-span-1 text-right text-xs sm:text-sm text-th-text-2">
                   {formatPct(stock.earningsYield)}
                 </div>
-                <div className="col-span-1 text-right text-sm text-th-text-2">
+                <div className="col-span-1 text-right text-xs sm:text-sm text-th-text-2 hidden sm:block">
                   {formatNum(stock.peRatio)}
                 </div>
-                <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
+                <div className="col-span-1 text-right text-xs sm:text-sm text-th-text-2 hidden md:block">
                   {formatPct(stock.earningsGrowth)}
                 </div>
-                <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
+                <div className="col-span-1 text-right text-xs sm:text-sm text-th-text-2 hidden md:block">
                   {formatPct(stock.roe)}
                 </div>
-                <div className="col-span-1 text-right text-sm text-th-text-2 hidden md:block">
+                <div className="col-span-1 text-right text-xs sm:text-sm text-th-text-2 hidden md:block">
                   {formatNum(stock.debtToEquity)}
                 </div>
                 <div className="col-span-1 text-right">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3">
+                  <span className="text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-th-skeleton text-th-text-3 truncate">
                     {stock.sector}
                   </span>
                 </div>

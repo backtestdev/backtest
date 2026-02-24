@@ -90,7 +90,7 @@ export interface LeaderboardEntry {
 export interface SavedPortfolio {
   id: string;
   name: string;
-  holdings: { symbol: string; shares: number; costBasis?: number }[];
+  holdings: { symbol: string; shares: number; costBasis?: number; assetType?: string; currentValue?: number; initialInvestment?: number }[];
   analysis: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;

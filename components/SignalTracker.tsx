@@ -24,6 +24,7 @@ interface Pick {
   positionSize: number;
   portfolioPct: number;
   profitLoss: number | null;
+  holdDays: number;
   status: string;
   sellDate: string | null;
   sellPrice: number | null;
@@ -46,6 +47,7 @@ interface Stats {
   totalInvested: number;
   cashReserve: number;
   investedPct: number;
+  avgHoldDays: number;
 }
 
 // --- Formatters ---
@@ -75,11 +77,14 @@ function formatMarketCap(b: number): string {
   return `$${(b * 1000).toFixed(0)}M`;
 }
 
-function isRecentPick(pickDate: string): boolean {
-  const pick = new Date(pickDate + "T00:00:00");
-  const now = new Date();
-  const diffMs = now.getTime() - pick.getTime();
-  return diffMs < 30 * 24 * 60 * 60 * 1000;
+function formatHoldTime(days: number): string {
+  if (days < 30) return `${days}d`;
+  const months = Math.floor(days / 30);
+  const remaining = days % 30;
+  if (months < 12) return remaining > 14 ? `${months}mo ${remaining}d` : `${months}mo`;
+  const years = Math.floor(months / 12);
+  const remMonths = months % 12;
+  return remMonths > 0 ? `${years}y ${remMonths}mo` : `${years}y`;
 }
 
 function timeAgo(dateStr: string): string {
@@ -165,14 +170,14 @@ export default function SignalTracker() {
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-th-text">Signal Tracker</h1>
           <p className="text-sm text-th-text-3 mt-1">
-            Multi-factor AI stock picks tracked since fund inception in Jul 2025.
-            Score-weighted portfolio with monthly rebalancing.
+            Proprietary AI-driven stock picks powered by our multi-factor scoring model.
+            Tracked live with real entry & exit prices since July 2025.
           </p>
         </div>
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <StatCard
               label="Fund Value"
               value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"}
@@ -193,18 +198,6 @@ export default function SignalTracker() {
               value={`${stats.alpha >= 0 ? "+" : ""}${stats.alpha.toFixed(1)}%`}
               color={stats.alpha >= 0 ? "positive" : "negative"}
             />
-            <StatCard
-              label="Invested"
-              value={formatDollarWhole(stats.totalInvested)}
-              subtitle={`${stats.investedPct.toFixed(0)}% of fund`}
-              color="neutral"
-            />
-            <StatCard
-              label="Cash"
-              value={formatDollarWhole(stats.cashReserve)}
-              subtitle={`${stats.activePicks} picks active`}
-              color="neutral"
-            />
           </div>
         )}
 
@@ -223,6 +216,9 @@ export default function SignalTracker() {
                 <span className="text-[11px] text-th-text-3">S&P 500</span>
               </div>
             </div>
+            <p className="text-[10px] text-th-text-4 text-center mt-3">
+              Score-weighted portfolio with monthly rebalancing. Higher-scoring picks receive larger allocations.
+            </p>
           </div>
         )}
 
@@ -253,16 +249,29 @@ export default function SignalTracker() {
             <p className="text-sm text-th-text-3 text-center py-8">No picks to display.</p>
           ) : (
             <div className="space-y-2">
+              {/* Single CTA when viewing active tab while signed out */}
+              {filter === "active" && !isSignedIn && (
+                <div className="flex items-center justify-between bg-th-surface rounded-xl border border-th-accent-border px-5 py-3.5">
+                  <div>
+                    <p className="text-sm font-semibold text-th-text">Active Signals</p>
+                    <p className="text-xs text-th-text-3 mt-0.5">Sign in to see current stock picks, allocations, and live scores</p>
+                  </div>
+                  <SignUpButton mode="modal">
+                    <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
+                      Sign Up Free
+                    </button>
+                  </SignUpButton>
+                </div>
+              )}
               {filteredPicks.map((pick) => {
-                const recent = isRecentPick(pick.pickDate) && pick.status === "active";
-                const blurred = recent && !isSignedIn;
+                const blurred = pick.status === "active" && !isSignedIn;
                 return (
                   <div key={pick.id} className="relative">
-                    {blurred && (
+                    {blurred && filter !== "active" && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center bg-th-surface/60 backdrop-blur-sm rounded-xl">
                         <div className="text-center px-4">
-                          <p className="text-sm font-semibold text-th-text mb-1">New Signal</p>
-                          <p className="text-xs text-th-text-3 mb-2">Sign in to see picks from the last 30 days</p>
+                          <p className="text-sm font-semibold text-th-text mb-1">Active Signal</p>
+                          <p className="text-xs text-th-text-3 mb-2">Sign in to see active stock picks and allocations</p>
                           <SignUpButton mode="modal">
                             <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
                               Sign Up Free
@@ -283,13 +292,23 @@ export default function SignalTracker() {
           )}
         </div>
 
-        {/* Methodology note */}
-        <div className="text-center mt-6">
-          <p className="text-[10px] text-th-text-4">
-            Signal Tracker uses a multi-factor scoring model. Past performance does not guarantee future results.
-            Portfolio is score-weighted with monthly rebalancing. Not financial advice.
-          </p>
-        </div>
+        {/* Fund allocation summary */}
+        {stats && (
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-4 text-[11px] text-th-text-3">
+            <span>Invested: {formatDollarWhole(stats.totalInvested)} ({stats.investedPct.toFixed(0)}%)</span>
+            <span className="text-th-text-4">&middot;</span>
+            <span>Cash Reserve: {formatDollarWhole(stats.cashReserve)}</span>
+            <span className="text-th-text-4">&middot;</span>
+            <span>{stats.activePicks} active / {stats.totalPicks} total picks</span>
+            <span className="text-th-text-4">&middot;</span>
+            <span>Avg Time Held: {formatHoldTime(stats.avgHoldDays)}</span>
+          </div>
+        )}
+
+        {/* Disclaimer */}
+        <p className="text-[10px] text-th-text-4 text-center mt-3">
+          Past performance does not guarantee future results. Not financial advice.
+        </p>
       </div>
     </div>
   );
@@ -345,8 +364,6 @@ function PickCard({ pick, expanded, onToggle }: {
   const returnColor = pick.returnPct != null
     ? pick.returnPct >= 0 ? "text-th-positive" : "text-th-negative"
     : "text-th-text-3";
-  const recent = isRecentPick(pick.pickDate) && isActive;
-
   // Display score: for active picks show current score (with entry fallback),
   // for sold picks show entry score (what it was signalled at)
   const displayScore = isActive
@@ -370,10 +387,7 @@ function PickCard({ pick, expanded, onToggle }: {
               </Link>
               <ScoreBadge score={displayScore} />
               {isActive && pick.portfolioPct > 0 && (
-                <span className="text-[10px] font-medium text-th-text-3 bg-th-bar px-1.5 py-0.5 rounded">{pick.portfolioPct.toFixed(1)}%</span>
-              )}
-              {recent && (
-                <span className="text-[10px] font-medium text-th-accent bg-th-accent/10 px-1.5 py-0.5 rounded">New</span>
+                <span className="text-[10px] font-medium text-th-text-3 bg-th-bar px-1.5 py-0.5 rounded">{pick.portfolioPct.toFixed(1)}% of fund</span>
               )}
               {!isActive && (
                 <span className="text-[10px] font-medium text-th-negative bg-th-negative-bg px-1.5 py-0.5 rounded">Sold</span>
@@ -424,24 +438,24 @@ function PickCard({ pick, expanded, onToggle }: {
               )}
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-7 gap-3 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2 sm:gap-3 mb-3">
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Invested</p>
-                <p className="text-sm font-medium text-th-text">{formatCurrency(pick.positionSize)}</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatCurrency(pick.positionSize)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">% of Fund</p>
-                <p className="text-sm font-medium text-th-text">
+                <p className="text-xs sm:text-sm font-medium text-th-text">
                   {isActive ? `${pick.portfolioPct.toFixed(1)}%` : "\u2014"}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">Entry Price</p>
-                <p className="text-sm font-medium text-th-text">{formatCurrency(pick.entryPrice)}</p>
+                <p className="text-[10px] text-th-text-4 uppercase">Entry</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatCurrency(pick.entryPrice)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">{pick.status === "sold" ? "Sell Price" : "Current Price"}</p>
-                <p className="text-sm font-medium text-th-text">
+                <p className="text-[10px] text-th-text-4 uppercase">{pick.status === "sold" ? "Sell" : "Current"}</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">
                   {pick.status === "sold" && pick.sellPrice ? formatCurrency(pick.sellPrice)
                     : pick.currentPrice ? formatCurrency(pick.currentPrice)
                     : "\u2014"}
@@ -449,19 +463,23 @@ function PickCard({ pick, expanded, onToggle }: {
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">P&L</p>
-                <p className={`text-sm font-bold ${pick.profitLoss != null && pick.profitLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                <p className={`text-xs sm:text-sm font-bold ${pick.profitLoss != null && pick.profitLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
                   {pick.profitLoss != null
                     ? `${pick.profitLoss >= 0 ? "+" : ""}${formatCurrency(pick.profitLoss)}`
                     : "\u2014"}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">Market Cap</p>
-                <p className="text-sm font-medium text-th-text">{formatMarketCap(pick.marketCap)}</p>
+                <p className="text-[10px] text-th-text-4 uppercase">Time Held</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatHoldTime(pick.holdDays)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-th-text-4 uppercase">Mkt Cap</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatMarketCap(pick.marketCap)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Signaled</p>
-                <p className="text-sm font-medium text-th-text">{formatDate(pick.pickDate)}</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatDate(pick.pickDate)}</p>
               </div>
             </div>
             {pick.thesis && (
