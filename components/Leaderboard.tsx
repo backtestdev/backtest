@@ -83,7 +83,12 @@ export default function Leaderboard({ onSelectStrategy, refreshKey, activeTab: e
     try {
       const res = await fetch(`/api/leaderboard?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        setPersonalEntries(prev => prev.filter(entry => entry.id !== id));
+        setPersonalEntries(prev => {
+          const updated = prev.filter(entry => entry.id !== id);
+          // Auto-switch to top strategies when personal list becomes empty
+          if (updated.length === 0) setTab("public");
+          return updated;
+        });
         setEntries(prev => prev.filter(entry => entry.id !== id));
       }
     } catch { /* ignore */ }

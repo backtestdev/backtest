@@ -87,13 +87,6 @@ function formatHoldTime(days: number): string {
   return remMonths > 0 ? `${years}y ${remMonths}mo` : `${years}y`;
 }
 
-function isRecentPick(pickDate: string): boolean {
-  const pick = new Date(pickDate + "T00:00:00");
-  const now = new Date();
-  const diffMs = now.getTime() - pick.getTime();
-  return diffMs < 30 * 24 * 60 * 60 * 1000;
-}
-
 function timeAgo(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   const now = new Date();
@@ -257,15 +250,14 @@ export default function SignalTracker() {
           ) : (
             <div className="space-y-2">
               {filteredPicks.map((pick) => {
-                const recent = isRecentPick(pick.pickDate) && pick.status === "active";
-                const blurred = recent && !isSignedIn;
+                const blurred = pick.status === "active" && !isSignedIn;
                 return (
                   <div key={pick.id} className="relative">
                     {blurred && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center bg-th-surface/60 backdrop-blur-sm rounded-xl">
                         <div className="text-center px-4">
-                          <p className="text-sm font-semibold text-th-text mb-1">New Signal</p>
-                          <p className="text-xs text-th-text-3 mb-2">Sign in to see picks from the last 30 days</p>
+                          <p className="text-sm font-semibold text-th-text mb-1">Active Signal</p>
+                          <p className="text-xs text-th-text-3 mb-2">Sign in to see active stock picks and allocations</p>
                           <SignUpButton mode="modal">
                             <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
                               Sign Up Free
@@ -358,8 +350,6 @@ function PickCard({ pick, expanded, onToggle }: {
   const returnColor = pick.returnPct != null
     ? pick.returnPct >= 0 ? "text-th-positive" : "text-th-negative"
     : "text-th-text-3";
-  const recent = isRecentPick(pick.pickDate) && isActive;
-
   // Display score: for active picks show current score (with entry fallback),
   // for sold picks show entry score (what it was signalled at)
   const displayScore = isActive
@@ -384,9 +374,6 @@ function PickCard({ pick, expanded, onToggle }: {
               <ScoreBadge score={displayScore} />
               {isActive && pick.portfolioPct > 0 && (
                 <span className="text-[10px] font-medium text-th-text-3 bg-th-bar px-1.5 py-0.5 rounded">{pick.portfolioPct.toFixed(1)}%</span>
-              )}
-              {recent && (
-                <span className="text-[10px] font-medium text-th-accent bg-th-accent/10 px-1.5 py-0.5 rounded">New</span>
               )}
               {!isActive && (
                 <span className="text-[10px] font-medium text-th-negative bg-th-negative-bg px-1.5 py-0.5 rounded">Sold</span>
@@ -437,24 +424,24 @@ function PickCard({ pick, expanded, onToggle }: {
               )}
             </div>
 
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2 sm:gap-3 mb-3">
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Invested</p>
-                <p className="text-sm font-medium text-th-text">{formatCurrency(pick.positionSize)}</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatCurrency(pick.positionSize)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">% of Fund</p>
-                <p className="text-sm font-medium text-th-text">
+                <p className="text-xs sm:text-sm font-medium text-th-text">
                   {isActive ? `${pick.portfolioPct.toFixed(1)}%` : "\u2014"}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">Entry Price</p>
-                <p className="text-sm font-medium text-th-text">{formatCurrency(pick.entryPrice)}</p>
+                <p className="text-[10px] text-th-text-4 uppercase">Entry</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatCurrency(pick.entryPrice)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">{pick.status === "sold" ? "Sell Price" : "Current"}</p>
-                <p className="text-sm font-medium text-th-text">
+                <p className="text-[10px] text-th-text-4 uppercase">{pick.status === "sold" ? "Sell" : "Current"}</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">
                   {pick.status === "sold" && pick.sellPrice ? formatCurrency(pick.sellPrice)
                     : pick.currentPrice ? formatCurrency(pick.currentPrice)
                     : "\u2014"}
@@ -462,23 +449,23 @@ function PickCard({ pick, expanded, onToggle }: {
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">P&L</p>
-                <p className={`text-sm font-bold ${pick.profitLoss != null && pick.profitLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
+                <p className={`text-xs sm:text-sm font-bold ${pick.profitLoss != null && pick.profitLoss >= 0 ? "text-th-positive" : "text-th-negative"}`}>
                   {pick.profitLoss != null
                     ? `${pick.profitLoss >= 0 ? "+" : ""}${formatCurrency(pick.profitLoss)}`
                     : "\u2014"}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">Hold Time</p>
-                <p className="text-sm font-medium text-th-text">{formatHoldTime(pick.holdDays)}</p>
+                <p className="text-[10px] text-th-text-4 uppercase">Hold</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatHoldTime(pick.holdDays)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Mkt Cap</p>
-                <p className="text-sm font-medium text-th-text">{formatMarketCap(pick.marketCap)}</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatMarketCap(pick.marketCap)}</p>
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Signaled</p>
-                <p className="text-sm font-medium text-th-text">{formatDate(pick.pickDate)}</p>
+                <p className="text-xs sm:text-sm font-medium text-th-text">{formatDate(pick.pickDate)}</p>
               </div>
             </div>
             {pick.thesis && (
