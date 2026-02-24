@@ -287,7 +287,7 @@ export default function SignalTracker() {
             <span className="text-th-text-4">&middot;</span>
             <span>{stats.activePicks} active / {stats.totalPicks} total picks</span>
             <span className="text-th-text-4">&middot;</span>
-            <span>Avg Hold: {formatHoldTime(stats.avgHoldDays)}</span>
+            <span>Avg Time Held: {formatHoldTime(stats.avgHoldDays)}</span>
           </div>
         )}
 
@@ -456,7 +456,7 @@ function PickCard({ pick, expanded, onToggle }: {
                 </p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">Hold</p>
+                <p className="text-[10px] text-th-text-4 uppercase">Time Held</p>
                 <p className="text-xs sm:text-sm font-medium text-th-text">{formatHoldTime(pick.holdDays)}</p>
               </div>
               <div>
