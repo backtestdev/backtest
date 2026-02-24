@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
+import { useSubscription } from "./SubscriptionProvider";
 import StockLogo from "./StockLogo";
 import LoginGate from "./LoginGate";
+import UpgradeGate from "./UpgradeGate";
 
 // ── Types ──
 
@@ -586,6 +588,7 @@ const PROFILE_STORAGE_KEY = "portfolio_investor_profile";
 
 export default function PortfolioAnalyzer() {
   const { isSignedIn, user } = useUser();
+  const { isPremium } = useSubscription();
   const isGuest = !isSignedIn;
   const [holdings, setHoldings] = useState<Holding[]>([{ symbol: "", shares: 0 }]);
   const [profile, setProfile] = useState<{ age?: number; netWorth?: string; riskTolerance?: string }>({});
@@ -1273,61 +1276,114 @@ export default function PortfolioAnalyzer() {
               <p className="text-sm text-th-positive text-right font-medium">Portfolio saved!</p>
             )}
 
-            {/* Detailed results - gated for guests */}
-            <LoginGate
-              locked={isGuest}
-              message="Sign up to view your full portfolio analysis"
-              subMessage="Sector allocation, per-holding detail, gain/loss breakdown, and AI-powered recommendations"
-              blur="heavy"
-              ctaPosition="top"
-            >
-              {/* AI Analysis — prominent placement */}
-              {result.aiAnalysis && (
-                <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-hidden">
-                  <div className="px-6 py-4 border-b border-th-border-light flex items-center gap-2">
-                    <svg className="w-5 h-5 text-th-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
-                    </svg>
-                    <h3 className="text-sm font-semibold text-th-text">Advisor Analysis</h3>
-                    <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
-                      AI
-                    </span>
+            {/* Detailed results - tiered gating */}
+            {isGuest ? (
+              <LoginGate
+                locked={true}
+                message="Create a free account to view your portfolio analysis"
+                subMessage="Sector allocation, per-holding detail, gain/loss breakdown, and AI-powered recommendations"
+                blur="heavy"
+                ctaPosition="top"
+              >
+                {result.aiAnalysis && (
+                  <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-hidden">
+                    <div className="px-6 py-4 border-b border-th-border-light flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-th-text">Advisor Analysis</h3>
+                    </div>
+                    <div className="px-6 py-5">
+                      {renderMarkdown(result.aiAnalysis)}
+                    </div>
                   </div>
-                  <div className="px-6 py-5">
-                    {renderMarkdown(result.aiAnalysis)}
+                )}
+                <div className="bg-th-surface rounded-2xl border border-th-border-light p-6 mt-6">
+                  <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
+                  <SectorBar breakdown={result.summary.sectorBreakdown} />
+                </div>
+              </LoginGate>
+            ) : !isPremium ? (
+              <UpgradeGate
+                locked={true}
+                message="Upgrade for full portfolio analysis"
+                subMessage="Complete AI advice, sector breakdown, and detailed holdings analysis"
+                blur="heavy"
+                ctaPosition="top"
+              >
+                {result.aiAnalysis && (
+                  <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-hidden">
+                    <div className="px-6 py-4 border-b border-th-border-light flex items-center gap-2">
+                      <svg className="w-5 h-5 text-th-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
+                      </svg>
+                      <h3 className="text-sm font-semibold text-th-text">Advisor Analysis</h3>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
+                        AI
+                      </span>
+                    </div>
+                    <div className="px-6 py-5">
+                      {renderMarkdown(result.aiAnalysis)}
+                    </div>
+                  </div>
+                )}
+                <div className="bg-th-surface rounded-2xl border border-th-border-light p-6 mt-6">
+                  <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
+                  <SectorBar breakdown={result.summary.sectorBreakdown} />
+                </div>
+                <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto mt-6">
+                  <div className="px-4 sm:px-6 py-3 border-b border-th-border-light">
+                    <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
+                  </div>
+                  <div className="min-w-[640px]">
+                    <HoldingsTableHeader />
+                    <div className="divide-y divide-th-border-light">
+                      {consolidated.slice(0, 2).map((h) => (
+                        <ConsolidatedHoldingRow key={h.symbol} holding={h} totalValue={result.summary.totalValue} score={stockScores.get(h.symbol)} />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              )}
+              </UpgradeGate>
+            ) : (
+              <>
+                {/* Full analysis for premium users */}
+                {result.aiAnalysis && (
+                  <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-hidden">
+                    <div className="px-6 py-4 border-b border-th-border-light flex items-center gap-2">
+                      <svg className="w-5 h-5 text-th-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
+                      </svg>
+                      <h3 className="text-sm font-semibold text-th-text">Advisor Analysis</h3>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-th-accent-bg text-th-accent border border-th-accent-border">
+                        AI
+                      </span>
+                    </div>
+                    <div className="px-6 py-5">
+                      {renderMarkdown(result.aiAnalysis)}
+                    </div>
+                  </div>
+                )}
 
-              {/* Sector allocation */}
-              <div className="bg-th-surface rounded-2xl border border-th-border-light p-6 mt-6">
-                <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
-                <SectorBar breakdown={result.summary.sectorBreakdown} />
-              </div>
-
-              {/* Holdings table */}
-              <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto mt-6">
-                <div className="px-4 sm:px-6 py-3 border-b border-th-border-light">
-                  <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
+                <div className="bg-th-surface rounded-2xl border border-th-border-light p-6 mt-6">
+                  <h3 className="text-sm font-semibold text-th-text-2 mb-3">Sector Allocation</h3>
+                  <SectorBar breakdown={result.summary.sectorBreakdown} />
                 </div>
-                <div className="min-w-[640px]">
-                  <HoldingsTableHeader />
-                  <div className="divide-y divide-th-border-light">
-                    {consolidated.map((h) => (
-                      <ConsolidatedHoldingRow
-                        key={h.symbol}
-                        holding={h}
-                        totalValue={result.summary.totalValue}
-                        score={stockScores.get(h.symbol)}
-                      />
-                    ))}
+
+                <div className="bg-th-surface rounded-2xl border border-th-border-light overflow-x-auto mt-6">
+                  <div className="px-4 sm:px-6 py-3 border-b border-th-border-light">
+                    <h3 className="text-sm font-semibold text-th-text-2">Holdings Detail</h3>
+                  </div>
+                  <div className="min-w-[640px]">
+                    <HoldingsTableHeader />
+                    <div className="divide-y divide-th-border-light">
+                      {consolidated.map((h) => (
+                        <ConsolidatedHoldingRow key={h.symbol} holding={h} totalValue={result.summary.totalValue} score={stockScores.get(h.symbol)} />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Price note */}
-              <p className="text-xs text-th-text-4 text-center mt-6">{result.priceNote}</p>
-            </LoginGate>
+                <p className="text-xs text-th-text-4 text-center mt-6">{result.priceNote}</p>
+              </>
+            )}
           </div>
         )}
       </div>

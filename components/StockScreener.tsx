@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import { useSubscription } from "./SubscriptionProvider";
 import StockLogo from "./StockLogo";
 import LoginGate from "./LoginGate";
+import UpgradeGate from "./UpgradeGate";
 
 interface Stock {
   symbol: string;
@@ -98,6 +100,7 @@ const HEADER_TOOLTIPS: Record<string, string> = {
 
 export default function StockScreener() {
   const { isSignedIn } = useUser();
+  const { isPremium } = useSubscription();
   const isGuest = !isSignedIn;
   const router = useRouter();
   const [data, setData] = useState<ScreenerData | null>(null);
@@ -546,16 +549,22 @@ export default function StockScreener() {
 
           {/* Rows */}
           {!loading && data?.stocks && (() => {
+            // Non-auth: 3 visible rows with login gate
+            // Free tier: 1 visible row with upgrade gate
+            // Premium: all visible
             const GUEST_VISIBLE_ROWS = 3;
-            const visibleStocks = isGuest ? data.stocks.slice(0, GUEST_VISIBLE_ROWS) : data.stocks;
-            const hiddenStocks = isGuest ? data.stocks.slice(GUEST_VISIBLE_ROWS) : [];
+            const FREE_VISIBLE_ROWS = 1;
+            const visibleCount = isGuest ? GUEST_VISIBLE_ROWS : (!isPremium ? FREE_VISIBLE_ROWS : data.stocks.length);
+            const visibleStocks = data.stocks.slice(0, visibleCount);
+            const hiddenStocks = data.stocks.slice(visibleCount);
+            const needsGate = !isPremium && hiddenStocks.length > 0;
 
             const StockRow = ({ stock, blurScore }: { stock: Stock; blurScore?: boolean }) => (
               <button
                 key={stock.symbol}
-                onClick={() => !isGuest && navigateToStock(stock.symbol)}
+                onClick={() => isPremium && navigateToStock(stock.symbol)}
                 className={`w-full grid grid-cols-10 sm:grid-cols-12 gap-1 sm:gap-2 px-3 sm:px-4 py-3 border-b border-th-border-light last:border-0 items-center transition-colors text-left min-h-[44px] ${
-                  isGuest ? "cursor-default" : "hover:bg-th-accent-bg/40 cursor-pointer"
+                  !isPremium ? "cursor-default" : "hover:bg-th-accent-bg/40 cursor-pointer"
                 }`}
               >
                 <div className="col-span-3 min-w-0 flex items-center gap-1.5 sm:gap-2">
@@ -605,10 +614,10 @@ export default function StockScreener() {
                 {visibleStocks.map((stock) => (
                   <StockRow key={stock.symbol} stock={stock} blurScore={isGuest} />
                 ))}
-                {isGuest && hiddenStocks.length > 0 && (
+                {needsGate && isGuest && (
                   <LoginGate
                     locked={true}
-                    message="Sign up to view all stocks"
+                    message="Create a free account to view stocks"
                     subMessage={`${data.totalCount.toLocaleString()} stocks with Backtest Scores, metrics, and AI analysis`}
                     blur="heavy"
                   >
@@ -617,6 +626,18 @@ export default function StockScreener() {
                     ))}
                   </LoginGate>
                 )}
+                {needsGate && !isGuest && (
+                  <UpgradeGate
+                    locked={true}
+                    message="Upgrade to view all stocks"
+                    subMessage={`${data.totalCount.toLocaleString()} stocks with full scores, metrics, and AI analysis`}
+                    blur="heavy"
+                  >
+                    {hiddenStocks.slice(0, 8).map((stock) => (
+                      <StockRow key={stock.symbol} stock={stock} />
+                    ))}
+                  </UpgradeGate>
+                )}
               </>
             );
           })()}
@@ -624,7 +645,7 @@ export default function StockScreener() {
         </div>
 
         {/* Pagination */}
-        {!isGuest && totalPages > 1 && (
+        {isPremium && totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 mt-6">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}

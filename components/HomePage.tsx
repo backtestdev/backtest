@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
+import Link from "next/link";
 import { useUser, SignUpButton, SignInButton } from "@clerk/nextjs";
+import { useSubscription } from "@/components/SubscriptionProvider";
+import { PLANS } from "@/lib/subscription";
 import BacktestInput from "@/components/BacktestInput";
 import ResultsDisplay from "@/components/ResultsDisplay";
 import Leaderboard from "@/components/Leaderboard";
 import Toast from "@/components/Toast";
 import { BacktestResult, StructuredParameters, ParsingMethod } from "@/lib/types";
-
-const FREE_RUN_LIMIT = 1;
-const STORAGE_KEY = "backtest_free_runs";
 
 interface ToastState {
   message: string;
@@ -18,6 +18,7 @@ interface ToastState {
 
 export default function HomePage() {
   const { isSignedIn } = useUser();
+  const { isPremium, backtestsUsed, backtestsRemaining, canRunBacktest, incrementBacktestUsage } = useSubscription();
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,20 +31,24 @@ export default function HomePage() {
   const [stockUniverseSize, setStockUniverseSize] = useState<number | undefined>();
   const [warnings, setWarnings] = useState<string[] | undefined>();
   const [stockSourceError, setStockSourceError] = useState<string | undefined>();
-  const [freeRunsUsed, setFreeRunsUsed] = useState(0);
 
-  // Load free run count from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setFreeRunsUsed(parseInt(stored, 10) || 0);
-    } catch { /* SSR or private browsing */ }
-  }, []);
+  // Show login prompt for non-auth users
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   const isGuest = !isSignedIn;
-  const freeRunsExhausted = isGuest && freeRunsUsed >= FREE_RUN_LIMIT;
 
   const runBacktest = useCallback(async (strategy: string, structuredParams?: StructuredParameters) => {
+    // Non-auth: show login prompt instead of running
+    if (!isSignedIn) {
+      setShowLoginPrompt(true);
+      return;
+    }
+
+    // Free tier: check quota (skip for param updates)
+    if (!isPremium && !structuredParams && !canRunBacktest) {
+      return; // Shouldn't reach here, UI prevents it
+    }
+
     if (structuredParams) {
       setIsUpdating(true);
     } else {
@@ -66,7 +71,17 @@ export default function HomePage() {
 
       const data = await res.json();
 
-      // Always update status info from response
+      // Server rejected due to quota
+      if (res.status === 429) {
+        setError(data.error || "Monthly backtest limit reached. Upgrade for unlimited access.");
+        return;
+      }
+      // Server rejected due to auth
+      if (res.status === 401) {
+        setShowLoginPrompt(true);
+        return;
+      }
+
       if (data.parsingMethod) setParsingMethod(data.parsingMethod);
       if (data.dataSource) setDataSource(data.dataSource);
       if (data.stockUniverseSize) setStockUniverseSize(data.stockUniverseSize);
@@ -81,11 +96,9 @@ export default function HomePage() {
         }
       } else {
         setResult(data);
-        // Track free runs for guests
-        if (!isSignedIn && !structuredParams) {
-          const newCount = freeRunsUsed + 1;
-          setFreeRunsUsed(newCount);
-          try { localStorage.setItem(STORAGE_KEY, String(newCount)); } catch { /* ignore */ }
+        // Increment client-side counter for UI feedback
+        if (!structuredParams) {
+          incrementBacktestUsage();
         }
         if (structuredParams) {
           setToast({ message: "Results updated with your adjustments", type: "success" });
@@ -102,11 +115,16 @@ export default function HomePage() {
       setIsLoading(false);
       setIsUpdating(false);
     }
-  }, [isSignedIn, freeRunsUsed]);
+  }, [isSignedIn, isPremium, canRunBacktest, incrementBacktestUsage]);
 
   const handleAddToLeaderboard = useCallback(
     async (name: string, isPublic: boolean = true): Promise<{ ok: boolean; error?: string }> => {
       if (!result) return { ok: false, error: "No result to save" };
+
+      // Block free tier from saving
+      if (!isPremium) {
+        return { ok: false, error: "Upgrade to Premium to save strategies" };
+      }
 
       const return1yr = result.timeHorizons.find((h) => h.period === "1yr")?.strategyReturn ?? 0;
       const return5yr = result.timeHorizons.find((h) => h.period === "5yr")?.strategyReturn ?? 0;
@@ -138,7 +156,7 @@ export default function HomePage() {
         }
 
         setLeaderboardKey((k) => k + 1);
-        setLeaderboardTab("personal"); // Switch to personal view to show the new entry
+        setLeaderboardTab("personal");
         setToast({ message: "Strategy saved to My Strategies!", type: "success" });
         return { ok: true };
       } catch {
@@ -147,7 +165,7 @@ export default function HomePage() {
         return { ok: false, error: errMsg };
       }
     },
-    [result]
+    [result, isPremium]
   );
 
   const handleUpdateParams = useCallback(
@@ -188,7 +206,8 @@ export default function HomePage() {
 
       {/* Main input section */}
       <main className="px-4 sm:px-6 py-6 sm:py-8">
-        {freeRunsExhausted ? (
+        {/* Login prompt modal for non-auth users */}
+        {showLoginPrompt && !isSignedIn && (
           <div className="max-w-3xl mx-auto mb-8">
             <div className="bg-th-surface border border-th-border rounded-2xl p-6 sm:p-8 text-center">
               <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-th-accent-bg flex items-center justify-center">
@@ -196,14 +215,14 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                 </svg>
               </div>
-              <h2 className="text-lg font-bold text-th-text">You&apos;ve used your free backtest</h2>
+              <h2 className="text-lg font-bold text-th-text">Create a free account to backtest</h2>
               <p className="text-sm text-th-text-3 mt-2 max-w-md mx-auto">
-                Create a free account to run unlimited backtests, save strategies to the leaderboard, and access all features.
+                Sign up for free to run {PLANS.free.backtestsPerMonth} backtests per month. Upgrade to Premium for unlimited access.
               </p>
               <div className="flex items-center justify-center gap-3 mt-5">
                 <SignUpButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
                   <button className="px-6 py-2.5 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors">
-                    Sign Up Free
+                    Create Free Account
                   </button>
                 </SignUpButton>
                 <SignInButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
@@ -212,18 +231,66 @@ export default function HomePage() {
                   </button>
                 </SignInButton>
               </div>
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="mt-3 text-xs text-th-text-4 hover:text-th-text-3 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Usage limit reached for free tier */}
+        {isSignedIn && !isPremium && !canRunBacktest ? (
+          <div className="max-w-3xl mx-auto mb-8">
+            <div className="bg-th-surface border border-th-border rounded-2xl p-6 sm:p-8 text-center">
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-th-accent to-th-accent-hover flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-th-text">
+                You&apos;ve used all {PLANS.free.backtestsPerMonth} free backtests this month
+              </h2>
+              <p className="text-sm text-th-text-3 mt-2 max-w-md mx-auto">
+                Upgrade to Premium for unlimited backtests, strategy saving, and full access to all features.
+              </p>
+              <Link
+                href="/pricing"
+                className="inline-flex items-center gap-2 mt-5 px-6 py-2.5 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+                </svg>
+                Upgrade to Premium
+              </Link>
+              <p className="text-[10px] text-th-text-4 mt-3">7-day free trial. Cancel anytime.</p>
             </div>
           </div>
         ) : (
-          <BacktestInput
-            onSubmit={runBacktest}
-            isLoading={isLoading}
-            parsingMethod={parsingMethod}
-            dataSource={dataSource}
-            stockUniverseSize={stockUniverseSize}
-            warnings={warnings}
-            stockSourceError={stockSourceError}
-          />
+          <>
+            {/* Usage counter for free tier */}
+            {isSignedIn && !isPremium && (
+              <div className="max-w-3xl mx-auto mb-3 text-center">
+                <p className="text-xs text-th-text-3">
+                  {backtestsRemaining} of {PLANS.free.backtestsPerMonth} free backtest{PLANS.free.backtestsPerMonth > 1 ? "s" : ""} remaining this month
+                  {backtestsUsed > 0 && (
+                    <> &middot; <Link href="/pricing" className="text-th-accent hover:underline">Upgrade for unlimited</Link></>
+                  )}
+                </p>
+              </div>
+            )}
+            <BacktestInput
+              onSubmit={runBacktest}
+              isLoading={isLoading}
+              parsingMethod={parsingMethod}
+              dataSource={dataSource}
+              stockUniverseSize={stockUniverseSize}
+              warnings={warnings}
+              stockSourceError={stockSourceError}
+            />
+          </>
         )}
 
         {/* Error message */}
@@ -246,6 +313,7 @@ export default function HomePage() {
             onUpdateParams={handleUpdateParams}
             isUpdating={isUpdating}
             isGuest={isGuest}
+            isPremium={isPremium}
           />
         )}
 

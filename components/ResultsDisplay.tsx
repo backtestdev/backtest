@@ -15,6 +15,7 @@ interface ResultsDisplayProps {
   onUpdateParams: (params: StructuredParameters) => void;
   isUpdating: boolean;
   isGuest?: boolean;
+  isPremium?: boolean;
 }
 
 const GUEST_VISIBLE_STOCKS = 5;
@@ -26,7 +27,7 @@ const PERIOD_YEARS: Record<string, number> = {
   "20yr": 20,
 };
 
-export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdateParams, isUpdating, isGuest }: ResultsDisplayProps) {
+export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdateParams, isUpdating, isGuest, isPremium }: ResultsDisplayProps) {
   const { isSignedIn } = useUser();
   const [showLeaderboardPrompt, setShowLeaderboardPrompt] = useState(false);
   const [leaderboardName, setLeaderboardName] = useState("");
@@ -333,15 +334,22 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         Uses representative historical data for demonstration purposes.
       </p>
 
-      {/* Save strategy */}
+      {/* Save strategy — premium only */}
       {!saved && (
         <div className="mt-6 text-center">
           {!isSignedIn ? (
             <SignUpButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.href : "/"}>
               <button className="px-6 py-3 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors">
-                Sign up to save strategies
+                Create free account to save strategies
               </button>
             </SignUpButton>
+          ) : !isPremium ? (
+            <Link href="/pricing" className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-th-accent bg-th-accent-bg border border-th-accent-border rounded-xl hover:bg-th-accent-muted transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+              </svg>
+              Upgrade to save strategies
+            </Link>
           ) : !showLeaderboardPrompt ? (
             <button
               onClick={() => setShowLeaderboardPrompt(true)}

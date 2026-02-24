@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useUser, SignUpButton } from "@clerk/nextjs";
+import { useSubscription } from "./SubscriptionProvider";
+import UpgradeGate from "./UpgradeGate";
+import LoginGate from "./LoginGate";
 import StockLogo from "./StockLogo";
 
 // --- Types ---
@@ -103,6 +106,7 @@ function timeAgo(dateStr: string): string {
 
 export default function SignalTracker() {
   const { isSignedIn } = useUser();
+  const { isPremium } = useSubscription();
   const [picks, setPicks] = useState<Pick[]>([]);
   const [performance, setPerformance] = useState<PerformancePoint[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -161,7 +165,22 @@ export default function SignalTracker() {
     );
   }
 
-  const filteredPicks = filter === "all" ? picks : picks.filter((p) => p.status === filter);
+  const activePicks = picks.filter((p) => p.status === "active");
+  const soldPicks = picks.filter((p) => p.status === "sold");
+  const filteredPicks = filter === "all" ? picks : filter === "active" ? activePicks : soldPicks;
+
+  // Most recent active pick = premium sample for free users
+  const mostRecentActivePick = activePicks.length > 0
+    ? activePicks.reduce((latest, p) => p.pickDate > latest.pickDate ? p : latest, activePicks[0])
+    : null;
+
+  const getPickVisibility = (pick: Pick): "visible" | "login" | "upgrade" => {
+    if (pick.status === "sold") return "visible";
+    if (!isSignedIn) return "login";
+    if (isPremium) return "visible";
+    if (mostRecentActivePick && pick.id === mostRecentActivePick.id) return "visible";
+    return "upgrade";
+  };
 
   return (
     <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
@@ -177,49 +196,45 @@ export default function SignalTracker() {
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <StatCard
-              label="Fund Value"
-              value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"}
-              color="neutral"
-            />
-            <StatCard
-              label="Fund Return"
-              value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(1)}%`}
-              color={stats.totalReturn >= 0 ? "positive" : "negative"}
-            />
-            <StatCard
-              label="S&P 500"
-              value={`${stats.benchmarkReturn >= 0 ? "+" : ""}${stats.benchmarkReturn.toFixed(1)}%`}
-              color="neutral"
-            />
-            <StatCard
-              label="Alpha"
-              value={`${stats.alpha >= 0 ? "+" : ""}${stats.alpha.toFixed(1)}%`}
-              color={stats.alpha >= 0 ? "positive" : "negative"}
-            />
-          </div>
+          <GateWrapper
+            isSignedIn={!!isSignedIn}
+            loginMessage="Create a free account to view fund performance"
+            loginSub="Track our AI-powered stock picks vs S&P 500 in real time"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              <StatCard label="Fund Value" value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"} color="neutral" />
+              <StatCard label="Fund Return" value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(1)}%`} color={stats.totalReturn >= 0 ? "positive" : "negative"} />
+              <StatCard label="S&P 500" value={`${stats.benchmarkReturn >= 0 ? "+" : ""}${stats.benchmarkReturn.toFixed(1)}%`} color="neutral" />
+              <StatCard label="Alpha" value={`${stats.alpha >= 0 ? "+" : ""}${stats.alpha.toFixed(1)}%`} color={stats.alpha >= 0 ? "positive" : "negative"} />
+            </div>
+          </GateWrapper>
         )}
 
         {/* Performance Chart */}
         {performance.length > 2 && (
-          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-6 shadow-sm">
-            <h2 className="text-sm font-semibold text-th-text mb-4">Fund Performance vs S&P 500</h2>
-            <PerformanceChart data={performance} />
-            <div className="flex items-center justify-center gap-6 mt-3">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-0.5 bg-th-accent rounded-full" />
-                <span className="text-[11px] text-th-text-3">Signal Fund</span>
+          <GateWrapper
+            isSignedIn={!!isSignedIn}
+            loginMessage="Sign up free to view the performance chart"
+            blur="heavy"
+          >
+            <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-6 shadow-sm">
+              <h2 className="text-sm font-semibold text-th-text mb-4">Fund Performance vs S&P 500</h2>
+              <PerformanceChart data={performance} />
+              <div className="flex items-center justify-center gap-6 mt-3">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-0.5 bg-th-accent rounded-full" />
+                  <span className="text-[11px] text-th-text-3">Signal Fund</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-0.5 rounded-full" style={{ background: "var(--text-4)" }} />
+                  <span className="text-[11px] text-th-text-3">S&P 500</span>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-0.5 rounded-full" style={{ background: "var(--text-4)" }} />
-                <span className="text-[11px] text-th-text-3">S&P 500</span>
-              </div>
+              <p className="text-[10px] text-th-text-4 text-center mt-3">
+                Score-weighted portfolio with monthly rebalancing. Higher-scoring picks receive larger allocations.
+              </p>
             </div>
-            <p className="text-[10px] text-th-text-4 text-center mt-3">
-              Score-weighted portfolio with monthly rebalancing. Higher-scoring picks receive larger allocations.
-            </p>
-          </div>
+          </GateWrapper>
         )}
 
         {/* Picks Section */}
@@ -237,8 +252,8 @@ export default function SignalTracker() {
                       : "text-th-text-3 hover:text-th-text-2 hover:bg-th-hover"
                   }`}
                 >
-                  {f} {f === "active" ? `(${picks.filter((p) => p.status === "active").length})` :
-                       f === "sold" ? `(${picks.filter((p) => p.status === "sold").length})` :
+                  {f} {f === "active" ? `(${activePicks.length})` :
+                       f === "sold" ? `(${soldPicks.length})` :
                        `(${picks.length})`}
                 </button>
               ))}
@@ -249,12 +264,11 @@ export default function SignalTracker() {
             <p className="text-sm text-th-text-3 text-center py-8">No picks to display.</p>
           ) : (
             <div className="space-y-2">
-              {/* Single CTA when viewing active tab while signed out */}
               {filter === "active" && !isSignedIn && (
                 <div className="flex items-center justify-between bg-th-surface rounded-xl border border-th-accent-border px-5 py-3.5">
                   <div>
                     <p className="text-sm font-semibold text-th-text">Active Signals</p>
-                    <p className="text-xs text-th-text-3 mt-0.5">Sign in to see current stock picks, allocations, and live scores</p>
+                    <p className="text-xs text-th-text-3 mt-0.5">Create a free account to see current stock picks and allocations</p>
                   </div>
                   <SignUpButton mode="modal">
                     <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
@@ -264,14 +278,24 @@ export default function SignalTracker() {
                 </div>
               )}
               {filteredPicks.map((pick) => {
-                const blurred = pick.status === "active" && !isSignedIn;
+                const visibility = getPickVisibility(pick);
+                const isSample = isSignedIn && !isPremium && pick.status === "active" && mostRecentActivePick?.id === pick.id;
+
                 return (
                   <div key={pick.id} className="relative">
-                    {blurred && filter !== "active" && (
+                    {isSample && (
+                      <div className="absolute -top-2 right-3 z-20">
+                        <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-th-accent text-white rounded-full shadow-sm">
+                          Premium Sample
+                        </span>
+                      </div>
+                    )}
+
+                    {visibility === "login" && filter !== "active" && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center bg-th-surface/60 backdrop-blur-sm rounded-xl">
                         <div className="text-center px-4">
                           <p className="text-sm font-semibold text-th-text mb-1">Active Signal</p>
-                          <p className="text-xs text-th-text-3 mb-2">Sign in to see active stock picks and allocations</p>
+                          <p className="text-xs text-th-text-3 mb-2">Create a free account to see active stock picks</p>
                           <SignUpButton mode="modal">
                             <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity">
                               Sign Up Free
@@ -280,14 +304,40 @@ export default function SignalTracker() {
                         </div>
                       </div>
                     )}
-                    <PickCard
-                      pick={pick}
-                      expanded={!blurred && expandedPick === pick.id}
-                      onToggle={() => !blurred && setExpandedPick(expandedPick === pick.id ? null : pick.id)}
-                    />
+
+                    {visibility === "upgrade" ? (
+                      <UpgradeGate
+                        locked={true}
+                        message="Upgrade for all active signals"
+                        subMessage="Get every signal with live scoring and email alerts"
+                        blur="medium"
+                      >
+                        <PickCard pick={pick} expanded={false} onToggle={() => {}} />
+                      </UpgradeGate>
+                    ) : (
+                      <PickCard
+                        pick={pick}
+                        expanded={(visibility === "visible") && expandedPick === pick.id}
+                        onToggle={() => visibility === "visible" && setExpandedPick(expandedPick === pick.id ? null : pick.id)}
+                      />
+                    )}
                   </div>
                 );
               })}
+
+              {isSignedIn && !isPremium && filter !== "sold" && activePicks.length > 1 && (
+                <div className="flex items-center justify-between bg-th-accent-bg rounded-xl border border-th-accent-border px-5 py-3.5 mt-2">
+                  <div>
+                    <p className="text-sm font-semibold text-th-text">
+                      {activePicks.length - 1} more active signal{activePicks.length - 1 > 1 ? "s" : ""} available
+                    </p>
+                    <p className="text-xs text-th-text-3 mt-0.5">Upgrade to Premium for all signals with email notifications</p>
+                  </div>
+                  <Link href="/pricing" className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
+                    Upgrade
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -305,13 +355,31 @@ export default function SignalTracker() {
           </div>
         )}
 
-        {/* Disclaimer */}
         <p className="text-[10px] text-th-text-4 text-center mt-3">
           Past performance does not guarantee future results. Not financial advice.
         </p>
       </div>
     </div>
   );
+}
+
+// --- Gate Wrapper (login gate only, passes through if signed in) ---
+
+function GateWrapper({ children, isSignedIn, loginMessage, loginSub, blur = "medium" }: {
+  children: React.ReactNode;
+  isSignedIn: boolean;
+  loginMessage: string;
+  loginSub?: string;
+  blur?: "light" | "medium" | "heavy";
+}) {
+  if (!isSignedIn) {
+    return (
+      <LoginGate locked={true} message={loginMessage} subMessage={loginSub} blur={blur}>
+        {children}
+      </LoginGate>
+    );
+  }
+  return <>{children}</>;
 }
 
 // --- Stat Card ---
@@ -364,8 +432,6 @@ function PickCard({ pick, expanded, onToggle }: {
   const returnColor = pick.returnPct != null
     ? pick.returnPct >= 0 ? "text-th-positive" : "text-th-negative"
     : "text-th-text-3";
-  // Display score: for active picks show current score (with entry fallback),
-  // for sold picks show entry score (what it was signalled at)
   const displayScore = isActive
     ? (pick.currentScore ?? pick.entryScore)
     : pick.entryScore;
@@ -375,7 +441,6 @@ function PickCard({ pick, expanded, onToggle }: {
       isActive ? "border-th-border-light bg-th-inset" : "border-th-border-light bg-th-bg opacity-75"
     }`}>
       <div className="p-3 sm:p-4">
-        {/* Main row */}
         <div className="flex items-center gap-3">
           <Link href={`/screener/${pick.symbol}`} className="flex-shrink-0">
             <StockLogo ticker={pick.symbol} sector={pick.sector || undefined} size="sm" />
@@ -396,7 +461,6 @@ function PickCard({ pick, expanded, onToggle }: {
             <p className="text-xs text-th-text-3 truncate">{pick.companyName}</p>
           </div>
 
-          {/* Right side: return + date */}
           <div className="text-right flex-shrink-0 hidden sm:block">
             <p className={`text-sm font-bold ${returnColor}`}>
               {pick.returnPct != null ? `${pick.returnPct >= 0 ? "+" : ""}${pick.returnPct.toFixed(1)}%` : "\u2014"}
@@ -405,7 +469,6 @@ function PickCard({ pick, expanded, onToggle }: {
             <p className="text-[10px] text-th-text-4">{formatDate(pick.pickDate)}</p>
           </div>
 
-          {/* Mobile: return + date */}
           <div className="text-right flex-shrink-0 sm:hidden">
             <p className={`text-sm font-bold ${returnColor}`}>
               {pick.returnPct != null ? `${pick.returnPct >= 0 ? "+" : ""}${pick.returnPct.toFixed(1)}%` : "\u2014"}
@@ -413,7 +476,6 @@ function PickCard({ pick, expanded, onToggle }: {
             <p className="text-[10px] text-th-text-3 font-medium">{timeAgo(pick.pickDate)}</p>
           </div>
 
-          {/* Expand button */}
           <button onClick={onToggle} className="flex-shrink-0 p-1 text-th-text-3 hover:text-th-text transition-colors">
             <svg className={`w-4 h-4 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -421,10 +483,8 @@ function PickCard({ pick, expanded, onToggle }: {
           </button>
         </div>
 
-        {/* Expanded details */}
         {expanded && (
           <div className="mt-3 pt-3 border-t border-th-border-light">
-            {/* Score display: signal score (at pick time) + live score (matches screener) */}
             <div className="flex items-center gap-3 mb-3 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] text-th-text-4 uppercase">Signal Score</span>
@@ -544,19 +604,16 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
   const benchmarkPath = data.map((d, i) => `${i === 0 ? "M" : "L"} ${getX(i)} ${getY(d.benchmarkValue)}`).join(" ");
   const fillPath = `${portfolioPath} L ${getX(data.length - 1)},${pad.top + chartH} L ${getX(0)},${pad.top + chartH} Z`;
 
-  // Y-axis ticks
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((pct) => ({
     value: minVal + pct * range,
     y: pad.top + chartH - pct * chartH,
   }));
 
-  // Format chart dollar values with commas
   function formatChartDollar(v: number): string {
     if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
     return "$" + Math.round(v).toLocaleString("en-US");
   }
 
-  // X-axis labels
   const dateLabels: { label: string; x: number }[] = [];
   const step = Math.max(1, Math.floor(data.length / 6));
   for (let i = 0; i < data.length; i += step) {
@@ -575,7 +632,6 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
         </linearGradient>
       </defs>
 
-      {/* Grid lines */}
       {yTicks.map((t, i) => (
         <g key={i}>
           <line x1={pad.left} y1={t.y} x2={width - pad.right} y2={t.y} stroke="var(--border-light)" strokeWidth="1" />
@@ -585,19 +641,14 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
         </g>
       ))}
 
-      {/* Portfolio fill + line */}
       <path d={fillPath} fill="url(#stPerfGrad)" />
       <path d={portfolioPath} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-
-      {/* Benchmark line */}
       <path d={benchmarkPath} fill="none" stroke="var(--text-4)" strokeWidth="1.5" strokeLinejoin="round" strokeDasharray="4 3" />
 
-      {/* Hover crosshair */}
       {hp && (
         <line x1={hp.x} y1={pad.top} x2={hp.x} y2={pad.top + chartH} stroke="var(--text-4)" strokeWidth="1" strokeDasharray="4 3" />
       )}
 
-      {/* Hit areas */}
       {data.map((_, i) => {
         const hitW = chartW / data.length;
         return (
@@ -606,7 +657,6 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
         );
       })}
 
-      {/* Hover dots */}
       {hp && hoveredIdx !== null && (
         <>
           <circle cx={hp.x} cy={hp.pY} r={4} fill="var(--accent)" stroke="var(--bg-surface)" strokeWidth="2" />
@@ -614,7 +664,6 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
         </>
       )}
 
-      {/* Hover tooltip */}
       {hp && hd && (
         <g>
           <rect x={Math.max(pad.left, Math.min(width - pad.right - 150, hp.x - 75))} y={pad.top - 2}
@@ -630,7 +679,6 @@ function PerformanceChart({ data }: { data: PerformancePoint[] }) {
         </g>
       )}
 
-      {/* X-axis labels */}
       {dateLabels.map((dl, i) => (
         <text key={i} x={dl.x} y={height - 6} textAnchor="middle" className="text-[11px]" fill="var(--text-2)">
           {dl.label}
