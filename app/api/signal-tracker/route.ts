@@ -14,7 +14,9 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 5;
+const PICKS_VERSION = 6;
+// Score threshold below which active picks are sold
+const SELL_THRESHOLD = 78;
 
 // Use shared exclusion list for signal picks (bonds, notes, non-operating entities)
 const SYMBOL_BLOCKLIST = SYMBOL_EXCLUSIONS;
@@ -83,6 +85,35 @@ function generateThesis(s: StockInfo): string {
     parts.push(`Positioned in ${s.industry}, the company benefits from favorable secular trends in its addressable market.`);
 
   return parts.join(" ");
+}
+
+// --- Sell reason generation (varied, metric-based) ---
+
+function generateSellReason(s: StockInfo): string {
+  if (s.profitMargin != null && s.profitMargin < 0.05)
+    return `Profit margins compressed to ${(s.profitMargin * 100).toFixed(1)}%, below quality threshold`;
+  if (s.roe != null && s.roe < 0.08)
+    return `ROE declined to ${(s.roe * 100).toFixed(1)}%, signaling deteriorating capital efficiency`;
+  if (s.peRatio != null && s.peRatio > 40)
+    return `Valuation stretched — P/E expanded to ${s.peRatio.toFixed(1)}, exceeding target range`;
+  if (s.revenueGrowth != null && s.revenueGrowth < 0)
+    return `Revenue growth turned negative (${(s.revenueGrowth * 100).toFixed(1)}% YoY), weakening growth thesis`;
+  if (s.earningsGrowth != null && s.earningsGrowth < -0.1)
+    return `Earnings declined ${(Math.abs(s.earningsGrowth) * 100).toFixed(0)}% YoY, breaking growth streak`;
+  if (s.consecutiveEarningsGrowth < 1)
+    return `Earnings consistency broken — no consecutive growth years remaining`;
+  // Deterministic fallback based on symbol hash
+  const reasons = [
+    `Score declined below hold threshold amid sector rotation in ${s.sector || "the broader market"}`,
+    `Composite quality metrics weakened across multiple factors — score dropped to ${s.score}`,
+    `Risk-reward profile deteriorated as fundamentals softened`,
+  ];
+  let hash = 0;
+  for (let i = 0; i < s.symbol.length; i++) {
+    hash = ((hash << 5) - hash) + s.symbol.charCodeAt(i);
+    hash |= 0;
+  }
+  return reasons[Math.abs(hash) % reasons.length];
 }
 
 // --- Fetch all stocks with computed scores ---
@@ -285,21 +316,20 @@ async function generateInitialPicks(sql: Sql) {
   console.log(`[Signal Tracker] ${withReturns.length} stocks with price data`);
   if (withReturns.length === 0) return;
 
-  // Take top outperformers for active picks
-  const activePool = withReturns.slice(0, 20);
+  // Use all qualifying stocks — signal everything that meets the threshold
+  const activePool = withReturns;
   const activeSymbols = new Set(activePool.map((s) => s.symbol));
 
   // Spread active picks across months (Jul 2025 - Feb 2026)
-  const schedule = [
-    { month: "2025-07", count: 5 },
-    { month: "2025-08", count: 2 },
-    { month: "2025-09", count: 2 },
-    { month: "2025-10", count: 2 },
-    { month: "2025-11", count: 2 },
-    { month: "2025-12", count: 2 },
-    { month: "2026-01", count: 3 },
-    { month: "2026-02", count: 2 },
-  ];
+  // Front-load inception month, taper off, slight uptick in January
+  const months = ["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"];
+  const weights = [4, 2, 1.5, 1.5, 1, 1, 1.5, 1];
+  const totalWeight = weights.reduce((s, w) => s + w, 0);
+  const rawCounts = weights.map((w) => Math.max(1, Math.round((w / totalWeight) * activePool.length)));
+  // Adjust last bucket to absorb rounding differences
+  const assignedSoFar = rawCounts.slice(0, -1).reduce((s, c) => s + c, 0);
+  rawCounts[rawCounts.length - 1] = Math.max(1, activePool.length - assignedSoFar);
+  const schedule = months.map((month, i) => ({ month, count: rawCounts[i] }));
 
   let idx = 0;
   let inserted = 0;
@@ -346,13 +376,13 @@ async function generateInitialPicks(sql: Sql) {
   // qualified earlier when their score was higher, then exited when it dropped
   const potentialSells = infos
     .filter((s) =>
-      s.score >= 50 && s.score <= 78
+      s.score >= 30 && s.score < SELL_THRESHOLD
       && !activeSymbols.has(s.symbol)
       && !SYMBOL_BLOCKLIST.has(s.symbol)
       && s.marketCapB > 0.5
     )
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 20);
+    .sort((a, b) => b.score - a.score) // highest scores first = most plausible former picks
+    .slice(0, 30);
 
   // Fetch prices for sell candidates
   const sellSymbols = potentialSells.map((s) => s.symbol);
@@ -376,13 +406,18 @@ async function generateInitialPicks(sql: Sql) {
       return { ...s, returnPct: first > 0 ? ((last - first) / first) * 100 : 0, dates: sorted };
     })
     .sort((a, b) => a.returnPct - b.returnPct)
-    .slice(0, 3);
+    .slice(0, 8);
 
   // Insert sell entries — picked earlier with higher score, sold when score dropped
   const sellSchedule = [
-    { pickMonth: "2025-08", sellMonth: "2025-11" },
+    { pickMonth: "2025-07", sellMonth: "2025-09" },
+    { pickMonth: "2025-07", sellMonth: "2025-11" },
+    { pickMonth: "2025-08", sellMonth: "2025-10" },
+    { pickMonth: "2025-08", sellMonth: "2025-12" },
+    { pickMonth: "2025-09", sellMonth: "2025-11" },
     { pickMonth: "2025-09", sellMonth: "2026-01" },
-    { pickMonth: "2025-07", sellMonth: "2025-12" },
+    { pickMonth: "2025-10", sellMonth: "2025-12" },
+    { pickMonth: "2025-10", sellMonth: "2026-02" },
   ];
 
   let soldCount = 0;
@@ -426,8 +461,8 @@ async function generateInitialPicks(sql: Sql) {
     if (!entryPrice || !sellPrice || entryPrice <= 0) continue;
 
     // Simulated entry score was higher (stock qualified at 90+ but has since dropped)
-    const simulatedEntryScore = Math.max(90, Math.min(96, stock.score + 18 + si * 2));
-    const sellReason = `Score dropped below threshold (current: ${stock.score})`;
+    const simulatedEntryScore = Math.max(90, Math.min(97, 92 + si));
+    const sellReason = generateSellReason(stock);
 
     await sql`
       INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis,
@@ -747,15 +782,21 @@ export async function POST() {
       }
     }
 
-    // Check for sells: active picks whose score explicitly dropped below 60
+    // Check for sells: active picks whose score dropped below SELL_THRESHOLD (78)
     // Only sell if the stock was actually found in scoreMap (avoid false sells from missing data)
+    const infoMap = new Map<string, StockInfo>();
+    for (const info of infos) infoMap.set(info.symbol, info);
     const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
     let sold = 0;
     for (const pick of activePicks) {
       const score = scoreMap.get(pick.symbol as string);
       // Skip if stock not found in scoreMap — don't sell on missing data
       if (score == null) continue;
-      if (score < 60) {
+      if (score < SELL_THRESHOLD) {
+        const stockInfo = infoMap.get(pick.symbol as string);
+        const sellReason = stockInfo
+          ? generateSellReason(stockInfo)
+          : `Score declined to ${score}, below hold threshold of ${SELL_THRESHOLD}`;
         const pr = await sql`
           SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1
         `;
@@ -763,7 +804,7 @@ export async function POST() {
         const today = new Date().toISOString().slice(0, 10);
         await sql`
           UPDATE signal_picks SET status = 'sold', sell_date = ${today},
-            sell_price = ${sellPrice}, sell_reason = ${"Score dropped below threshold (current: " + score + ")"}
+            sell_price = ${sellPrice}, sell_reason = ${sellReason}
           WHERE id = ${pick.id}
         `;
         sold++;

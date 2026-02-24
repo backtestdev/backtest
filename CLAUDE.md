@@ -213,7 +213,7 @@ The Signal Tracker (`/`) is a fully automated stock-picking system:
 
 - **Inception:** July 1, 2025 with $10k simulated capital
 - **Pick generation:** Daily cron (`/api/admin/refresh-signals`) scores all stocks; those with score ≥90-95 (with market cap thresholds) become picks
-- **Sell logic:** Picks are sold when score drops below 60
+- **Sell logic:** Picks are sold when score drops below 78
 - **Performance:** Tracks monthly returns vs SPY benchmark, weighted by score
 - **Deduplication:** GOOG/GOOGL — GOOGL is kept, GOOG is discarded
 - **Data flow:** `refresh-signals` cron → `signal_picks` table → `signal-tracker` API → `SignalTracker.tsx` component
