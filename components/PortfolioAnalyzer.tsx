@@ -7,10 +7,15 @@ import LoginGate from "./LoginGate";
 
 // ── Types ──
 
+type AssetType = "stock" | "bond" | "mutual_fund" | "option" | "401k" | "crypto" | "other";
+
 interface Holding {
   symbol: string;
   shares: number;
   costBasis?: number;
+  assetType?: AssetType;
+  currentValue?: number;      // total current value (for non-share assets)
+  initialInvestment?: number; // total cost basis (for non-share assets)
 }
 
 interface EnrichedHolding {
@@ -24,6 +29,7 @@ interface EnrichedHolding {
   gainLoss: number | null;
   gainLossPct: number | null;
   sector: string;
+  assetType?: string;
 }
 
 interface SectorBreakdown {
@@ -107,6 +113,7 @@ interface ConsolidatedHolding {
   gainLoss: number | null;
   gainLossPct: number | null;
   sector: string;
+  assetType?: string;
   lots: EnrichedHolding[];
 }
 
@@ -123,9 +130,27 @@ const SECTOR_COLORS: Record<string, string> = {
   Utilities: "bg-teal-500",
   "Communication Services": "bg-indigo-500",
   "Index Fund": "bg-cyan-500",
+  "Fixed Income": "bg-amber-500",
+  "Derivatives": "bg-rose-500",
+  Retirement: "bg-sky-500",
+  Crypto: "bg-orange-400",
   Unknown: "bg-gray-400",
   Other: "bg-gray-500",
 };
+
+const ASSET_TYPES: { value: AssetType; label: string }[] = [
+  { value: "stock", label: "Stock" },
+  { value: "bond", label: "Bond" },
+  { value: "mutual_fund", label: "Mutual Fund" },
+  { value: "option", label: "Option" },
+  { value: "401k", label: "401k" },
+  { value: "crypto", label: "Crypto" },
+  { value: "other", label: "Other" },
+];
+
+function isSharesBased(type?: string): boolean {
+  return !type || type === "stock" || type === "mutual_fund";
+}
 
 // ── Helpers ──
 
@@ -166,6 +191,7 @@ function consolidateHoldings(holdings: EnrichedHolding[]): ConsolidatedHolding[]
       gainLoss,
       gainLossPct,
       sector: lots[0].sector,
+      assetType: lots[0].assetType,
       lots,
     };
   }).sort((a, b) => b.currentValue - a.currentValue);
@@ -252,30 +278,76 @@ function HoldingEntryRow({
   onUpdate: (h: Holding) => void;
   onRemove: () => void;
 }) {
+  const sharesBased = isSharesBased(holding.assetType);
+
+  const handleTypeChange = (newType: AssetType) => {
+    const wasSharesBased = isSharesBased(holding.assetType);
+    const willBeSharesBased = isSharesBased(newType);
+    if (wasSharesBased && !willBeSharesBased) {
+      onUpdate({ ...holding, assetType: newType, shares: 0, costBasis: undefined });
+    } else if (!wasSharesBased && willBeSharesBased) {
+      onUpdate({ ...holding, assetType: newType, currentValue: undefined, initialInvestment: undefined });
+    } else {
+      onUpdate({ ...holding, assetType: newType });
+    }
+  };
+
   return (
-    <div className="flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-1.5 sm:gap-2">
+      <select
+        value={holding.assetType || "stock"}
+        onChange={(e) => handleTypeChange(e.target.value as AssetType)}
+        className="w-[72px] sm:w-24 px-1 sm:px-2 py-2 text-xs sm:text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border text-th-text-2"
+      >
+        {ASSET_TYPES.map(t => (
+          <option key={t.value} value={t.value}>{t.label}</option>
+        ))}
+      </select>
       <input
         type="text"
         value={holding.symbol}
         onChange={(e) => onUpdate({ ...holding, symbol: e.target.value.toUpperCase() })}
-        placeholder="AAPL"
-        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm font-mono bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border uppercase"
+        placeholder={sharesBased ? "AAPL" : "Name"}
+        className="w-16 sm:w-24 px-2 sm:px-3 py-2 text-sm font-mono bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border uppercase"
       />
-      <input
-        type="number"
-        value={holding.shares || ""}
-        onChange={(e) => onUpdate({ ...holding, shares: Number(e.target.value) || 0 })}
-        placeholder="Shares"
-        className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
-      />
-      <input
-        type="number"
-        value={holding.costBasis || ""}
-        onChange={(e) => onUpdate({ ...holding, costBasis: Number(e.target.value) || undefined })}
-        placeholder="Avg cost"
-        step="0.01"
-        className="w-24 sm:w-28 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
-      />
+      {sharesBased ? (
+        <>
+          <input
+            type="number"
+            value={holding.shares || ""}
+            onChange={(e) => onUpdate({ ...holding, shares: Number(e.target.value) || 0 })}
+            placeholder="Shares"
+            className="w-20 sm:w-24 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
+          />
+          <input
+            type="number"
+            value={holding.costBasis || ""}
+            onChange={(e) => onUpdate({ ...holding, costBasis: Number(e.target.value) || undefined })}
+            placeholder="Avg cost"
+            step="0.01"
+            className="w-24 sm:w-28 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
+          />
+        </>
+      ) : (
+        <>
+          <input
+            type="number"
+            value={holding.currentValue || ""}
+            onChange={(e) => onUpdate({ ...holding, currentValue: Number(e.target.value) || undefined })}
+            placeholder="Current value"
+            step="0.01"
+            className="w-24 sm:w-28 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
+          />
+          <input
+            type="number"
+            value={holding.initialInvestment || ""}
+            onChange={(e) => onUpdate({ ...holding, initialInvestment: Number(e.target.value) || undefined })}
+            placeholder="Cost basis"
+            step="0.01"
+            className="w-24 sm:w-28 px-2 sm:px-3 py-2 text-sm bg-th-surface border border-th-border rounded-lg focus:outline-none focus:border-th-focus-border"
+          />
+        </>
+      )}
       <button
         onClick={onRemove}
         className="p-2 sm:p-1.5 text-th-text-4 hover:text-th-negative transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
@@ -388,6 +460,11 @@ function ConsolidatedHoldingRow({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="text-sm font-semibold text-th-text">{holding.symbol}</p>
+              {holding.assetType && !isSharesBased(holding.assetType) && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-th-surface border border-th-border text-th-text-3">
+                  {ASSET_TYPES.find(t => t.value === holding.assetType)?.label || holding.assetType}
+                </span>
+              )}
               {score !== undefined && (
                 <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
                   score >= 75 ? "bg-th-positive-bg text-th-positive" :
@@ -405,7 +482,11 @@ function ConsolidatedHoldingRow({
         </div>
         {/* Shares */}
         <div className="col-span-1 text-right">
-          <p className="text-sm text-th-text-2">{holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 3 })}</p>
+          {holding.totalShares > 0 ? (
+            <p className="text-sm text-th-text-2">{holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 3 })}</p>
+          ) : (
+            <span className="text-xs text-th-text-4">--</span>
+          )}
         </div>
         {/* Avg Cost */}
         <div className="col-span-2 text-right">
@@ -417,7 +498,11 @@ function ConsolidatedHoldingRow({
         </div>
         {/* Price */}
         <div className="col-span-2 text-right">
-          <p className="text-sm text-th-text-2">${holding.currentPrice.toFixed(2)}</p>
+          {holding.currentPrice > 0 ? (
+            <p className="text-sm text-th-text-2">${holding.currentPrice.toFixed(2)}</p>
+          ) : (
+            <span className="text-xs text-th-text-4">--</span>
+          )}
         </div>
         {/* Value + Weight */}
         <div className="col-span-2 text-right">
@@ -438,7 +523,9 @@ function ConsolidatedHoldingRow({
               </p>
             </>
           ) : (
-            <span className="text-xs text-th-text-4">--</span>
+            <span className="text-[10px] text-th-text-4 leading-tight">
+              {holding.assetType && !isSharesBased(holding.assetType) ? "No cost basis" : "--"}
+            </span>
           )}
         </div>
       </div>
@@ -699,14 +786,25 @@ export default function PortfolioAnalyzer() {
 
       if (data.holdings && data.holdings.length > 0) {
         // Map imported holdings to the form schema
+        const typeMap: Record<string, AssetType> = {
+          stock: "stock", etf: "stock", mutual_fund: "mutual_fund",
+          bond: "bond", crypto: "crypto", other: "other",
+        };
         setHoldings(
           data.holdings
             .filter((h: { assetType?: string }) => h.assetType !== "cash")
-            .map((h: { symbol?: string; quantity?: number; averageCostPerShare?: number | null }) => ({
-              symbol: (h.symbol || "").toUpperCase(),
-              shares: h.quantity || 0,
-              costBasis: h.averageCostPerShare ?? undefined,
-            }))
+            .map((h: { symbol?: string; quantity?: number; averageCostPerShare?: number | null; assetType?: string; currentValue?: number; costBasis?: number | null }) => {
+              const mapped = typeMap[h.assetType || "stock"] || "stock";
+              const sharesBased = isSharesBased(mapped);
+              return {
+                symbol: (h.symbol || "").toUpperCase(),
+                shares: h.quantity || 0,
+                costBasis: h.averageCostPerShare ?? undefined,
+                assetType: mapped,
+                currentValue: !sharesBased && h.currentValue ? h.currentValue : undefined,
+                initialInvestment: !sharesBased && h.costBasis ? h.costBasis : undefined,
+              };
+            })
         );
         setImportSummary(data.summary);
         setResult(null); // Clear previous analysis
@@ -744,9 +842,13 @@ export default function PortfolioAnalyzer() {
   }, []);
 
   const analyze = async () => {
-    const validHoldings = holdings.filter((h) => h.symbol.trim() && h.shares > 0);
+    const validHoldings = holdings.filter((h) => {
+      if (!h.symbol.trim()) return false;
+      if (isSharesBased(h.assetType)) return h.shares > 0;
+      return (h.currentValue ?? 0) > 0;
+    });
     if (validHoldings.length === 0) {
-      setError("Add at least one holding with a ticker and shares.");
+      setError("Add at least one holding with a ticker and shares (or current value for non-stock assets).");
       return;
     }
 
@@ -945,10 +1047,11 @@ export default function PortfolioAnalyzer() {
           <h2 ref={holdingsRef} className="text-sm font-semibold text-th-text-2 mb-3">Your Holdings</h2>
 
           {/* Column headers */}
-          <div className="flex items-center gap-2 sm:gap-3 mb-2 pl-0">
-            <span className="w-20 sm:w-24 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Ticker</span>
-            <span className="w-20 sm:w-24 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Shares</span>
-            <span className="w-24 sm:w-28 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Avg Cost</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-2 pl-0">
+            <span className="w-[72px] sm:w-24 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Type</span>
+            <span className="w-16 sm:w-24 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Ticker</span>
+            <span className="w-20 sm:w-24 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Qty / Value</span>
+            <span className="w-24 sm:w-28 text-[10px] font-medium text-th-text-3 uppercase tracking-wider">Cost</span>
           </div>
 
           {/* Holdings list */}
@@ -1025,7 +1128,11 @@ export default function PortfolioAnalyzer() {
           {/* Analyze button */}
           <button
             onClick={analyze}
-            disabled={loading || holdings.every((h) => !h.symbol.trim() || h.shares <= 0)}
+            disabled={loading || holdings.every((h) => {
+              if (!h.symbol.trim()) return true;
+              if (isSharesBased(h.assetType)) return h.shares <= 0;
+              return (h.currentValue ?? 0) <= 0;
+            })}
             className="mt-6 w-full py-3 px-6 text-sm font-semibold text-white bg-th-accent rounded-xl hover:bg-th-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
           >
             {loading ? (

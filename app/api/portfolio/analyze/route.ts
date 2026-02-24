@@ -8,6 +8,9 @@ interface Holding {
   symbol: string;
   shares: number;
   costBasis?: number; // per-share cost basis
+  assetType?: "stock" | "bond" | "mutual_fund" | "option" | "401k" | "crypto" | "other";
+  currentValue?: number;      // total current value (for non-share assets)
+  initialInvestment?: number; // total cost basis (for non-share assets)
 }
 
 interface UserProfile {
@@ -96,26 +99,54 @@ export async function POST(request: NextRequest) {
     const stockMap = new Map(stockRows.map((r) => [r.symbol as string, r]));
     const priceMap = new Map(priceRows.map((r) => [r.symbol as string, { price: Number(r.close_price), date: r.date }]));
 
+    // Asset type → sector category mapping for non-stock types
+    const assetTypeCategories: Record<string, string> = {
+      bond: "Fixed Income",
+      option: "Derivatives",
+      "401k": "Retirement",
+      crypto: "Crypto",
+    };
+
     // Build enriched holdings (one per input row — consolidation happens client-side)
     const enrichedHoldings = holdings.map((h) => {
       const sym = h.symbol.toUpperCase();
       const stock = stockMap.get(sym);
       const priceInfo = priceMap.get(sym);
       const isIndexFund = sym in INDEX_FUND_MAP;
-      // Price priority: stock_prices table → stocks.price → cost basis (for untracked funds) → 0
-      const dbPrice = priceInfo?.price || (stock?.price ? Number(stock.price) : 0);
-      const currentPrice = dbPrice > 0 ? dbPrice : (h.costBasis || 0);
-      const currentValue = currentPrice * h.shares;
-      const costBasisTotal = h.costBasis ? h.costBasis * h.shares : null;
-      const gainLoss = costBasisTotal !== null && dbPrice > 0 ? currentValue - costBasisTotal : null;
-      const gainLossPct = costBasisTotal !== null && costBasisTotal > 0 && dbPrice > 0
-        ? (currentValue - costBasisTotal) / costBasisTotal
-        : null;
+      const assetType = h.assetType || "stock";
+      const isValueBased = assetType !== "stock" && assetType !== "mutual_fund";
+
+      let currentPrice: number;
+      let currentValue: number;
+      let costBasisTotal: number | null;
+      let gainLoss: number | null;
+      let gainLossPct: number | null;
+
+      if (isValueBased && h.currentValue && h.currentValue > 0) {
+        // Non-stock with manual current value — use directly
+        currentValue = h.currentValue;
+        currentPrice = h.shares > 0 ? h.currentValue / h.shares : 0;
+        costBasisTotal = h.initialInvestment || null;
+        gainLoss = costBasisTotal !== null ? currentValue - costBasisTotal : null;
+        gainLossPct = costBasisTotal !== null && costBasisTotal > 0
+          ? (currentValue - costBasisTotal) / costBasisTotal : null;
+      } else {
+        // Stock/mutual fund or value-based without override: shares × price lookup
+        const dbPrice = priceInfo?.price || (stock?.price ? Number(stock.price) : 0);
+        currentPrice = dbPrice > 0 ? dbPrice : (h.costBasis || 0);
+        currentValue = currentPrice * h.shares;
+        costBasisTotal = h.costBasis ? h.costBasis * h.shares : null;
+        gainLoss = costBasisTotal !== null && dbPrice > 0 ? currentValue - costBasisTotal : null;
+        gainLossPct = costBasisTotal !== null && costBasisTotal > 0 && dbPrice > 0
+          ? (currentValue - costBasisTotal) / costBasisTotal : null;
+      }
 
       // Determine sector
       let sector: string;
       if (isIndexFund) {
         sector = "Index Fund";
+      } else if (isValueBased && assetTypeCategories[assetType]) {
+        sector = assetTypeCategories[assetType];
       } else if (stock) {
         sector = normalizeSector(stock.sector as string);
       } else {
@@ -134,6 +165,7 @@ export async function POST(request: NextRequest) {
         gainLoss,
         gainLossPct,
         sector,
+        assetType,
         metrics: stock ? {
           peRatio: stock.pe_ratio !== null ? Number(stock.pe_ratio) : null,
           roe: stock.roe !== null ? Number(stock.roe) : null,
@@ -183,10 +215,10 @@ export async function POST(request: NextRequest) {
         const openai = new OpenAI({ apiKey: openaiKey });
 
         // Consolidate holdings by symbol for the AI summary
-        const consolidated: Record<string, { name: string; totalValue: number; sector: string; metrics: typeof enrichedHoldings[0]["metrics"] }> = {};
+        const consolidated: Record<string, { name: string; totalValue: number; sector: string; assetType: string; metrics: typeof enrichedHoldings[0]["metrics"] }> = {};
         for (const h of enrichedHoldings) {
           if (!consolidated[h.symbol]) {
-            consolidated[h.symbol] = { name: h.name, totalValue: 0, sector: h.sector, metrics: h.metrics };
+            consolidated[h.symbol] = { name: h.name, totalValue: 0, sector: h.sector, assetType: h.assetType, metrics: h.metrics };
           }
           consolidated[h.symbol].totalValue += h.currentValue;
         }
@@ -194,8 +226,24 @@ export async function POST(request: NextRequest) {
         const holdingSummary = Object.entries(consolidated).map(([sym, data]) => {
           const weight = totalValue > 0 ? ((data.totalValue / totalValue) * 100).toFixed(1) : "0";
           const m = data.metrics;
-          return `${sym} (${data.name}): ${weight}% of portfolio, sector: ${data.sector}, P/E: ${m?.peRatio?.toFixed(1) || "N/A"}, ROE: ${m?.roe ? (m.roe * 100).toFixed(1) + "%" : "N/A"}, Revenue Growth: ${m?.revenueGrowth ? (m.revenueGrowth * 100).toFixed(1) + "%" : "N/A"}, Dividend Yield: ${m?.dividendYield ? (m.dividendYield * 100).toFixed(1) + "%" : "N/A"}, Beta: ${m?.beta?.toFixed(2) || "N/A"}`;
+          const typeLabel = data.assetType !== "stock" ? ` [${data.assetType}]` : "";
+          const isValueBased = data.assetType !== "stock" && data.assetType !== "mutual_fund";
+          if (isValueBased) {
+            return `${sym}${typeLabel} (${data.name}): ${weight}% of portfolio, category: ${data.sector}, value: $${data.totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+          }
+          return `${sym}${typeLabel} (${data.name}): ${weight}% of portfolio, sector: ${data.sector}, P/E: ${m?.peRatio?.toFixed(1) || "N/A"}, ROE: ${m?.roe ? (m.roe * 100).toFixed(1) + "%" : "N/A"}, Revenue Growth: ${m?.revenueGrowth ? (m.revenueGrowth * 100).toFixed(1) + "%" : "N/A"}, Dividend Yield: ${m?.dividendYield ? (m.dividendYield * 100).toFixed(1) + "%" : "N/A"}, Beta: ${m?.beta?.toFixed(2) || "N/A"}`;
         }).join("\n");
+
+        // Asset class breakdown for AI context
+        const assetClassAlloc: Record<string, number> = {};
+        Object.entries(consolidated).forEach(([, data]) => {
+          const cls = data.assetType || "stock";
+          assetClassAlloc[cls] = (assetClassAlloc[cls] || 0) + data.totalValue;
+        });
+        const assetClassBreakdown = Object.entries(assetClassAlloc)
+          .map(([cls, val]) => `${cls}: ${totalValue > 0 ? ((val / totalValue) * 100).toFixed(1) : 0}%`)
+          .join(", ");
+        const hasNonStockAssets = Object.keys(assetClassAlloc).some(k => k !== "stock");
 
         const profileContext = profile
           ? `\n\nINVESTOR PROFILE (use this to tailor every recommendation — reference it explicitly when it influences your advice):\n- Age: ${profile.age || "not provided"}\n- Risk tolerance: ${profile.riskTolerance || "not provided"}\n- Estimated net worth: ${profile.netWorth || "not provided"}`
@@ -235,11 +283,12 @@ A 2-3 sentence executive summary of the portfolio's character (growth-heavy? con
 - Sector diversification gaps
 - Income vs growth balance for the investor's stage of life
 - Quality of holdings (are any speculative/low-quality?)
-- Missing asset classes (international, bonds, REITs, etc.)`,
+- Missing asset classes (international, bonds, REITs, etc.)
+- If the portfolio includes non-stock assets (bonds, options, 401k, crypto, etc.), comment on asset allocation across asset classes and how alternative assets affect the portfolio's risk profile`,
             },
             {
               role: "user",
-              content: `Portfolio value: $${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} | Beta: ${weightedBeta.toFixed(2)} | ${Object.keys(consolidated).length} unique holdings\n\n${holdingSummary}\n\nSector breakdown: ${sectorBreakdown.map((s) => `${s.sector}: ${(s.pct * 100).toFixed(1)}%`).join(", ")}\n\nTop positions: ${holdingWeights.slice(0, 5).map((h) => `${h.symbol}: ${(h.pct * 100).toFixed(1)}%`).join(", ")}${profileContext}`,
+              content: `Portfolio value: $${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} | Beta: ${weightedBeta.toFixed(2)} | ${Object.keys(consolidated).length} unique holdings\n\n${holdingSummary}\n\nSector breakdown: ${sectorBreakdown.map((s) => `${s.sector}: ${(s.pct * 100).toFixed(1)}%`).join(", ")}${hasNonStockAssets ? `\n\nAsset class breakdown: ${assetClassBreakdown}` : ""}\n\nTop positions: ${holdingWeights.slice(0, 5).map((h) => `${h.symbol}: ${(h.pct * 100).toFixed(1)}%`).join(", ")}${profileContext}`,
             },
           ],
         });
