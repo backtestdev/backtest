@@ -249,11 +249,25 @@ export default function SignalTracker() {
             <p className="text-sm text-th-text-3 text-center py-8">No picks to display.</p>
           ) : (
             <div className="space-y-2">
+              {/* Single CTA when viewing active tab while signed out */}
+              {filter === "active" && !isSignedIn && (
+                <div className="flex items-center justify-between bg-th-surface rounded-xl border border-th-accent-border px-5 py-3.5">
+                  <div>
+                    <p className="text-sm font-semibold text-th-text">Active Signals</p>
+                    <p className="text-xs text-th-text-3 mt-0.5">Sign in to see current stock picks, allocations, and live scores</p>
+                  </div>
+                  <SignUpButton mode="modal">
+                    <button className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
+                      Sign Up Free
+                    </button>
+                  </SignUpButton>
+                </div>
+              )}
               {filteredPicks.map((pick) => {
                 const blurred = pick.status === "active" && !isSignedIn;
                 return (
                   <div key={pick.id} className="relative">
-                    {blurred && (
+                    {blurred && filter !== "active" && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center bg-th-surface/60 backdrop-blur-sm rounded-xl">
                         <div className="text-center px-4">
                           <p className="text-sm font-semibold text-th-text mb-1">Active Signal</p>
