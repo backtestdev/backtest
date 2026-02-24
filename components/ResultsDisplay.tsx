@@ -365,7 +365,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
                   value={leaderboardName}
                   onChange={(e) => setLeaderboardName(e.target.value)}
                   placeholder="Give it a name (optional)"
-                  className="flex-1 px-4 py-2.5 text-sm border border-th-border rounded-xl focus:outline-none focus:border-th-focus-border focus:ring-2 focus:ring-th-focus-ring"
+                  className="flex-1 px-4 py-2.5 text-sm text-th-text bg-th-surface border border-th-border rounded-xl focus:outline-none focus:border-th-focus-border focus:ring-2 focus:ring-th-focus-ring placeholder:text-th-text-4"
                 />
                 <button
                   onClick={handleSave}

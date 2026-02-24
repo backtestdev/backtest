@@ -549,22 +549,22 @@ export default function StockScreener() {
 
           {/* Rows */}
           {!loading && data?.stocks && (() => {
-            // Non-auth: 3 visible rows with login gate
-            // Free tier: 1 visible row with upgrade gate
+            // Guests: top 1 visible (score blurred), rest behind LoginGate
+            // Free: top 3 visible (#1 full score, #2/#3 score blurred), rest behind UpgradeGate
             // Premium: all visible
-            const GUEST_VISIBLE_ROWS = 3;
-            const FREE_VISIBLE_ROWS = 1;
+            const GUEST_VISIBLE_ROWS = 1;
+            const FREE_VISIBLE_ROWS = 3;
             const visibleCount = isGuest ? GUEST_VISIBLE_ROWS : (!isPremium ? FREE_VISIBLE_ROWS : data.stocks.length);
             const visibleStocks = data.stocks.slice(0, visibleCount);
             const hiddenStocks = data.stocks.slice(visibleCount);
             const needsGate = !isPremium && hiddenStocks.length > 0;
 
-            const StockRow = ({ stock, blurScore }: { stock: Stock; blurScore?: boolean }) => (
+            const StockRow = ({ stock, blurScore, clickable }: { stock: Stock; blurScore?: boolean; clickable?: boolean }) => (
               <button
                 key={stock.symbol}
-                onClick={() => isPremium && navigateToStock(stock.symbol)}
+                onClick={() => clickable && navigateToStock(stock.symbol)}
                 className={`w-full grid grid-cols-10 sm:grid-cols-12 gap-1 sm:gap-2 px-3 sm:px-4 py-3 border-b border-th-border-light last:border-0 items-center transition-colors text-left min-h-[44px] ${
-                  !isPremium ? "cursor-default" : "hover:bg-th-accent-bg/40 cursor-pointer"
+                  clickable ? "hover:bg-th-accent-bg/40 cursor-pointer" : "cursor-default"
                 }`}
               >
                 <div className="col-span-3 min-w-0 flex items-center gap-1.5 sm:gap-2">
@@ -611,13 +611,19 @@ export default function StockScreener() {
 
             return (
               <>
-                {visibleStocks.map((stock) => (
-                  <StockRow key={stock.symbol} stock={stock} blurScore={isGuest} />
-                ))}
+                {visibleStocks.map((stock, idx) => {
+                  // Guests: always blur score
+                  // Free: blur score on #2 and #3 (idx >= 1)
+                  // Premium: never blur
+                  const shouldBlurScore = isGuest ? true : (!isPremium && idx >= 1);
+                  return (
+                    <StockRow key={stock.symbol} stock={stock} blurScore={shouldBlurScore} clickable={isPremium} />
+                  );
+                })}
                 {needsGate && isGuest && (
                   <LoginGate
                     locked={true}
-                    message="Create a free account to view stocks"
+                    message="Create a free account to view more stocks"
                     subMessage={`${data.totalCount.toLocaleString()} stocks with Backtest Scores, metrics, and AI analysis`}
                     blur="heavy"
                   >

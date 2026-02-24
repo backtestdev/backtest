@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useUser, SignUpButton } from "@clerk/nextjs";
 import { useSubscription } from "./SubscriptionProvider";
 import UpgradeGate from "./UpgradeGate";
-import LoginGate from "./LoginGate";
+
 import StockLogo from "./StockLogo";
 
 // --- Types ---
@@ -194,47 +194,35 @@ export default function SignalTracker() {
           </p>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats Cards — always visible */}
         {stats && (
-          <GateWrapper
-            isSignedIn={!!isSignedIn}
-            loginMessage="Create a free account to view fund performance"
-            loginSub="Track our AI-powered stock picks vs S&P 500 in real time"
-          >
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              <StatCard label="Fund Value" value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"} color="neutral" />
-              <StatCard label="Fund Return" value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(1)}%`} color={stats.totalReturn >= 0 ? "positive" : "negative"} />
-              <StatCard label="S&P 500" value={`${stats.benchmarkReturn >= 0 ? "+" : ""}${stats.benchmarkReturn.toFixed(1)}%`} color="neutral" />
-              <StatCard label="Alpha" value={`${stats.alpha >= 0 ? "+" : ""}${stats.alpha.toFixed(1)}%`} color={stats.alpha >= 0 ? "positive" : "negative"} />
-            </div>
-          </GateWrapper>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <StatCard label="Fund Value" value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"} color="neutral" />
+            <StatCard label="Fund Return" value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(1)}%`} color={stats.totalReturn >= 0 ? "positive" : "negative"} />
+            <StatCard label="S&P 500" value={`${stats.benchmarkReturn >= 0 ? "+" : ""}${stats.benchmarkReturn.toFixed(1)}%`} color="neutral" />
+            <StatCard label="Alpha" value={`${stats.alpha >= 0 ? "+" : ""}${stats.alpha.toFixed(1)}%`} color={stats.alpha >= 0 ? "positive" : "negative"} />
+          </div>
         )}
 
-        {/* Performance Chart */}
+        {/* Performance Chart — always visible */}
         {performance.length > 2 && (
-          <GateWrapper
-            isSignedIn={!!isSignedIn}
-            loginMessage="Sign up free to view the performance chart"
-            blur="heavy"
-          >
-            <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-th-text mb-4">Fund Performance vs S&P 500</h2>
-              <PerformanceChart data={performance} />
-              <div className="flex items-center justify-center gap-6 mt-3">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-0.5 bg-th-accent rounded-full" />
-                  <span className="text-[11px] text-th-text-3">Signal Fund</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-0.5 rounded-full" style={{ background: "var(--text-4)" }} />
-                  <span className="text-[11px] text-th-text-3">S&P 500</span>
-                </div>
+          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-th-text mb-4">Fund Performance vs S&P 500</h2>
+            <PerformanceChart data={performance} />
+            <div className="flex items-center justify-center gap-6 mt-3">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 bg-th-accent rounded-full" />
+                <span className="text-[11px] text-th-text-3">Signal Fund</span>
               </div>
-              <p className="text-[10px] text-th-text-4 text-center mt-3">
-                Score-weighted portfolio with monthly rebalancing. Higher-scoring picks receive larger allocations.
-              </p>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 rounded-full" style={{ background: "var(--text-4)" }} />
+                <span className="text-[11px] text-th-text-3">S&P 500</span>
+              </div>
             </div>
-          </GateWrapper>
+            <p className="text-[10px] text-th-text-4 text-center mt-3">
+              Score-weighted portfolio with monthly rebalancing. Higher-scoring picks receive larger allocations.
+            </p>
+          </div>
         )}
 
         {/* Picks Section */}
@@ -361,25 +349,6 @@ export default function SignalTracker() {
       </div>
     </div>
   );
-}
-
-// --- Gate Wrapper (login gate only, passes through if signed in) ---
-
-function GateWrapper({ children, isSignedIn, loginMessage, loginSub, blur = "medium" }: {
-  children: React.ReactNode;
-  isSignedIn: boolean;
-  loginMessage: string;
-  loginSub?: string;
-  blur?: "light" | "medium" | "heavy";
-}) {
-  if (!isSignedIn) {
-    return (
-      <LoginGate locked={true} message={loginMessage} subMessage={loginSub} blur={blur}>
-        {children}
-      </LoginGate>
-    );
-  }
-  return <>{children}</>;
 }
 
 // --- Stat Card ---
