@@ -373,7 +373,7 @@ function PickCard({ pick, expanded, onToggle }: {
               </Link>
               <ScoreBadge score={displayScore} />
               {isActive && pick.portfolioPct > 0 && (
-                <span className="text-[10px] font-medium text-th-text-3 bg-th-bar px-1.5 py-0.5 rounded">{pick.portfolioPct.toFixed(1)}%</span>
+                <span className="text-[10px] font-medium text-th-text-3 bg-th-bar px-1.5 py-0.5 rounded">{pick.portfolioPct.toFixed(1)}% alloc</span>
               )}
               {!isActive && (
                 <span className="text-[10px] font-medium text-th-negative bg-th-negative-bg px-1.5 py-0.5 rounded">Sold</span>
@@ -430,7 +430,7 @@ function PickCard({ pick, expanded, onToggle }: {
                 <p className="text-xs sm:text-sm font-medium text-th-text">{formatCurrency(pick.positionSize)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-th-text-4 uppercase">% of Fund</p>
+                <p className="text-[10px] text-th-text-4 uppercase">Current Alloc.</p>
                 <p className="text-xs sm:text-sm font-medium text-th-text">
                   {isActive ? `${pick.portfolioPct.toFixed(1)}%` : "\u2014"}
                 </p>

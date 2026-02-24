@@ -582,9 +582,10 @@ interface SavedPortfolioItem {
 }
 
 const HOLDINGS_STORAGE_KEY = "portfolio_holdings_draft";
+const PROFILE_STORAGE_KEY = "portfolio_investor_profile";
 
 export default function PortfolioAnalyzer() {
-  const { isSignedIn } = useUser();
+  const { isSignedIn, user } = useUser();
   const isGuest = !isSignedIn;
   const [holdings, setHoldings] = useState<Holding[]>([{ symbol: "", shares: 0 }]);
   const [profile, setProfile] = useState<{ age?: number; netWorth?: string; riskTolerance?: string }>({});
@@ -630,6 +631,30 @@ export default function PortfolioAnalyzer() {
       try { sessionStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify(holdings)); } catch { /* ignore */ }
     }
   }, [holdings]);
+
+  // Restore investor profile from localStorage for logged-in users
+  useEffect(() => {
+    if (!isSignedIn || !user?.id) return;
+    try {
+      const key = `${PROFILE_STORAGE_KEY}_${user.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object") setProfile(parsed);
+      }
+    } catch { /* ignore */ }
+  }, [isSignedIn, user?.id]);
+
+  // Save investor profile to localStorage on change
+  useEffect(() => {
+    if (!isSignedIn || !user?.id) return;
+    const hasData = profile.age || profile.netWorth || profile.riskTolerance;
+    if (hasData) {
+      try {
+        localStorage.setItem(`${PROFILE_STORAGE_KEY}_${user.id}`, JSON.stringify(profile));
+      } catch { /* ignore */ }
+    }
+  }, [profile, isSignedIn, user?.id]);
 
   // Fetch saved portfolios for logged-in users
   useEffect(() => {

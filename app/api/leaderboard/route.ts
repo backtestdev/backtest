@@ -211,32 +211,18 @@ export async function POST(request: NextRequest) {
     const parametersHash = parameters_json ? generateParametersHash(parameters_json) : null;
     const queryHash = description ? generateQueryHash(description) : null;
 
-    // Check for duplicates — parameters_hash catches identical parsed outputs,
-    // query_hash catches same-query ticker-mode strategies where AI returns
-    // different ticker lists each run (e.g., "meme stocks")
-    const isTickerMode = parameters_json?.tickers && parameters_json.tickers.length > 0;
-
-    {
+    // Only block truly identical strategies (same exact parsed parameters).
+    // query_hash is still stored for reference but not used for dedup —
+    // similar queries can produce meaningfully different strategies.
+    if (parametersHash) {
       const sql = getDb();
       let existingDup: LeaderboardEntry | null = null;
 
       if (sql) {
-        // For ticker-mode, check query_hash first (catches "meme stocks" dupes)
-        if (isTickerMode && queryHash) {
-          existingDup = await checkDuplicateDb(queryHash, "query_hash");
-        }
-        // Then check parameters_hash (catches identical metric filter sets)
-        if (!existingDup && parametersHash) {
-          existingDup = await checkDuplicateDb(parametersHash, "parameters_hash");
-        }
+        existingDup = await checkDuplicateDb(parametersHash, "parameters_hash");
       } else {
         const entries = await readLeaderboardFile();
-        if (isTickerMode && queryHash) {
-          existingDup = entries.find((e) => e.query_hash === queryHash) ?? null;
-        }
-        if (!existingDup && parametersHash) {
-          existingDup = checkDuplicateFile(entries, parametersHash);
-        }
+        existingDup = checkDuplicateFile(entries, parametersHash);
       }
 
       if (existingDup) {
