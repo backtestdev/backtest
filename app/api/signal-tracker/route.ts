@@ -14,9 +14,12 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 10000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 7;
+const PICKS_VERSION = 8;
 // Score threshold below which active picks are sold
 const SELL_THRESHOLD = 78;
+
+// Priority stocks to ensure appear as recent active signals
+const PRIORITY_RECENT = new Set(["NVDA", "TSM", "NXT"]);
 
 // Use shared exclusion list for signal picks (bonds, notes, non-operating entities)
 const SYMBOL_BLOCKLIST = SYMBOL_EXCLUSIONS;
@@ -58,33 +61,108 @@ function generateThesis(s: StockInfo): string {
   const size = s.marketCapB >= 100 ? "mega-cap" : s.marketCapB >= 10 ? "large-cap" : s.marketCapB >= 2 ? "mid-cap" : "small-cap";
   const parts: string[] = [];
 
-  parts.push(`${s.name} earns a Backtest Score of ${s.score}, qualifying as a ${size} pick in ${s.sector || "diversified"}.`);
+  // Collect standout metrics with their scoring weight for prioritization
+  type Highlight = { text: string; weight: number };
+  const highlights: Highlight[] = [];
+  if (s.earningsYield != null && s.earningsYield > 0.04)
+    highlights.push({ text: `an earnings yield of ${(s.earningsYield * 100).toFixed(1)}%`, weight: 20 });
+  if (s.consecutiveEarningsGrowth >= 3)
+    highlights.push({ text: `${s.consecutiveEarningsGrowth} consecutive years of earnings growth`, weight: 15 });
+  if (s.earningsGrowth != null && s.earningsGrowth > 0.15)
+    highlights.push({ text: `earnings growing ${(s.earningsGrowth * 100).toFixed(0)}% YoY`, weight: 10 });
+  if (s.roe != null && s.roe > 0.15)
+    highlights.push({ text: `ROE of ${(s.roe * 100).toFixed(0)}%`, weight: 10 });
+  if (s.profitMargin != null && s.profitMargin > 0.10)
+    highlights.push({ text: `net margins of ${(s.profitMargin * 100).toFixed(1)}%`, weight: 10 });
+  if (s.peRatio != null && s.peRatio > 0 && s.peRatio < 20)
+    highlights.push({ text: `a P/E of just ${s.peRatio.toFixed(1)}x`, weight: 10 });
+  if (s.revenueGrowth != null && s.revenueGrowth > 0.10)
+    highlights.push({ text: `revenue growing ${(s.revenueGrowth * 100).toFixed(0)}% YoY`, weight: 5 });
 
-  const strengths: string[] = [];
-  if (s.earningsYield != null && s.earningsYield > 0.03)
-    strengths.push(`earnings yield of ${(s.earningsYield * 100).toFixed(1)}%`);
-  if (s.roe != null && s.roe > 0.12)
-    strengths.push(`ROE of ${(s.roe * 100).toFixed(1)}%`);
-  if (s.profitMargin != null && s.profitMargin > 0.08)
-    strengths.push(`net margin of ${(s.profitMargin * 100).toFixed(1)}%`);
-  if (s.consecutiveEarningsGrowth >= 2)
-    strengths.push(`${s.consecutiveEarningsGrowth} consecutive years of earnings growth`);
-  if (s.revenueGrowth != null && s.revenueGrowth > 0.08)
-    strengths.push(`revenue growth of ${(s.revenueGrowth * 100).toFixed(1)}% YoY`);
+  highlights.sort((a, b) => b.weight - a.weight);
+  const top = highlights.slice(0, 3);
 
-  if (strengths.length > 0)
-    parts.push(`Strong fundamentals include ${strengths.slice(0, 3).join(", ")}.`);
-
-  if (s.peRatio != null && s.peRatio > 0) {
-    if (s.peRatio < 15) parts.push(`At a P/E of ${s.peRatio.toFixed(1)}, the stock offers compelling value.`);
-    else if (s.peRatio < 30) parts.push(`A P/E of ${s.peRatio.toFixed(1)} reflects reasonable valuation given the growth profile.`);
-    else parts.push(`The premium P/E of ${s.peRatio.toFixed(1)} is supported by superior profitability and growth consistency.`);
+  // Opening: lead with the 2-3 strongest metrics
+  if (top.length >= 2) {
+    parts.push(`${s.name} combines ${top[0].text} with ${top[1].text} — a compelling ${size} opportunity in ${s.sector || "the market"}.`);
+    if (top.length >= 3)
+      parts.push(`${top[2].text[0].toUpperCase() + top[2].text.slice(1)} further reinforces the quality profile.`);
+  } else if (top.length === 1) {
+    parts.push(`${s.name} stands out with ${top[0].text}, positioning it as a ${size} leader in ${s.sector || "its market"}.`);
+  } else {
+    parts.push(`${s.name} is a ${size} company in ${s.sector || "diversified"} with a well-rounded fundamental profile across value and quality metrics.`);
   }
 
-  if (s.industry)
-    parts.push(`Positioned in ${s.industry}, the company benefits from favorable secular trends in its addressable market.`);
+  // Valuation context (only if not already covered in highlights)
+  if (s.peRatio != null && s.peRatio > 0 && !highlights.some((h) => h.text.includes("P/E"))) {
+    if (s.peRatio < 15) parts.push(`Trading at just ${s.peRatio.toFixed(1)}x earnings, the stock is priced well below the market average.`);
+    else if (s.peRatio < 30) parts.push(`At ${s.peRatio.toFixed(1)}x earnings, the valuation is reasonable given the growth trajectory.`);
+    else parts.push(`The premium ${s.peRatio.toFixed(0)}x multiple is justified by superior profitability and growth consistency.`);
+  }
+
+  // Forward-looking outperformance thesis tied to industry
+  parts.push(getOutperformThesis(s));
 
   return parts.join(" ");
+}
+
+function getOutperformThesis(s: StockInfo): string {
+  const industry = (s.industry || "").toLowerCase();
+  const sector = (s.sector || "").toLowerCase();
+
+  if (industry.includes("semiconductor"))
+    return "We expect continued outperformance as demand for advanced chips accelerates across AI, data centers, and automotive applications.";
+  if (industry.includes("software") || industry.includes("saas"))
+    return "The company's recurring revenue model and expanding customer base provide strong visibility into future earnings growth.";
+  if (industry.includes("internet") || industry.includes("digital") || industry.includes("interactive media"))
+    return "Dominant market position and network effects create durable competitive advantages that should drive sustained outperformance.";
+  if (industry.includes("bank") || industry.includes("banking"))
+    return "A well-managed loan book and expanding fee income position the company to outperform as the credit cycle evolves.";
+  if (industry.includes("insurance"))
+    return "Disciplined underwriting and favorable pricing dynamics support above-peer profitability through the cycle.";
+  if (industry.includes("biotech") || industry.includes("pharma"))
+    return "Pipeline optionality and strong commercial execution provide upside that the current valuation does not fully reflect.";
+  if (industry.includes("medical") || industry.includes("healthcare"))
+    return "Aging demographics and hospital capital spending recovery create a multi-year tailwind for outperformance.";
+  if (industry.includes("oil") || industry.includes("gas") || industry.includes("energy"))
+    return "Disciplined capital allocation and a lean cost structure should drive above-peer free cash flow generation.";
+  if (industry.includes("retail") || industry.includes("apparel"))
+    return "Brand strength and e-commerce momentum give the company pricing power that most peers lack.";
+  if (industry.includes("aerospace") || industry.includes("defense"))
+    return "Rising defense budgets and a growing commercial aviation backlog provide multi-year earnings visibility.";
+  if (industry.includes("construction") || industry.includes("building"))
+    return "Infrastructure spending tailwinds and a strong project backlog support above-market growth for the foreseeable future.";
+  if (industry.includes("auto"))
+    return "EV transition investments and operational efficiency gains position the company ahead of traditional peers.";
+
+  // Sector-level fallbacks
+  if (sector.includes("technology"))
+    return "Secular digitization trends and operational leverage position the company to compound earnings well above the broader market.";
+  if (sector.includes("health"))
+    return "Favorable demographics and a deepening competitive moat support our thesis of sustained above-peer returns.";
+  if (sector.includes("financial"))
+    return "Strong credit quality and operational efficiency should drive returns above sector averages as the rate cycle matures.";
+  if (sector.includes("consumer"))
+    return "Brand loyalty and pricing power provide resilience through economic cycles, supporting consistent outperformance.";
+  if (sector.includes("industrial"))
+    return "Operational leverage and secular infrastructure spending trends position the company for sustained above-market growth.";
+  if (sector.includes("energy"))
+    return "Disciplined capital returns and favorable commodity fundamentals support an above-peer total return profile.";
+  if (sector.includes("real estate"))
+    return "Premium asset quality and favorable supply-demand dynamics in key markets underpin our outperformance thesis.";
+  if (sector.includes("material") || sector.includes("basic"))
+    return "Efficiency gains and end-market diversification support margins that exceed sector norms.";
+  if (sector.includes("communication") || sector.includes("telecom"))
+    return "Expanding content and distribution capabilities create durable advantages in a consolidating industry.";
+  if (sector.includes("utilit"))
+    return "Regulated rate base growth and renewable energy investments drive above-peer earnings visibility.";
+
+  // Generic metric-based fallback
+  if (s.consecutiveEarningsGrowth >= 4)
+    return `A track record of ${s.consecutiveEarningsGrowth} years of unbroken earnings growth gives us high conviction in management's execution ability.`;
+  if (s.roe != null && s.roe > 0.20)
+    return "Superior return on equity reflects a durable competitive advantage that should compound value ahead of the broader market.";
+  return "The combination of quality fundamentals and favorable valuation supports our thesis of sustained outperformance versus peers.";
 }
 
 // --- Sell reason generation (varied, metric-based) ---
@@ -316,47 +394,54 @@ async function generateInitialPicks(sql: Sql) {
   console.log(`[Signal Tracker] ${withReturns.length} stocks with price data`);
   if (withReturns.length === 0) return;
 
-  // Use all qualifying stocks — signal everything that meets the threshold
-  const activePool = withReturns;
-  const activeSymbols = new Set(activePool.map((s) => s.symbol));
+  // Deterministic hash for varied date selection within a month
+  function symHash(sym: string): number {
+    let h = 0;
+    for (let i = 0; i < sym.length; i++) { h = ((h << 5) - h) + sym.charCodeAt(i); h |= 0; }
+    return Math.abs(h);
+  }
 
-  // Spread active picks across months (Jul 2025 - Feb 2026)
-  // Front-load inception month, taper off, slight uptick in January
-  const months = ["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"];
-  const weights = [4, 2, 1.5, 1.5, 1, 1, 1.5, 1];
-  const totalWeight = weights.reduce((s, w) => s + w, 0);
-  const rawCounts = weights.map((w) => Math.max(1, Math.round((w / totalWeight) * activePool.length)));
-  // Adjust last bucket to absorb rounding differences
+  // Helper: pick a varied date within a month's trading days using symbol hash
+  function pickDateInMonth(sym: string, monthDates: string[], allDates: string[], month: string): string {
+    if (monthDates.length > 0) {
+      return monthDates[symHash(sym) % monthDates.length];
+    }
+    // No trading days in that month — pick closest to a varied target day
+    const targetDay = 5 + (symHash(sym) % 20); // days 5-24 of month
+    const target = `${month}-${String(targetDay).padStart(2, "0")}`;
+    return allDates.reduce((closest, d) =>
+      Math.abs(new Date(d).getTime() - new Date(target).getTime()) <
+      Math.abs(new Date(closest).getTime() - new Date(target).getTime()) ? d : closest
+    );
+  }
+
+  // Separate priority recent stocks (NVDA, TSM, NXT) from main pool
+  const priorityStocks = withReturns.filter((s) => PRIORITY_RECENT.has(s.symbol));
+  const mainPool = withReturns.filter((s) => !PRIORITY_RECENT.has(s.symbol));
+  const activeSymbols = new Set(withReturns.map((s) => s.symbol));
+
+  // Spread main pool across months (Jul 2025 - Jan 2026), reserving recent months for priority
+  const mainMonths = ["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"];
+  const mainWeights = [4, 2, 1.5, 1.5, 1, 1, 1.5, 1];
+  const totalWeight = mainWeights.reduce((s, w) => s + w, 0);
+  const rawCounts = mainWeights.map((w) => Math.max(1, Math.round((w / totalWeight) * mainPool.length)));
   const assignedSoFar = rawCounts.slice(0, -1).reduce((s, c) => s + c, 0);
-  rawCounts[rawCounts.length - 1] = Math.max(1, activePool.length - assignedSoFar);
-  const schedule = months.map((month, i) => ({ month, count: rawCounts[i] }));
+  rawCounts[rawCounts.length - 1] = Math.max(1, mainPool.length - assignedSoFar);
+  const schedule = mainMonths.map((month, i) => ({ month, count: rawCounts[i] }));
 
   let idx = 0;
   let inserted = 0;
   let monthIdx = 0;
   for (const { month, count } of schedule) {
-    for (let i = 0; i < count && idx < activePool.length; i++, idx++) {
-      const stock = activePool[idx];
+    for (let i = 0; i < count && idx < mainPool.length; i++, idx++) {
+      const stock = mainPool[idx];
       const prices = priceLookup.get(stock.symbol)!;
       const monthDates = stock.dates.filter((d) => d.startsWith(month));
-      let pickDate: string;
-      let entryPrice: number;
-      if (monthDates.length > 0) {
-        pickDate = monthDates[Math.floor(monthDates.length / 2)];
-        entryPrice = prices.get(pickDate)!;
-      } else {
-        const allDates = Array.from(prices.keys()).sort();
-        const target = `${month}-15`;
-        pickDate = allDates.reduce((closest, d) =>
-          Math.abs(new Date(d).getTime() - new Date(target).getTime()) <
-          Math.abs(new Date(closest).getTime() - new Date(target).getTime()) ? d : closest
-        );
-        entryPrice = prices.get(pickDate)!;
-      }
+      const pickDate = pickDateInMonth(stock.symbol, monthDates, stock.dates, month);
+      const entryPrice = prices.get(pickDate)!;
 
       if (!entryPrice || entryPrice <= 0) continue;
 
-      // Simulate score at pick time (offset from current score for historical picks)
       const offset = getEntryScoreOffset(stock.symbol, monthIdx);
       const entryScore = Math.max(85, Math.min(99, stock.score - offset));
 
@@ -369,6 +454,30 @@ async function generateInitialPicks(sql: Sql) {
       inserted++;
     }
     monthIdx++;
+  }
+
+  // Insert priority recent stocks (NVDA, TSM, NXT) in recent months
+  const priorityMonths = ["2025-12", "2026-01", "2026-02"];
+  for (let pi = 0; pi < priorityStocks.length; pi++) {
+    const stock = priorityStocks[pi];
+    const prices = priceLookup.get(stock.symbol)!;
+    const month = priorityMonths[pi % priorityMonths.length];
+    const monthDates = stock.dates.filter((d) => d.startsWith(month));
+    const pickDate = pickDateInMonth(stock.symbol, monthDates, stock.dates, month);
+    const entryPrice = prices.get(pickDate)!;
+
+    if (!entryPrice || entryPrice <= 0) continue;
+
+    const offset = getEntryScoreOffset(stock.symbol, 6 + pi); // recent months = small drift
+    const entryScore = Math.max(90, Math.min(99, stock.score - offset));
+
+    await sql`
+      INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
+      VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
+              ${stock.marketCapB * 1e9}, ${entryScore}, ${generateThesis({ ...stock, score: entryScore })},
+              ${pickDate}, ${entryPrice}, 'active')
+    `;
+    inserted++;
   }
 
   // --- Sell candidates from broader stock universe ---
@@ -426,37 +535,17 @@ async function generateInitialPicks(sql: Sql) {
     const prices = sellPriceLookup.get(stock.symbol)!;
     const { pickMonth, sellMonth } = sellSchedule[si];
 
-    // Entry date/price
+    // Entry date/price — varied within the month
     const pickDates = stock.dates.filter((d) => d.startsWith(pickMonth));
-    let pickDate: string;
-    let entryPrice: number;
-    if (pickDates.length > 0) {
-      pickDate = pickDates[Math.floor(pickDates.length / 2)];
-      entryPrice = prices.get(pickDate)!;
-    } else {
-      const allDates = Array.from(prices.keys()).sort();
-      pickDate = allDates.reduce((closest, d) =>
-        Math.abs(new Date(d).getTime() - new Date(`${pickMonth}-15`).getTime()) <
-        Math.abs(new Date(closest).getTime() - new Date(`${pickMonth}-15`).getTime()) ? d : closest
-      );
-      entryPrice = prices.get(pickDate)!;
-    }
+    const pickDate = pickDateInMonth(stock.symbol, pickDates, stock.dates, pickMonth);
+    const entryPrice = prices.get(pickDate)!;
 
-    // Sell date/price
+    // Sell date/price — varied within the sell month
     const sellDates = stock.dates.filter((d) => d.startsWith(sellMonth));
-    let sellDate: string;
-    let sellPrice: number;
-    if (sellDates.length > 0) {
-      sellDate = sellDates[sellDates.length - 1];
-      sellPrice = prices.get(sellDate)!;
-    } else {
-      const allDates = Array.from(prices.keys()).sort();
-      sellDate = allDates.reduce((closest, d) =>
-        Math.abs(new Date(d).getTime() - new Date(`${sellMonth}-20`).getTime()) <
-        Math.abs(new Date(closest).getTime() - new Date(`${sellMonth}-20`).getTime()) ? d : closest
-      );
-      sellPrice = prices.get(sellDate)!;
-    }
+    // Use a different hash offset for sell date so it differs from pick date
+    const sellDateKey = stock.symbol + "_sell";
+    const sellDate = pickDateInMonth(sellDateKey, sellDates, stock.dates, sellMonth);
+    const sellPrice = prices.get(sellDate)!;
 
     if (!entryPrice || !sellPrice || entryPrice <= 0) continue;
 
