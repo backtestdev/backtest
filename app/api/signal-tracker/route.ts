@@ -770,54 +770,100 @@ export async function GET() {
     // Compute fund value for display
     const fundValue = latest ? latest.portfolioValue : INITIAL_CAPITAL;
 
-    // Compute score-weighted position sizes based on entry scores
-    const totalPickWeight = picks.reduce((sum, p) => sum + pickWeight(Number(p.score)), 0);
+    // --- Score-weighted position sizing ---
+    // Active picks: allocate a portion of current fund value, weighted by LIVE score
+    // Target investment scales with number of active picks (cash reserve for new signals)
+    // Few picks → ~50% invested; many picks → up to 85% invested
+    const targetInvestPct = Math.min(0.85, 0.40 + activePicks.length * 0.05);
+    const investableAmount = fundValue * targetInvestPct;
+
+    // Weight active picks by live score (enables monthly rebalancing as scores change)
+    const activeWeightMap = new Map<string, number>();
+    let totalActiveWeight = 0;
+    for (const p of activePicks) {
+      const sym = p.symbol as string;
+      const liveScore = liveScores.get(sym) ?? Number(p.score);
+      const w = pickWeight(liveScore);
+      activeWeightMap.set(sym, w);
+      totalActiveWeight += w;
+    }
+
+    // Sold picks: approximate historical position size using entry score
+    // Use initial capital as base since these were sized when the fund was younger
+    const soldPicks = picks.filter((p) => p.status === "sold");
+    let totalSoldWeight = 0;
+    for (const p of soldPicks) totalSoldWeight += pickWeight(Number(p.score));
+
+    // Track totals for stats
+    let totalInvested = 0;
+
+    const mappedPicks = picks.map((p) => {
+      const sym = p.symbol as string;
+      const currentPrice = latestPrices.get(sym) || null;
+      const entryPrice = Number(p.entry_price);
+      const isSold = p.status === "sold";
+      const exitPrice = isSold && p.sell_price ? Number(p.sell_price) : currentPrice;
+      const returnPct = exitPrice && entryPrice > 0
+        ? ((exitPrice - entryPrice) / entryPrice) * 100
+        : null;
+
+      // For sold picks, use live score as the sell-trigger score
+      const sellScore = isSold ? (liveScores.get(sym) ?? null) : null;
+
+      let positionSize: number;
+      let portfolioPct: number;
+
+      if (!isSold) {
+        // Active: live-score-weighted allocation of investable amount
+        const w = activeWeightMap.get(sym) || 0;
+        positionSize = totalActiveWeight > 0
+          ? Math.round((w / totalActiveWeight) * investableAmount * 100) / 100
+          : 0;
+        portfolioPct = fundValue > 0
+          ? Math.round((positionSize / fundValue) * 1000) / 10
+          : 0;
+        totalInvested += positionSize;
+      } else {
+        // Sold: approximate historical allocation (entry-score weighted share of initial capital)
+        const w = pickWeight(Number(p.score));
+        positionSize = totalSoldWeight > 0
+          ? Math.round((w / totalSoldWeight) * INITIAL_CAPITAL * 0.6 * 100) / 100
+          : 0;
+        portfolioPct = 0; // no longer part of portfolio
+      }
+
+      const profitLoss = returnPct != null
+        ? Math.round(positionSize * (returnPct / 100) * 100) / 100
+        : null;
+
+      return {
+        id: p.id,
+        symbol: sym,
+        companyName: p.company_name,
+        sector: p.sector,
+        marketCap: Number(p.market_cap_at_pick) / 1e9,
+        entryScore: Number(p.score),
+        currentScore: liveScores.get(sym) ?? null,
+        sellScore,
+        thesis: p.thesis,
+        pickDate: toDateStr(p.pick_date),
+        entryPrice,
+        currentPrice: isSold ? null : currentPrice,
+        returnPct: returnPct != null ? Math.round(returnPct * 10) / 10 : null,
+        positionSize,
+        portfolioPct,
+        profitLoss,
+        status: p.status,
+        sellDate: p.sell_date ? toDateStr(p.sell_date) : null,
+        sellPrice: p.sell_price ? Number(p.sell_price) : null,
+        sellReason: p.sell_reason,
+      };
+    });
+
+    const cashReserve = Math.round((fundValue - totalInvested) * 100) / 100;
 
     return NextResponse.json({
-      picks: picks.map((p) => {
-        const sym = p.symbol as string;
-        const currentPrice = latestPrices.get(sym) || null;
-        const entryPrice = Number(p.entry_price);
-        const isSold = p.status === "sold";
-        const exitPrice = isSold && p.sell_price ? Number(p.sell_price) : currentPrice;
-        const returnPct = exitPrice && entryPrice > 0
-          ? ((exitPrice - entryPrice) / entryPrice) * 100
-          : null;
-
-        // For sold picks, use live score as the sell-trigger score
-        const sellScore = isSold ? (liveScores.get(sym) ?? null) : null;
-
-        // Position sizing: score-weighted allocation of initial capital
-        const weight = pickWeight(Number(p.score));
-        const positionSize = totalPickWeight > 0
-          ? Math.round((weight / totalPickWeight) * INITIAL_CAPITAL * 100) / 100
-          : 0;
-        const profitLoss = returnPct != null
-          ? Math.round(positionSize * (returnPct / 100) * 100) / 100
-          : null;
-
-        return {
-          id: p.id,
-          symbol: sym,
-          companyName: p.company_name,
-          sector: p.sector,
-          marketCap: Number(p.market_cap_at_pick) / 1e9,
-          entryScore: Number(p.score),
-          currentScore: liveScores.get(sym) ?? null,
-          sellScore,
-          thesis: p.thesis,
-          pickDate: toDateStr(p.pick_date),
-          entryPrice,
-          currentPrice: isSold ? null : currentPrice,
-          returnPct: returnPct != null ? Math.round(returnPct * 10) / 10 : null,
-          positionSize,
-          profitLoss,
-          status: p.status,
-          sellDate: p.sell_date ? toDateStr(p.sell_date) : null,
-          sellPrice: p.sell_price ? Number(p.sell_price) : null,
-          sellReason: p.sell_reason,
-        };
-      }),
+      picks: mappedPicks,
       performance,
       fundValue: Math.round(fundValue * 100) / 100,
       stats: {
@@ -827,6 +873,9 @@ export async function GET() {
         activePicks: activePicks.length,
         totalPicks: picks.length,
         inceptionDate: INCEPTION_DATE,
+        totalInvested: Math.round(totalInvested * 100) / 100,
+        cashReserve,
+        investedPct: Math.round(targetInvestPct * 1000) / 10,
       },
     });
   } catch (error) {

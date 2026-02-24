@@ -22,6 +22,7 @@ interface Pick {
   currentPrice: number | null;
   returnPct: number | null;
   positionSize: number;
+  portfolioPct: number;
   profitLoss: number | null;
   status: string;
   sellDate: string | null;
@@ -42,6 +43,9 @@ interface Stats {
   activePicks: number;
   totalPicks: number;
   inceptionDate: string;
+  totalInvested: number;
+  cashReserve: number;
+  investedPct: number;
 }
 
 // --- Formatters ---
@@ -168,7 +172,7 @@ export default function SignalTracker() {
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
             <StatCard
               label="Fund Value"
               value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"}
@@ -190,9 +194,15 @@ export default function SignalTracker() {
               color={stats.alpha >= 0 ? "positive" : "negative"}
             />
             <StatCard
-              label="Active Picks"
-              value={`${stats.activePicks}`}
-              subtitle={`${stats.totalPicks} total`}
+              label="Invested"
+              value={formatDollarWhole(stats.totalInvested)}
+              subtitle={`${stats.investedPct.toFixed(0)}% of fund`}
+              color="neutral"
+            />
+            <StatCard
+              label="Cash"
+              value={formatDollarWhole(stats.cashReserve)}
+              subtitle={`${stats.activePicks} picks active`}
               color="neutral"
             />
           </div>
@@ -359,6 +369,9 @@ function PickCard({ pick, expanded, onToggle }: {
                 {pick.symbol}
               </Link>
               <ScoreBadge score={displayScore} />
+              {isActive && pick.portfolioPct > 0 && (
+                <span className="text-[10px] font-medium text-th-text-3 bg-th-bar px-1.5 py-0.5 rounded">{pick.portfolioPct.toFixed(1)}%</span>
+              )}
               {recent && (
                 <span className="text-[10px] font-medium text-th-accent bg-th-accent/10 px-1.5 py-0.5 rounded">New</span>
               )}
@@ -411,10 +424,16 @@ function PickCard({ pick, expanded, onToggle }: {
               )}
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-3">
+            <div className="grid grid-cols-3 sm:grid-cols-7 gap-3 mb-3">
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Invested</p>
                 <p className="text-sm font-medium text-th-text">{formatCurrency(pick.positionSize)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-th-text-4 uppercase">% of Fund</p>
+                <p className="text-sm font-medium text-th-text">
+                  {isActive ? `${pick.portfolioPct.toFixed(1)}%` : "\u2014"}
+                </p>
               </div>
               <div>
                 <p className="text-[10px] text-th-text-4 uppercase">Entry Price</p>
