@@ -397,27 +397,15 @@ function PickCard({ pick, expanded, onToggle }: {
         {/* Expanded details */}
         {expanded && (
           <div className="mt-3 pt-3 border-t border-th-border-light">
-            {/* Score history row */}
+            {/* Score display: signal score (at pick time) + live score (matches screener) */}
             <div className="flex items-center gap-3 mb-3 flex-wrap">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-th-text-4 uppercase">Entry Score</span>
+                <span className="text-[10px] text-th-text-4 uppercase">Signal Score</span>
                 <ScoreBadge score={pick.entryScore} size="xs" />
               </div>
-              {isActive && pick.currentScore != null && (
+              {pick.currentScore != null && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-th-text-4 uppercase">Current</span>
-                  <ScoreBadge score={pick.currentScore} size="xs" />
-                </div>
-              )}
-              {!isActive && pick.sellScore != null && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-th-text-4 uppercase">At Sell</span>
-                  <ScoreBadge score={pick.sellScore} size="xs" />
-                </div>
-              )}
-              {!isActive && pick.currentScore != null && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-th-text-4 uppercase">Current</span>
+                  <span className="text-[10px] text-th-text-4 uppercase">Live Score</span>
                   <ScoreBadge score={pick.currentScore} size="xs" />
                 </div>
               )}
