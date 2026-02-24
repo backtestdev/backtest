@@ -145,6 +145,7 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       eps_growth_yoy DECIMAL(16,8),
       revenue_growth_positive_3yr_count INT DEFAULT 0,
       net_income_growth_positive_3yr_count INT DEFAULT 0,
+      latest_fiscal_date DATE,
 
       updated_at TIMESTAMP DEFAULT NOW()
     )
@@ -343,6 +344,7 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       eps_growth_yoy DECIMAL(16,8),
       revenue_growth_positive_3yr_count INT DEFAULT 0,
       net_income_growth_positive_3yr_count INT DEFAULT 0,
+      latest_fiscal_date DATE,
 
       updated_at TIMESTAMP DEFAULT NOW()
     )
