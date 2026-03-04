@@ -276,7 +276,7 @@ export default function LandingPage() {
             <StepCard
               step={3}
               title="See the proof"
-              description="Get historical returns, $10K growth charts, matched stocks, and head-to-head comparison against the S&P 500."
+              description="Get historical returns, growth charts, matched stocks, and head-to-head comparison against the S&P 500."
               delay={0.3}
             />
           </div>
