@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 100000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 11;
+const PICKS_VERSION = 12;
 // Score threshold below which active picks are sold (80+ is still a solid hold)
 const SELL_THRESHOLD = 80;
 
@@ -434,8 +434,10 @@ async function generateInitialPicks(sql: Sql) {
   rawCounts[rawCounts.length - 1] = Math.max(1, mainPool.length - assignedSoFar);
   const schedule = mainMonths.map((month, i) => ({ month, count: rawCounts[i] }));
 
+  // Build all active pick rows in memory first, then batch insert
+  const activeRows: { id: string; symbol: string; name: string; sector: string; mcap: number; score: number; thesis: string; pickDate: string; entryPrice: number }[] = [];
+
   let idx = 0;
-  let inserted = 0;
   let monthIdx = 0;
   for (const { month, count } of schedule) {
     for (let i = 0; i < count && idx < mainPool.length; i++, idx++) {
@@ -450,18 +452,17 @@ async function generateInitialPicks(sql: Sql) {
       const offset = getEntryScoreOffset(stock.symbol, monthIdx);
       const entryScore = Math.max(85, Math.min(99, stock.score - offset));
 
-      await sql`
-        INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
-        VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
-                ${stock.marketCapB * 1e9}, ${entryScore}, ${generateThesis({ ...stock, score: entryScore })},
-                ${pickDate}, ${entryPrice}, 'active')
-      `;
-      inserted++;
+      activeRows.push({
+        id: uuidv4(), symbol: stock.symbol, name: stock.name, sector: stock.sector,
+        mcap: stock.marketCapB * 1e9, score: entryScore,
+        thesis: generateThesis({ ...stock, score: entryScore }),
+        pickDate, entryPrice,
+      });
     }
     monthIdx++;
   }
 
-  // Insert priority recent stocks (NVDA, TSM, NXT) in recent months
+  // Priority recent stocks (NVDA, TSM, NXT)
   const priorityMonths = ["2025-12", "2026-01", "2026-02"];
   for (let pi = 0; pi < priorityStocks.length; pi++) {
     const stock = priorityStocks[pi];
@@ -473,17 +474,31 @@ async function generateInitialPicks(sql: Sql) {
 
     if (!entryPrice || entryPrice <= 0) continue;
 
-    const offset = getEntryScoreOffset(stock.symbol, 6 + pi); // recent months = small drift
+    const offset = getEntryScoreOffset(stock.symbol, 6 + pi);
     const entryScore = Math.max(90, Math.min(99, stock.score - offset));
 
-    await sql`
-      INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
-      VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
-              ${stock.marketCapB * 1e9}, ${entryScore}, ${generateThesis({ ...stock, score: entryScore })},
-              ${pickDate}, ${entryPrice}, 'active')
-    `;
-    inserted++;
+    activeRows.push({
+      id: uuidv4(), symbol: stock.symbol, name: stock.name, sector: stock.sector,
+      mcap: stock.marketCapB * 1e9, score: entryScore,
+      thesis: generateThesis({ ...stock, score: entryScore }),
+      pickDate, entryPrice,
+    });
   }
+
+  // Batch insert active picks (single query)
+  if (activeRows.length > 0) {
+    const params: (string | number)[] = [];
+    const valueClauses: string[] = [];
+    for (let ri = 0; ri < activeRows.length; ri++) {
+      const r = activeRows[ri];
+      const off = ri * 9;
+      valueClauses.push(`($${off+1}, $${off+2}, $${off+3}, $${off+4}, $${off+5}, $${off+6}, $${off+7}, $${off+8}, $${off+9}, 'active')`);
+      params.push(r.id, r.symbol, r.name, r.sector, r.mcap, r.score, r.thesis, r.pickDate, r.entryPrice);
+    }
+    const insertSql = `INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status) VALUES ${valueClauses.join(", ")}`;
+    await sql.query(insertSql, params);
+  }
+  const inserted = activeRows.length;
 
   // --- Sell candidates from broader stock universe ---
   // Find stocks whose scores dropped below SELL_THRESHOLD that could plausibly have
@@ -543,39 +558,49 @@ async function generateInitialPicks(sql: Sql) {
     { pickMonth: "2025-12", sellMonth: "2026-02" },
   ];
 
-  let soldCount = 0;
+  // Build sold pick rows in memory, then batch insert
+  const soldRows: { id: string; symbol: string; name: string; sector: string; mcap: number; score: number; thesis: string; pickDate: string; entryPrice: number; sellDate: string; sellPrice: number; sellReason: string }[] = [];
   for (let si = 0; si < sellCandidates.length && si < sellSchedule.length; si++) {
     const stock = sellCandidates[si];
     const prices = sellPriceLookup.get(stock.symbol)!;
     const { pickMonth, sellMonth } = sellSchedule[si];
 
-    // Entry date/price - varied within the month
     const pickDates = stock.dates.filter((d) => d.startsWith(pickMonth));
     const pickDate = pickDateInMonth(stock.symbol, pickDates, stock.dates, pickMonth);
     const entryPrice = prices.get(pickDate)!;
 
-    // Sell date/price - varied within the sell month
     const sellDates = stock.dates.filter((d) => d.startsWith(sellMonth));
-    // Use a different hash offset for sell date so it differs from pick date
     const sellDateKey = stock.symbol + "_sell";
     const sellDate = pickDateInMonth(sellDateKey, sellDates, stock.dates, sellMonth);
     const sellPrice = prices.get(sellDate)!;
 
     if (!entryPrice || !sellPrice || entryPrice <= 0) continue;
 
-    // Simulated entry score was higher (stock qualified at 90+ but has since dropped)
     const simulatedEntryScore = Math.max(90, Math.min(97, 92 + si));
     const sellReason = generateSellReason(stock);
 
-    await sql`
-      INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis,
-                                pick_date, entry_price, status, sell_date, sell_price, sell_reason)
-      VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
-              ${stock.marketCapB * 1e9}, ${simulatedEntryScore}, ${generateThesis({ ...stock, score: simulatedEntryScore })},
-              ${pickDate}, ${entryPrice}, 'sold', ${sellDate}, ${sellPrice}, ${sellReason})
-    `;
-    soldCount++;
+    soldRows.push({
+      id: uuidv4(), symbol: stock.symbol, name: stock.name, sector: stock.sector,
+      mcap: stock.marketCapB * 1e9, score: simulatedEntryScore,
+      thesis: generateThesis({ ...stock, score: simulatedEntryScore }),
+      pickDate, entryPrice, sellDate, sellPrice, sellReason,
+    });
   }
+
+  // Batch insert sold picks (single query)
+  if (soldRows.length > 0) {
+    const params: (string | number)[] = [];
+    const valueClauses: string[] = [];
+    for (let ri = 0; ri < soldRows.length; ri++) {
+      const r = soldRows[ri];
+      const off = ri * 12;
+      valueClauses.push(`($${off+1}, $${off+2}, $${off+3}, $${off+4}, $${off+5}, $${off+6}, $${off+7}, $${off+8}, $${off+9}, 'sold', $${off+10}, $${off+11}, $${off+12})`);
+      params.push(r.id, r.symbol, r.name, r.sector, r.mcap, r.score, r.thesis, r.pickDate, r.entryPrice, r.sellDate, r.sellPrice, r.sellReason);
+    }
+    const insertSql = `INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status, sell_date, sell_price, sell_reason) VALUES ${valueClauses.join(", ")}`;
+    await sql.query(insertSql, params);
+  }
+  const soldCount = soldRows.length;
 
   console.log(`[Signal Tracker] Inserted ${inserted} active picks + ${soldCount} sold picks`);
 }
@@ -711,13 +736,11 @@ export async function GET() {
         // Preserve live signals and curated picks during regeneration
         const preserveSymbolsArr = Array.from(PRESERVE_SYMBOLS);
         const preserved = await sql`SELECT * FROM signal_picks WHERE symbol = ANY(${preserveSymbolsArr})`;
-        await sql`DELETE FROM signal_picks`;
-        // Re-insert preserved picks
-        for (const p of preserved) {
-          await sql`
-            INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status, sell_date, sell_price, sell_reason, created_at)
-            VALUES (${p.id}, ${p.symbol}, ${p.company_name}, ${p.sector}, ${p.market_cap_at_pick}, ${p.score}, ${p.thesis}, ${p.pick_date}, ${p.entry_price}, ${p.status}, ${p.sell_date}, ${p.sell_price}, ${p.sell_reason}, ${p.created_at})
-          `;
+        // Delete non-preserved picks only (safer than DELETE all + re-insert)
+        if (preserveSymbolsArr.length > 0) {
+          await sql`DELETE FROM signal_picks WHERE symbol != ALL(${preserveSymbolsArr})`;
+        } else {
+          await sql`DELETE FROM signal_picks`;
         }
         console.log(`[Signal Tracker] Preserved ${preserved.length} picks for ${preserveSymbolsArr.join(', ')}`);
       }
