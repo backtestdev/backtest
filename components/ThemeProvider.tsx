@@ -41,9 +41,9 @@ const DARK_CHART: ChartColors = {
 };
 
 const ThemeContext = createContext<ThemeContextType>({
-  theme: "light",
+  theme: "dark",
   toggle: () => {},
-  chartColors: LIGHT_CHART,
+  chartColors: DARK_CHART,
 });
 
 export function useTheme() {
@@ -51,16 +51,15 @@ export function useTheme() {
 }
 
 export default function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("theme") as Theme | null;
     if (stored === "light" || stored === "dark") {
       setTheme(stored);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
     }
+    // Default is dark - no need to check prefers-color-scheme
     setMounted(true);
   }, []);
 

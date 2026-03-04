@@ -16,6 +16,9 @@ import { getDb, ensureSignalPicksTable, ensureSignalScoreHistoryTable } from "@/
 import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
 import { v4 as uuidv4 } from "uuid";
+import YahooFinance from "yahoo-finance2";
+
+const yf = new YahooFinance({ suppressNotices: ["ripHistorical"] });
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -161,13 +164,39 @@ async function refreshSignals() {
   let added = 0;
   if (newQualifiers.length > 0) {
     const symbols = newQualifiers.map((s) => s.symbol);
-    const priceRows = await sql`
-      SELECT DISTINCT ON (symbol) symbol, close_price
-      FROM stock_prices WHERE symbol = ANY(${symbols})
-      ORDER BY symbol, date DESC
-    `;
+
+    // Use Yahoo Finance live quotes for accurate entry prices (stock_prices may be stale)
     const priceMap = new Map<string, number>();
-    for (const r of priceRows) priceMap.set(r.symbol as string, Number(r.close_price));
+    try {
+      const quotes = await Promise.allSettled(
+        symbols.map(async (sym) => {
+          const q = await yf.quote(sym);
+          return { symbol: sym, price: q?.regularMarketPrice ?? null };
+        })
+      );
+      for (const result of quotes) {
+        if (result.status === "fulfilled" && result.value.price != null) {
+          priceMap.set(result.value.symbol, Math.round(result.value.price * 100) / 100);
+        }
+      }
+    } catch (e) {
+      console.error("[refresh-signals] Yahoo Finance quote fetch failed:", e);
+    }
+
+    // Fallback: fill missing from stock_prices table
+    const missingSymbols = symbols.filter((s) => !priceMap.has(s));
+    if (missingSymbols.length > 0) {
+      const priceRows = await sql`
+        SELECT DISTINCT ON (symbol) symbol, close_price
+        FROM stock_prices WHERE symbol = ANY(${missingSymbols})
+        ORDER BY symbol, date DESC
+      `;
+      for (const r of priceRows) {
+        if (!priceMap.has(r.symbol as string)) {
+          priceMap.set(r.symbol as string, Number(r.close_price));
+        }
+      }
+    }
 
     const today = new Date().toISOString().slice(0, 10);
     for (const stock of newQualifiers) {
@@ -190,6 +219,33 @@ async function refreshSignals() {
   for (const stock of deduped) stockInfoMap.set(stock.symbol as string, stock);
   const activePicks = await sql`SELECT id, symbol FROM signal_picks WHERE status = 'active'`;
   let sold = 0;
+  // Batch-fetch live sell prices from Yahoo Finance for candidates
+  const sellCandidateSyms = activePicks
+    .filter((p) => {
+      const score = scoreMap.get(p.symbol as string);
+      return score != null && score < SELL_THRESHOLD;
+    })
+    .map((p) => p.symbol as string);
+
+  const sellPriceMap = new Map<string, number>();
+  if (sellCandidateSyms.length > 0) {
+    try {
+      const quotes = await Promise.allSettled(
+        sellCandidateSyms.map(async (sym) => {
+          const q = await yf.quote(sym);
+          return { symbol: sym, price: q?.regularMarketPrice ?? null };
+        })
+      );
+      for (const result of quotes) {
+        if (result.status === "fulfilled" && result.value.price != null) {
+          sellPriceMap.set(result.value.symbol, Math.round(result.value.price * 100) / 100);
+        }
+      }
+    } catch (e) {
+      console.error("[refresh-signals] Yahoo Finance sell price fetch failed:", e);
+    }
+  }
+
   for (const pick of activePicks) {
     const score = scoreMap.get(pick.symbol as string);
     // Skip if stock not found in scoreMap - don't sell on missing data
@@ -197,8 +253,12 @@ async function refreshSignals() {
     if (score < SELL_THRESHOLD) {
       const stockData = stockInfoMap.get(pick.symbol as string);
       const sellReason = generateLiveSellReason(stockData, score);
-      const pr = await sql`SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1`;
-      const sellPrice = pr.length > 0 ? Number(pr[0].close_price) : null;
+      // Prefer Yahoo Finance live price, fallback to stock_prices table
+      let sellPrice = sellPriceMap.get(pick.symbol as string) ?? null;
+      if (sellPrice == null) {
+        const pr = await sql`SELECT close_price FROM stock_prices WHERE symbol = ${pick.symbol} ORDER BY date DESC LIMIT 1`;
+        sellPrice = pr.length > 0 ? Number(pr[0].close_price) : null;
+      }
       const today = new Date().toISOString().slice(0, 10);
       await sql`
         UPDATE signal_picks SET status = 'sold', sell_date = ${today},

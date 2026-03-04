@@ -94,7 +94,7 @@ function UpgradeButton() {
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { isSignedIn } = useUser();
+  useUser(); // keep Clerk context active
   const { isPremium } = useSubscription();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -113,7 +113,8 @@ export default function Navigation() {
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  const showUpgrade = isSignedIn && !isPremium;
+  // Show upgrade for all non-premium users (including guests and free/temp pass users)
+  const showUpgrade = !isPremium;
 
   return (
     <>
