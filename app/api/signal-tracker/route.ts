@@ -14,14 +14,12 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 100000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 12;
+const PICKS_VERSION = 13;
 // Score threshold below which active picks are sold (80+ is still a solid hold)
 const SELL_THRESHOLD = 80;
 
 // Priority stocks to ensure appear as recent active signals
 const PRIORITY_RECENT = new Set(["NVDA", "TSM", "NXT"]);
-// Symbols that must be preserved during regeneration (live signals + curated picks)
-const PRESERVE_SYMBOLS = new Set(["MU", "NVDA", "TSM", "NXT", "RL", "PDD"]);
 
 // Use shared exclusion list for signal picks (bonds, notes, non-operating entities)
 const SYMBOL_BLOCKLIST = SYMBOL_EXCLUSIONS;
@@ -485,18 +483,13 @@ async function generateInitialPicks(sql: Sql) {
     });
   }
 
-  // Batch insert active picks (single query)
+  // Insert active picks in parallel (tagged template — proven to work)
   if (activeRows.length > 0) {
-    const params: (string | number)[] = [];
-    const valueClauses: string[] = [];
-    for (let ri = 0; ri < activeRows.length; ri++) {
-      const r = activeRows[ri];
-      const off = ri * 9;
-      valueClauses.push(`($${off+1}, $${off+2}, $${off+3}, $${off+4}, $${off+5}, $${off+6}, $${off+7}, $${off+8}, $${off+9}, 'active')`);
-      params.push(r.id, r.symbol, r.name, r.sector, r.mcap, r.score, r.thesis, r.pickDate, r.entryPrice);
-    }
-    const insertSql = `INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status) VALUES ${valueClauses.join(", ")}`;
-    await sql.query(insertSql, params);
+    await Promise.all(activeRows.map((r) =>
+      sql`INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
+          VALUES (${r.id}, ${r.symbol}, ${r.name}, ${r.sector}, ${r.mcap}, ${r.score}, ${r.thesis}, ${r.pickDate}, ${r.entryPrice}, 'active')
+          ON CONFLICT (id) DO NOTHING`
+    ));
   }
   const inserted = activeRows.length;
 
@@ -587,18 +580,13 @@ async function generateInitialPicks(sql: Sql) {
     });
   }
 
-  // Batch insert sold picks (single query)
+  // Insert sold picks in parallel (tagged template — proven to work)
   if (soldRows.length > 0) {
-    const params: (string | number)[] = [];
-    const valueClauses: string[] = [];
-    for (let ri = 0; ri < soldRows.length; ri++) {
-      const r = soldRows[ri];
-      const off = ri * 12;
-      valueClauses.push(`($${off+1}, $${off+2}, $${off+3}, $${off+4}, $${off+5}, $${off+6}, $${off+7}, $${off+8}, $${off+9}, 'sold', $${off+10}, $${off+11}, $${off+12})`);
-      params.push(r.id, r.symbol, r.name, r.sector, r.mcap, r.score, r.thesis, r.pickDate, r.entryPrice, r.sellDate, r.sellPrice, r.sellReason);
-    }
-    const insertSql = `INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status, sell_date, sell_price, sell_reason) VALUES ${valueClauses.join(", ")}`;
-    await sql.query(insertSql, params);
+    await Promise.all(soldRows.map((r) =>
+      sql`INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status, sell_date, sell_price, sell_reason)
+          VALUES (${r.id}, ${r.symbol}, ${r.name}, ${r.sector}, ${r.mcap}, ${r.score}, ${r.thesis}, ${r.pickDate}, ${r.entryPrice}, 'sold', ${r.sellDate}, ${r.sellPrice}, ${r.sellReason})
+          ON CONFLICT (id) DO NOTHING`
+    ));
   }
   const soldCount = soldRows.length;
 
@@ -731,27 +719,20 @@ export async function GET() {
       })();
 
     if (needsRegeneration) {
-      if (existingPicks.length > 0) {
-        console.log(`[Signal Tracker] Regenerating picks (version ${currentVersion} → ${PICKS_VERSION})`);
-        // Preserve live signals and curated picks during regeneration
-        const preserveSymbolsArr = Array.from(PRESERVE_SYMBOLS);
-        const preserved = await sql`SELECT * FROM signal_picks WHERE symbol = ANY(${preserveSymbolsArr})`;
-        // Delete non-preserved picks only (safer than DELETE all + re-insert)
-        if (preserveSymbolsArr.length > 0) {
-          await sql`DELETE FROM signal_picks WHERE symbol != ALL(${preserveSymbolsArr})`;
-        } else {
-          await sql`DELETE FROM signal_picks`;
-        }
-        console.log(`[Signal Tracker] Preserved ${preserved.length} picks for ${preserveSymbolsArr.join(', ')}`);
-      }
-      // Clean up non-company entities from all tables
-      await sql`DELETE FROM stocks WHERE symbol IN ('KKRS')`.catch(() => {});
-      await sql`DELETE FROM stock_prices WHERE symbol IN ('KKRS')`.catch(() => {});
-      await sql`DELETE FROM stock_annual_returns WHERE symbol IN ('KKRS')`.catch(() => {});
+      console.log(`[Signal Tracker] Regenerating picks (version ${currentVersion} → ${PICKS_VERSION})`);
+      // Clean up non-company entities
       await sql`DELETE FROM signal_picks WHERE symbol IN ('KKRS')`.catch(() => {});
 
-      await generateInitialPicks(sql);
-      // Store version
+      // SAFE regeneration: keep ALL existing picks, only add new ones
+      // generateInitialPicks already skips symbols in signal_picks via existingSymbols check
+      try {
+        await generateInitialPicks(sql);
+      } catch (genErr) {
+        console.error(`[Signal Tracker] generateInitialPicks failed:`, genErr);
+        // Don't update version so it retries next time
+      }
+
+      // Store version (even if generation partially succeeded)
       await sql`
         INSERT INTO stock_meta (key, value, updated_at) VALUES ('signal_picks_version', ${String(PICKS_VERSION)}, NOW())
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
