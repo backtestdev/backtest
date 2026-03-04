@@ -293,7 +293,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
     return (
       <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
         <div className="max-w-4xl mx-auto">
-          <Link href="/research" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-6 transition-colors min-h-[44px]">
+          <Link href="/app/research" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-6 transition-colors min-h-[44px]">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
@@ -335,7 +335,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
     <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-4xl mx-auto">
         {/* Back link */}
-        <Link href="/research" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-4 sm:mb-6 transition-colors min-h-[44px]">
+        <Link href="/app/research" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-4 sm:mb-6 transition-colors min-h-[44px]">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
           </svg>
@@ -354,7 +354,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
                   <span className="text-xl font-bold text-th-text-2">${f.price.toFixed(2)}</span>
                 )}
                 {backtestScore != null && (
-                  <Tooltip content="Backtest Score. Composite 1-100 score based on earnings yield, growth, consistency, value, quality, and leverage factors." position="bottom">
+                  <Tooltip content="Quant Score. Composite 1-100 score based on earnings yield, growth, consistency, value, quality, and leverage factors." position="bottom">
                     <span className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
                       backtestScore >= 70 ? "bg-th-positive-bg text-th-positive-text" :
                       backtestScore >= 40 ? "bg-th-warning-bg text-th-warning-text" :
@@ -380,7 +380,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
             </div>
             </div>
 
-            {/* Recommendation gauge — driven by backtest score */}
+            {/* Recommendation gauge - driven by backtest score */}
             {recConfig && (
               <div className="flex-shrink-0 w-full sm:w-44">
                 <RecommendationGauge
@@ -547,7 +547,7 @@ export default function ResearchReport({ ticker }: { ticker: string }) {
           </div>
         )}
 
-        {/* Price Targets — Bear (left) → Base (center) → Bull (right) */}
+        {/* Price Targets - Bear (left) → Base (center) → Bull (right) */}
         {report && (
           <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 shadow-sm">
             <h2 className="text-sm font-semibold text-th-text mb-4">Price Targets</h2>

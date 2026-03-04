@@ -25,7 +25,7 @@ function formatDollar(value: number): string {
   return "$" + Math.round(value).toLocaleString("en-US");
 }
 
-// Strip " YTD" from axis labels — keep just the year number
+// Strip " YTD" from axis labels - keep just the year number
 function formatAxisYear(value: string): string {
   return value.replace(" YTD", "");
 }

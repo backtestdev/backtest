@@ -130,13 +130,13 @@ export default function AdminStocks() {
       setResult(data);
       if (data.success) fetchStatus();
     } catch {
-      setResult({ error: "Network error — could not reach server" });
+      setResult({ error: "Network error - could not reach server" });
     } finally {
       setRefreshing(false);
     }
   };
 
-  // Refresh ALL stocks — chains runs until offset wraps to 0
+  // Refresh ALL stocks - chains runs until offset wraps to 0
   const handleRefreshAll = async () => {
     setRefreshingAll(true);
     setResult(null);
@@ -198,7 +198,7 @@ export default function AdminStocks() {
     abortRef.current = true;
   };
 
-  // Full reset (table swap — only for initial setup or disaster recovery)
+  // Full reset (table swap - only for initial setup or disaster recovery)
   const handleBulkRefresh = async () => {
     setBulkRefreshing(true);
     setBulkResult(null);
@@ -208,7 +208,7 @@ export default function AdminStocks() {
       setBulkResult(data);
       if (data.success) fetchStatus();
     } catch {
-      setBulkResult({ error: "Network error — could not reach server" });
+      setBulkResult({ error: "Network error - could not reach server" });
     } finally {
       setBulkRefreshing(false);
     }
@@ -225,7 +225,7 @@ export default function AdminStocks() {
       setCleanupResult(data);
       if (data.success) fetchStatus();
     } catch {
-      setCleanupResult({ error: "Network error — could not reach server" });
+      setCleanupResult({ error: "Network error - could not reach server" });
     } finally {
       setCleaning(false);
     }
@@ -255,7 +255,7 @@ export default function AdminStocks() {
       const data = await res.json();
       setPriceResult(data);
     } catch {
-      setPriceResult({ error: "Network error — could not reach server" });
+      setPriceResult({ error: "Network error - could not reach server" });
     } finally {
       setPriceRefreshing(false);
     }
@@ -269,7 +269,7 @@ export default function AdminStocks() {
   return (
     <div className="min-h-screen bg-th-bg px-6 py-16">
       <div className="max-w-xl mx-auto">
-        <a href="/" className="text-sm text-th-text-3 hover:text-th-text-2 transition-colors">
+        <a href="/app" className="text-sm text-th-text-3 hover:text-th-text-2 transition-colors">
           &larr; Back
         </a>
 
@@ -303,14 +303,14 @@ export default function AdminStocks() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-th-text-3">Total stocks</dt>
-                  <dd className="text-th-text font-medium">{status?.stockCount?.toLocaleString() ?? "—"}</dd>
+                  <dd className="text-th-text font-medium">{status?.stockCount?.toLocaleString() ?? "-"}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-th-text-3">Enriched (have metrics)</dt>
                   <dd className="text-th-text font-medium">
                     {status?.enrichedCount != null
                       ? `${status.enrichedCount.toLocaleString()} / ${status?.stockCount?.toLocaleString() ?? "?"} (${enrichPct ?? 0}%)`
-                      : "—"}
+                      : "-"}
                   </dd>
                 </div>
                 {status?.enrichedCount != null && status?.stockCount != null && (
@@ -323,7 +323,7 @@ export default function AdminStocks() {
                 )}
                 <div className="flex justify-between">
                   <dt className="text-th-text-3">With revenue history</dt>
-                  <dd className="text-th-text font-medium">{status?.historyCount?.toLocaleString() ?? "—"}</dd>
+                  <dd className="text-th-text font-medium">{status?.historyCount?.toLocaleString() ?? "-"}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-th-text-3">Last refresh</dt>
@@ -340,7 +340,7 @@ export default function AdminStocks() {
                   <dd className="text-th-text font-medium">
                     {status?.enrichOffset != null && status?.stockCount
                       ? `Stock #${status.enrichOffset} of ${status.stockCount}`
-                      : "—"}
+                      : "-"}
                   </dd>
                 </div>
               </dl>
@@ -522,7 +522,7 @@ export default function AdminStocks() {
           <div className="mt-4 rounded-2xl border border-th-positive-border bg-th-positive-bg p-6">
             <div className="text-sm">
               <p className="font-medium text-th-positive-text">
-                Full refresh complete — {refreshAllProgress.runsCompleted} runs
+                Full refresh complete - {refreshAllProgress.runsCompleted} runs
               </p>
               <dl className="mt-3 space-y-1 text-th-positive-text">
                 <div className="flex justify-between">
@@ -625,7 +625,7 @@ export default function AdminStocks() {
                     <div className="flex justify-between">
                       <dt>SPY benchmark</dt>
                       <dd className="font-medium">
-                        {priceResult.spy.years} years ({priceResult.spy.range ?? "—"})
+                        {priceResult.spy.years} years ({priceResult.spy.range ?? "-"})
                       </dd>
                     </div>
                   )}
@@ -699,7 +699,7 @@ export default function AdminStocks() {
               <div className="text-sm">
                 <p className="font-medium text-th-positive-text">
                   {cleanupResult.deleted === 0
-                    ? "Database is clean — no non-companies found"
+                    ? "Database is clean - no non-companies found"
                     : `Purged ${cleanupResult.deleted} non-company entries`}
                 </p>
                 {(cleanupResult.deleted ?? 0) > 0 && (
@@ -741,7 +741,7 @@ export default function AdminStocks() {
                         <summary className="text-th-positive cursor-pointer text-xs">Deleted symbols ({cleanupResult.deletedSymbols.length})</summary>
                         <div className="mt-2 max-h-48 overflow-y-auto text-xs text-th-positive-text space-y-0.5">
                           {cleanupResult.deletedSymbols.map((s) => (
-                            <div key={s.symbol}><span className="font-medium">{s.symbol}</span> — {s.name}</div>
+                            <div key={s.symbol}><span className="font-medium">{s.symbol}</span> - {s.name}</div>
                           ))}
                         </div>
                       </details>
@@ -759,7 +759,7 @@ export default function AdminStocks() {
           </div>
         )}
 
-        {/* Full DB Reset — secondary option */}
+        {/* Full DB Reset - secondary option */}
         <details className="mt-6">
           <summary className="text-xs text-th-text-3 cursor-pointer hover:text-th-text-2">
             Advanced: Full Database Reset

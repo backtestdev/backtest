@@ -206,7 +206,7 @@ export default function StockScreener() {
   const navigateToStock = (ticker: string) => {
     setSearchQuery("");
     setShowDropdown(false);
-    router.push(`/screener/${ticker}`);
+    router.push(`/app/screener/${ticker}`);
   };
 
   const setCapFilter = (min: number, max: number) => {
@@ -288,7 +288,7 @@ export default function StockScreener() {
         <div className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-th-text tracking-tight">AI Stock Analyzer</h1>
           <p className="mt-2 text-sm sm:text-base text-th-text-3 max-w-xl mx-auto">
-            Search any stock for AI-powered analysis, or browse all stocks ranked by our multi-factor Backtest Score.
+            Search any stock for AI-powered analysis, or browse all stocks ranked by our multi-factor Quant Score.
           </p>
         </div>
 
@@ -624,7 +624,7 @@ export default function StockScreener() {
                   <LoginGate
                     locked={true}
                     message="Create a free account to view more stocks"
-                    subMessage={`${data.totalCount.toLocaleString()} stocks with Backtest Scores, metrics, and AI analysis`}
+                    subMessage={`${data.totalCount.toLocaleString()} stocks with Quant Scores, metrics, and AI analysis`}
                     blur="heavy"
                   >
                     {hiddenStocks.slice(0, 8).map((stock) => (
@@ -679,7 +679,7 @@ export default function StockScreener() {
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
             </svg>
-            <span>How the Backtest Score works</span>
+            <span>How the Quant Score works</span>
             <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
             </svg>

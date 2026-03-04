@@ -263,7 +263,7 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Redeem code — subtle, below FAQ */}
+        {/* Redeem code - subtle, below FAQ */}
         {isSignedIn && !isPremium && <RedeemCode />}
 
         <p className="text-center mt-12 text-[10px] text-th-text-4">

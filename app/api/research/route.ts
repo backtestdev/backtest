@@ -300,7 +300,7 @@ export async function GET(request: NextRequest) {
     return Number(dbRow[col]);
   };
 
-  // Build fundamentals — FMP first, DB fallback for missing fields
+  // Build fundamentals - FMP first, DB fallback for missing fields
   const fundamentals = {
     price: nn(profile.price) ?? dbNum("price"),
     marketCap: mktCap ?? dbNum("market_cap"),
@@ -328,11 +328,11 @@ export async function GET(request: NextRequest) {
     dividendYield: nn(latestRatios?.dividendYield) ?? dbNum("dividend_yield"),
     fcfPerShare: nn(latestRatios?.freeCashFlowPerShare) ?? dbNum("free_cash_flow_per_share"),
     enterpriseValue: nn(latestMetrics?.enterpriseValue) ?? dbNum("enterprise_value"),
-    // Earnings yield — FMP key metrics first, then DB
+    // Earnings yield - FMP key metrics first, then DB
     earningsYield: nn(latestMetrics?.earningsYield) ?? dbNum("earnings_yield"),
-    // Earnings growth — computed from income statements, then DB
+    // Earnings growth - computed from income statements, then DB
     earningsGrowth: earningsGrowthFMP ?? dbNum("earnings_growth_yoy"),
-    // Profit margin — FMP income ratio, FMP ratios, then DB
+    // Profit margin - FMP income ratio, FMP ratios, then DB
     profitMargin: nn(latestIncome?.netIncomeRatio) ?? nn(latestRatios?.netProfitMargin) ?? dbNum("net_profit_margin"),
     fcfYield: nn(latestMetrics?.freeCashFlowYield) ?? dbNum("free_cash_flow_yield"),
     consecutiveEarningsGrowth: dbNum("consecutive_net_income_growth_years"),
@@ -358,7 +358,7 @@ export async function GET(request: NextRequest) {
     eps: stmt.epsDiluted,
   })).reverse();
 
-  // Historical prices for chart — live from Yahoo Finance (monthly, ~2 years)
+  // Historical prices for chart - live from Yahoo Finance (monthly, ~2 years)
   let priceHistory: { date: string; price: number }[] = [];
   try {
     const endDate = new Date();
@@ -384,7 +384,7 @@ export async function GET(request: NextRequest) {
       priceHistory = Array.from(byMonth.values()).sort((a, b) => a.date.localeCompare(b.date));
     }
   } catch {
-    // Yahoo Finance unavailable — chart will be empty
+    // Yahoo Finance unavailable - chart will be empty
   }
 
   // Generate AI report only for authenticated users

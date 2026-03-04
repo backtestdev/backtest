@@ -191,10 +191,10 @@ export default function HomePage() {
       <header className="pt-8 sm:pt-12 md:pt-16 pb-4 text-center px-4">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-th-accent-bg border border-th-accent-border rounded-full text-xs font-medium text-th-accent-text mb-4">
           <span className="w-1.5 h-1.5 rounded-full bg-th-accent animate-pulse" />
-          AI-Powered Stock Screening
+          AI-Powered Backtesting
         </div>
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-th-text tracking-tight">
-          AI Stock Screener
+          AI Backtest Engine
         </h1>
         <p className="mt-3 text-base sm:text-lg text-th-text-3 max-w-lg mx-auto leading-relaxed">
           Screen stocks using natural language.
@@ -257,7 +257,7 @@ export default function HomePage() {
                 Upgrade to Premium for unlimited backtests, strategy saving, and full access to all features.
               </p>
               <Link
-                href="/pricing"
+                href="/app/pricing"
                 className="inline-flex items-center gap-2 mt-5 px-6 py-2.5 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -276,7 +276,7 @@ export default function HomePage() {
                 <p className="text-xs text-th-text-3">
                   {backtestsRemaining} of {PLANS.free.backtestsPerMonth} free backtest{PLANS.free.backtestsPerMonth > 1 ? "s" : ""} remaining this month
                   {backtestsUsed > 0 && (
-                    <> &middot; <Link href="/pricing" className="text-th-accent hover:underline">Upgrade for unlimited</Link></>
+                    <> &middot; <Link href="/app/pricing" className="text-th-accent hover:underline">Upgrade for unlimited</Link></>
                   )}
                 </p>
               </div>
@@ -329,7 +329,7 @@ export default function HomePage() {
           <p className="text-xs text-th-text-4">
             For educational purposes only. Not financial advice. Past performance
             does not guarantee future results
-            <a href="/admin/stocks" className="text-th-text-4 hover:text-th-text-3 transition-colors">.</a>
+            <a href="/app/admin/stocks" className="text-th-text-4 hover:text-th-text-3 transition-colors">.</a>
           </p>
         </footer>
       </main>

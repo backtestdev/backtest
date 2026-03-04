@@ -73,7 +73,7 @@ export default function UpgradeGate({
             <p className="text-xs text-th-text-3 mt-1">{subMessage}</p>
           )}
           <Link
-            href="/pricing"
+            href="/app/pricing"
             className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors"
           >
             <svg

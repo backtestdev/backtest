@@ -1,7 +1,7 @@
 /**
  * Admin endpoint to refresh the stock database using FMP API calls.
  *
- * POST /api/admin/refresh-data — Protected by x-admin-secret header.
+ * POST /api/admin/refresh-data - Protected by x-admin-secret header.
  *
  * Strategy (starter-plan compatible):
  *   1. Create stocks_new table
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!screenerResults || screenerResults.length === 0) {
-      throw new Error("FMP screener returned no results — check API key and plan");
+      throw new Error("FMP screener returned no results - check API key and plan");
     }
 
     const filtered = screenerResults.filter(

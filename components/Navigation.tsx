@@ -9,8 +9,8 @@ import { useSubscription } from "./SubscriptionProvider";
 
 const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode }[] = [
   {
-    href: "/",
-    label: "Signal Tracker",
+    href: "/app",
+    label: "Quant Fund",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
@@ -18,8 +18,8 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
     ),
   },
   {
-    href: "/backtest",
-    label: "AI Stock Screener",
+    href: "/app/backtest",
+    label: "AI Backtest Engine",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
@@ -27,7 +27,7 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
     ),
   },
   {
-    href: "/screener",
+    href: "/app/screener",
     label: "AI Stock Analyzer",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -36,7 +36,7 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
     ),
   },
   {
-    href: "/portfolio",
+    href: "/app/portfolio",
     label: "AI Portfolio Analyzer",
     beta: true,
     icon: (
@@ -73,11 +73,11 @@ function ThemeToggle() {
 
 function UpgradeButton() {
   const pathname = usePathname();
-  const isActive = pathname === "/pricing";
+  const isActive = pathname === "/app/pricing";
 
   return (
     <Link
-      href="/pricing"
+      href="/app/pricing"
       className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
         isActive
           ? "bg-th-accent text-white"
@@ -120,8 +120,8 @@ export default function Navigation() {
       {/* Desktop nav */}
       <div className="hidden md:flex items-center gap-1">
         {NAV_ITEMS.map((item) => {
-          const isActive = item.href === "/"
-            ? pathname === "/"
+          const isActive = item.href === "/app"
+            ? pathname === "/app"
             : pathname.startsWith(item.href);
 
           return (
@@ -184,8 +184,8 @@ export default function Navigation() {
           <div className="md:hidden fixed top-[57px] left-0 right-0 bg-th-surface border-b border-th-border-light shadow-lg z-50 animate-in">
             <nav className="flex flex-col px-4 py-3 gap-1">
               {NAV_ITEMS.map((item) => {
-                const isActive = item.href === "/"
-                  ? pathname === "/"
+                const isActive = item.href === "/app"
+                  ? pathname === "/app"
                   : pathname.startsWith(item.href);
 
                 return (
@@ -211,7 +211,7 @@ export default function Navigation() {
               })}
               {showUpgrade && (
                 <Link
-                  href="/pricing"
+                  href="/app/pricing"
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-3 px-4 py-3 text-base font-semibold text-th-accent rounded-xl hover:bg-th-accent-bg transition-colors"
                 >

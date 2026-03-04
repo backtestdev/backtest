@@ -1,15 +1,15 @@
 /**
  * Admin endpoint to refresh the stock database from FMP API.
  *
- * GET  /api/admin/refresh-stocks — Vercel Cron handler (rotates batches)
- * POST /api/admin/refresh-stocks — Manual trigger (enriches next batch)
+ * GET  /api/admin/refresh-stocks - Vercel Cron handler (rotates batches)
+ * POST /api/admin/refresh-stocks - Manual trigger (enriches next batch)
  *
  * Per-stock enrichment uses 3 FMP API calls per stock:
  *   /ratios + /key-metrics + /income-statement (annual)
  * These are called in parallel per stock with slot-based rate limiting.
  *
  * This endpoint works with the unified single `stocks` table.
- * All metrics are stored directly in the stocks table — no separate
+ * All metrics are stored directly in the stocks table - no separate
  * quotes/ratios/profiles tables.
  *
  * Vercel cron sends GET with Authorization: Bearer <CRON_SECRET>.
@@ -31,7 +31,7 @@ import { computeGrowthData, IncomeStatementEntry } from "@/lib/growthData";
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes
 
-// No fixed batch size — each run enriches as many stocks as possible
+// No fixed batch size - each run enriches as many stocks as possible
 // within the 4-minute time budget, starting from the saved offset.
 
 const FMP_API_KEY =
@@ -207,12 +207,12 @@ async function runRefresh(
 ): Promise<{ stocks: number; enriched: number; enrichFailed: number; noData: number; partial: number; processedCount: number; nextOffset: number; enrichIssues: EnrichIssue[]; batchRange: string; totalStocks: number; runsRemaining: number }> {
   await ensureStockTables(sql);
 
-  // Step 1: Screener — always refresh ALL stocks basic data
+  // Step 1: Screener - always refresh ALL stocks basic data
   const results = await fetchFMP<ScreenerResult[]>(
     "/company-screener?marketCapMoreThan=300000000&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NYSE,NASDAQ&limit=5000"
   );
   if (!results || results.length === 0) {
-    throw new Error("FMP screener returned no results — check API key and plan");
+    throw new Error("FMP screener returned no results - check API key and plan");
   }
 
   const filtered = results.filter(
@@ -258,7 +258,7 @@ async function runRefresh(
   const totalStocks = allSymbols.length;
 
   const safeOffset = enrichOffset >= totalStocks ? 0 : enrichOffset;
-  // Take ALL remaining stocks from offset — time budget controls how many actually get processed
+  // Take ALL remaining stocks from offset - time budget controls how many actually get processed
   const batch = allSymbols.slice(safeOffset);
   console.log(`[refresh-stocks] Enriching from offset ${safeOffset} of ${totalStocks} (time-budget limited)`);
 
@@ -526,7 +526,7 @@ export async function GET(request: NextRequest) {
 
   // ── Determine if we should run a refresh ─────────────────────────
   // Trigger 1: Vercel cron with valid CRON_SECRET
-  // Trigger 2: Auto-refresh when data is stale (>20 hours) — works
+  // Trigger 2: Auto-refresh when data is stale (>20 hours) - works
   //            even if CRON_SECRET is not set or cron is misconfigured
   let shouldRefresh = !!isCron;
   let isAutoRefresh = false;
@@ -541,7 +541,7 @@ export async function GET(request: NextRequest) {
       const hoursSinceRefresh = (Date.now() - lastRefreshMs) / (1000 * 60 * 60);
 
       if (hoursSinceRefresh > AUTO_REFRESH_STALE_HOURS) {
-        // Data is stale — check if another refresh is already running
+        // Data is stale - check if another refresh is already running
         if (refreshLockStr) {
           const lockAgeMin = (Date.now() - new Date(refreshLockStr).getTime()) / (1000 * 60);
           if (lockAgeMin < 10) {
@@ -559,7 +559,7 @@ export async function GET(request: NextRequest) {
         console.log(`[auto-refresh] Data is ${Math.round(hoursSinceRefresh)}h stale, triggering refresh`);
       }
     } catch {
-      // stock_meta table may not exist yet — fall through to status
+      // stock_meta table may not exist yet - fall through to status
     }
   }
 
@@ -584,7 +584,7 @@ export async function GET(request: NextRequest) {
         historyCount: Number(historyCount[0]?.cnt || 0),
       });
     } catch {
-      return NextResponse.json({ configured: true, error: "Could not query stock_meta — run POST /api/db/init first" });
+      return NextResponse.json({ configured: true, error: "Could not query stock_meta - run POST /api/db/init first" });
     }
   }
 

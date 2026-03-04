@@ -154,9 +154,9 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         </summary>
         <div className="mt-2 text-xs text-th-text-3 leading-relaxed pl-5.5 space-y-1">
           {isTickerMode ? (
-            <p>Stocks were selected by AI based on your query — not by metric filters. Re-running the same query may return slightly different tickers.</p>
+            <p>Stocks were selected by AI based on your query - not by metric filters. Re-running the same query may return slightly different tickers.</p>
           ) : (
-            <p>Results show how stocks <em>currently</em> matching your criteria performed historically. Stocks are screened against today&apos;s metrics, not the metrics at the time — this is not a point-in-time simulation.</p>
+            <p>Results show how stocks <em>currently</em> matching your criteria performed historically. Stocks are screened against today&apos;s metrics, not the metrics at the time - this is not a point-in-time simulation.</p>
           )}
           <p>Each year, returns are equal-weighted across all matching stocks trading that year. IPOs join from their first full year.</p>
         </div>
@@ -256,7 +256,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
                   return (
                     <Link
                       key={stock}
-                      href={`/research/${ticker}`}
+                      href={`/app/research/${ticker}`}
                       title={scoreData?.name || ticker}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-th-text-2 bg-th-inset rounded-lg border border-th-border-light hover:border-th-accent-border hover:bg-th-accent-bg transition-colors"
                     >
@@ -334,7 +334,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         Uses representative historical data for demonstration purposes.
       </p>
 
-      {/* Save strategy — premium only */}
+      {/* Save strategy - premium only */}
       {!saved && (
         <div className="mt-6 text-center">
           {!isSignedIn ? (
@@ -344,7 +344,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
               </button>
             </SignUpButton>
           ) : !isPremium ? (
-            <Link href="/pricing" className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-th-accent bg-th-accent-bg border border-th-accent-border rounded-xl hover:bg-th-accent-muted transition-colors">
+            <Link href="/app/pricing" className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-th-accent bg-th-accent-bg border border-th-accent-border rounded-xl hover:bg-th-accent-muted transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
               </svg>

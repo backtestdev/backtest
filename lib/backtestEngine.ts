@@ -39,7 +39,7 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
 
     // Always load fresh returns from DB for ticker-selected stocks.
     // The in-memory cache may have stale/empty returns (e.g., cache loaded before price refresh).
-    // IMPORTANT: create shallow copies — never mutate the cached stock objects.
+    // IMPORTANT: create shallow copies - never mutate the cached stock objects.
     const tickerList = allByTicker.map(s => s.ticker);
     console.log(`[Backtest] Loading returns from DB for ${tickerList.length} tickers`);
     const dbReturns = await loadReturnsForTickers(tickerList);
@@ -48,14 +48,14 @@ export async function runBacktest(params: StrategyParameters): Promise<BacktestR
     const stocksWithReturns = allByTicker.map(s => {
       const freshReturns = dbReturns.get(s.ticker);
       if (freshReturns && Object.keys(freshReturns).length > 0) {
-        // Shallow copy with fresh DB returns — don't mutate cache
+        // Shallow copy with fresh DB returns - don't mutate cache
         return { ...s, historical_returns: freshReturns };
       }
       // Keep original (may already have returns from cache attach)
       return { ...s };
     });
 
-    // Include ALL matched stocks — even those with no/limited returns.
+    // Include ALL matched stocks - even those with no/limited returns.
     // They appear in the matched stocks list; they just don't contribute
     // to years where they lack data (calculateReturns already handles
     // this via its per-year availability filter).

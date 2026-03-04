@@ -6,7 +6,7 @@ interface StrategyChipsProps {
 }
 
 const EXAMPLE_STRATEGIES = [
-  // Quality & Growth (metrics that matter most — ROE, earnings, margins, FCF)
+  // Quality & Growth (metrics that matter most - ROE, earnings, margins, FCF)
   { label: "Quality Compounders", query: "Quality compounders: ROE over 15%, debt-to-equity under 0.5, consistent earnings growth" },
   { label: "High Profit Leaders", query: "Companies with profit margin above 15% and ROE over 20%" },
   { label: "Revenue Growth Stars", query: "Companies with 20%+ revenue growth and improving profit margins" },
@@ -23,7 +23,7 @@ const EXAMPLE_STRATEGIES = [
   { label: "Momentum Leaders", query: "Stocks within 5% of 52-week highs with earnings growth over 15%" },
 ];
 
-// Rotating color palette for hover effects — each chip gets a distinct color
+// Rotating color palette for hover effects - each chip gets a distinct color
 const CHIP_HOVER_COLORS = [
   "hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:border-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-950/30",
   "hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:border-emerald-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-950/30",
@@ -41,7 +41,7 @@ const CHIP_HOVER_COLORS = [
 export default function StrategyChips({ onSelect, onCreateOwn }: StrategyChipsProps) {
   return (
     <div className="flex flex-wrap gap-2 justify-center max-w-3xl mx-auto">
-      {/* Create your own — prominent CTA */}
+      {/* Create your own - prominent CTA */}
       <button
         onClick={onCreateOwn}
         className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-th-accent border-2 border-th-accent-border bg-th-accent-bg rounded-full hover:bg-th-accent hover:text-white transition-all duration-150 cursor-pointer flex items-center gap-1.5 shadow-sm"

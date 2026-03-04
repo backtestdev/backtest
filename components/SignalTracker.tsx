@@ -187,14 +187,14 @@ export default function SignalTracker() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-th-text">Signal Tracker</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-th-text">Quant Fund</h1>
           <p className="text-sm text-th-text-3 mt-1">
             Proprietary AI-driven stock picks powered by our multi-factor scoring model.
             Tracked live with real entry & exit prices since July 2025.
           </p>
         </div>
 
-        {/* Stats Cards — always visible */}
+        {/* Stats Cards - always visible */}
         {stats && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <StatCard label="Fund Value" value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"} color="neutral" />
@@ -204,7 +204,7 @@ export default function SignalTracker() {
           </div>
         )}
 
-        {/* Performance Chart — always visible */}
+        {/* Performance Chart - always visible */}
         {performance.length > 2 && (
           <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-6 shadow-sm">
             <h2 className="text-sm font-semibold text-th-text mb-4">Fund Performance vs S&P 500</h2>
@@ -301,7 +301,7 @@ export default function SignalTracker() {
                           </p>
                           <p className="text-xs text-th-text-3 mt-0.5">Upgrade to Premium for all signals with live scoring</p>
                         </div>
-                        <Link href="/pricing" className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
+                        <Link href="/app/pricing" className="px-4 py-1.5 bg-th-accent text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex-shrink-0">
                           Upgrade
                         </Link>
                       </div>
@@ -410,12 +410,12 @@ function PickCard({ pick, expanded, onToggle }: {
     }`}>
       <div className="p-3 sm:p-4">
         <div className="flex items-center gap-3">
-          <Link href={`/screener/${pick.symbol}`} className="flex-shrink-0">
+          <Link href={`/app/screener/${pick.symbol}`} className="flex-shrink-0">
             <StockLogo ticker={pick.symbol} sector={pick.sector || undefined} size="sm" />
           </Link>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <Link href={`/screener/${pick.symbol}`} className="font-semibold text-th-text hover:text-th-accent transition-colors">
+              <Link href={`/app/screener/${pick.symbol}`} className="font-semibold text-th-text hover:text-th-accent transition-colors">
                 {pick.symbol}
               </Link>
               <ScoreBadge score={displayScore} />

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const EXTRACTION_PROMPT = `You are a precise financial data extractor. Extract portfolio holdings from brokerage screenshots.
 
-═══ CRITICAL — COLUMN DISTINCTION ═══
+═══ CRITICAL - COLUMN DISTINCTION ═══
 "Last Price" = CURRENT market price today.
 "Cost Basis" = what the investor ORIGINALLY PAID.
 These are DIFFERENT columns with DIFFERENT values.
@@ -26,8 +26,8 @@ Column order: Symbol | Description | Last Price | Change | Current Value | Quant
 
 STACKED CELLS (two lines per cell):
 • "Cost Basis" cell:
-  - TOP line = TOTAL cost basis (e.g., $14,775.00) — the LARGER number
-  - BOTTOM line = per-share cost (e.g., $49.25 / Share) — has "/ Share" suffix
+  - TOP line = TOTAL cost basis (e.g., $14,775.00) - the LARGER number
+  - BOTTOM line = per-share cost (e.g., $49.25 / Share) - has "/ Share" suffix
 • "Gain/Loss" cell: TOP = dollars, BOTTOM = percentage
 • "Quantity": ALWAYS 3 decimal places (e.g., 195.217, NOT 1952, NOT 1990)
 
@@ -55,10 +55,10 @@ const VERIFICATION_PROMPT = `You are verifying portfolio data extracted from a b
 
 1. DECIMAL POINTS IN SHARES
    Fidelity ALWAYS shows 3 decimal places (e.g., 195.217).
-   If you see shares like 1990, 1952, 3856 — a decimal was missed.
+   If you see shares like 1990, 1952, 3856 - a decimal was missed.
    Re-read very carefully: 195.217, not 1952. 28.850, not 38854.
 
-2. COST BASIS — TWO STACKED NUMBERS
+2. COST BASIS - TWO STACKED NUMBERS
    The Cost Basis cell shows TWO lines:
    • TOP = total cost basis (larger number, e.g., $9,689.88)
    • BOTTOM = per-share cost (smaller number with "/ Share", e.g., $2,512.28 / Share)
@@ -71,7 +71,7 @@ const VERIFICATION_PROMPT = `You are verifying portfolio data extracted from a b
 
 4. VERIFICATION MATH
    For each row: shares × lastPrice should ≈ currentValue (within 5%).
-   If not, the shares are wrong — re-read the Quantity column.
+   If not, the shares are wrong - re-read the Quantity column.
 
 ═══ INSTRUCTIONS ═══
 Go through each holding IN ORDER. For each one:
@@ -113,7 +113,7 @@ function crossValidate(raw: {
       quantity != null && quantity > 0 &&
       Math.abs(derivedFromPrice - quantity) / Math.max(derivedFromPrice, quantity) > 0.02
     ) {
-      // Disagreement — use tiebreaker
+      // Disagreement - use tiebreaker
       if (derivedFromCost !== null) {
         const priceAgreesWithCost =
           Math.abs(derivedFromCost - derivedFromPrice) / Math.max(derivedFromCost, derivedFromPrice) < 0.02;
@@ -136,7 +136,7 @@ function crossValidate(raw: {
 
   shares = Math.round(shares * 1000) / 1000;
 
-  // Cost basis — prefer directly-read per-share
+  // Cost basis - prefer directly-read per-share
   let costBasis: number | null = null;
   if (costBasisPerShare != null && costBasisPerShare > 0) {
     costBasis = Math.round(costBasisPerShare * 100) / 100;
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
               type: "text",
               text: `Extract all holdings from this brokerage screenshot.
 1. Identify brokerage and columns
-2. Extract each row — read EVERY numeric field carefully
+2. Extract each row - read EVERY numeric field carefully
 3. Verify: quantity × lastPrice ≈ currentValue for each row
 4. Output JSON array`,
             },
@@ -230,23 +230,23 @@ export async function POST(request: NextRequest) {
     const pass1Validated = rawHoldings.map((h) => crossValidate(h));
 
     // ══════════════════════════════════════════════
-    // PASS 2: Verification — re-read with focused prompt
+    // PASS 2: Verification - re-read with focused prompt
     // ══════════════════════════════════════════════
     // Build the list of holdings for verification, flagging suspicious values
     const holdingLines = pass1Validated.map((h, i) => {
       const warnings: string[] = [];
       if (h.shares >= 500 && Math.abs(h.shares - Math.round(h.shares)) < 0.01) {
-        warnings.push("shares is a round number ≥500 — check for missed decimal point");
+        warnings.push("shares is a round number ≥500 - check for missed decimal point");
       }
       if (h.shares >= 1000) {
-        warnings.push("very high share count — likely decimal error");
+        warnings.push("very high share count - likely decimal error");
       }
       if (h.costBasis === null) {
-        warnings.push("cost basis missing — read bottom of Cost Basis cell");
+        warnings.push("cost basis missing - read bottom of Cost Basis cell");
       }
       if (h.costBasis !== null && h.lastPrice !== null && h.lastPrice > 0) {
         if (Math.abs(h.costBasis - h.lastPrice) / h.lastPrice < 0.03) {
-          warnings.push("cost basis ≈ current price — likely column confusion");
+          warnings.push("cost basis ≈ current price - likely column confusion");
         }
       }
       const warn = warnings.length > 0 ? `  ⚠️ ${warnings.join("; ")}` : "";
@@ -290,7 +290,7 @@ export async function POST(request: NextRequest) {
           costBasis: h.costBasis ?? null,
         }));
       } else {
-        // Pass 2 returned too few results — fall back to Pass 1
+        // Pass 2 returned too few results - fall back to Pass 1
         finalHoldings = pass1Validated.map((h) => ({
           symbol: h.symbol,
           shares: h.shares,
@@ -298,7 +298,7 @@ export async function POST(request: NextRequest) {
         }));
       }
     } catch (pass2Error) {
-      // Pass 2 failed — fall back to Pass 1
+      // Pass 2 failed - fall back to Pass 1
       console.error("Pass 2 verification failed, using Pass 1:", pass2Error);
       finalHoldings = pass1Validated.map((h) => ({
         symbol: h.symbol,
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
       }));
     }
 
-    // Portfolio-level sanity check — if most cost bases ≈ last price, null them
+    // Portfolio-level sanity check - if most cost bases ≈ last price, null them
     const withPrice = finalHoldings.map((h, i) => ({
       ...h,
       lastPrice: i < pass1Validated.length ? pass1Validated[i].lastPrice : null,

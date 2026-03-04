@@ -1,5 +1,5 @@
 /**
- * Stock Universe Service — PostgreSQL-backed
+ * Stock Universe Service - PostgreSQL-backed
  *
  * Reads pre-populated stock data from the Neon PostgreSQL database
  * (single unified `stocks` table) instead of making live FMP API calls
@@ -15,7 +15,7 @@
 import { StockData } from './stockData';
 import { getDb } from './db';
 
-// In-memory cache — avoids repeated DB round-trips within a short window
+// In-memory cache - avoids repeated DB round-trips within a short window
 const MEMORY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 let memoryCache: { stocks: StockData[]; timestamp: number } | null = null;
 
@@ -45,7 +45,7 @@ const SECTOR_MAP: Record<string, number> = {
 };
 
 // ---------------------------------------------------------------------------
-// Core query — single unified stocks table, no JOINs
+// Core query - single unified stocks table, no JOINs
 // ---------------------------------------------------------------------------
 
 async function queryStocksFromDb(): Promise<StockData[]> {
@@ -183,17 +183,17 @@ async function queryStocksFromDb(): Promise<StockData[]> {
     return rows.map(toStockData);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Missing tables means DB hasn't been populated yet — not a real error,
+    // Missing tables means DB hasn't been populated yet - not a real error,
     // just return empty so the hardcoded fallback in stockData.ts kicks in.
     if (msg.includes('relation') && msg.includes('does not exist')) {
       lastError = 'Stock tables not yet created. Run POST /api/db/init then POST /api/admin/refresh-data.';
-      console.warn('[FMP-DB] Stock tables not found — using fallback data');
+      console.warn('[FMP-DB] Stock tables not found - using fallback data');
       return [];
     }
-    // Column not found means old schema — need to run refresh-data
+    // Column not found means old schema - need to run refresh-data
     if (msg.includes('column') && msg.includes('does not exist')) {
       lastError = 'Stock table has old schema. Run POST /api/admin/refresh-data to migrate.';
-      console.warn('[FMP-DB] Old schema detected — using fallback data');
+      console.warn('[FMP-DB] Old schema detected - using fallback data');
       return [];
     }
     lastError = `Database query failed: ${msg}`;
@@ -233,7 +233,7 @@ function toStockData(row: Record<string, unknown>): StockData {
     dividend_growth_years: num(row.consecutive_dividend_growth_years),
     payout_ratio: num(row.dividend_payout_ratio),
 
-    // Growth — YoY = most recent year vs prior year (what advisors expect)
+    // Growth - YoY = most recent year vs prior year (what advisors expect)
     revenue_growth: num(row.revenue_growth_yoy) || num(row.revenue_growth_3yr_avg),
     revenue_growth_quarters: num(row.consecutive_revenue_growth_years),
     net_income_growth_quarters: num(row.consecutive_net_income_growth_years),
@@ -273,7 +273,7 @@ function toStockData(row: Record<string, unknown>): StockData {
     // IPO / listing date
     ipo_date: row.ipo_date ? String(row.ipo_date) : undefined,
 
-    // Historical returns — not in the unified table yet, empty for now
+    // Historical returns - not in the unified table yet, empty for now
     historical_returns: {},
 
     // Enterprise value / EV metrics
@@ -375,7 +375,7 @@ function num(v: unknown): number {
 }
 
 // ---------------------------------------------------------------------------
-// Historical annual returns — loaded from stock_annual_returns table
+// Historical annual returns - loaded from stock_annual_returns table
 // (populated via POST /api/admin/refresh-prices using Yahoo Finance)
 // ---------------------------------------------------------------------------
 
@@ -406,7 +406,7 @@ async function loadAnnualReturnsFromDb(): Promise<Map<string, { [year: string]: 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('relation') && msg.includes('does not exist')) {
-      console.warn('[FMP-DB] stock_annual_returns table not found — run POST /api/db/init then POST /api/admin/refresh-prices');
+      console.warn('[FMP-DB] stock_annual_returns table not found - run POST /api/db/init then POST /api/admin/refresh-prices');
       return new Map();
     }
     console.error('[FMP-DB] Failed to load annual returns:', msg);
@@ -421,7 +421,7 @@ async function loadAnnualReturnsFromDb(): Promise<Map<string, { [year: string]: 
 async function attachAnnualReturns(stocks: StockData[]): Promise<void> {
   const returnsMap = await loadAnnualReturnsFromDb();
   if (returnsMap.size === 0) {
-    console.warn('[FMP-DB] No annual returns in DB — historical metrics will use fallback data');
+    console.warn('[FMP-DB] No annual returns in DB - historical metrics will use fallback data');
     return;
   }
 
@@ -480,7 +480,7 @@ export async function loadReturnsForTickers(tickers: string[]): Promise<Map<stri
 }
 
 // ---------------------------------------------------------------------------
-// Public API — same signatures as before
+// Public API - same signatures as before
 // ---------------------------------------------------------------------------
 
 /**
@@ -503,7 +503,7 @@ export async function getStockUniverse(): Promise<StockData[]> {
     memoryCache = { stocks, timestamp: Date.now() };
     console.log(`[FMP-DB] Loaded ${stocks.length} stocks from database`);
   } else {
-    console.warn('[FMP-DB] Database returned 0 stocks — caller should use fallback');
+    console.warn('[FMP-DB] Database returned 0 stocks - caller should use fallback');
   }
 
   return stocks;

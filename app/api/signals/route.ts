@@ -26,7 +26,7 @@ interface QuintileResult {
   topStocks: TopStock[];
 }
 
-// Metrics to analyze — only numeric, filterable ones that are commonly populated.
+// Metrics to analyze - only numeric, filterable ones that are commonly populated.
 // `expectedDirection` filters out signals whose computed direction contradicts
 // financial intuition. With static (non-point-in-time) analysis, many "lower is
 // better" results for quality/cash-flow metrics are artifacts of growth stocks
@@ -35,40 +35,40 @@ interface QuintileResult {
 //
 //   "higher" = only show if higher_better  (profitability, quality, growth, cash flow)
 //   "lower"  = only show if lower_better   (valuation multiples, leverage)
-//   "either" = show regardless              (beta, market cap — both directions documented)
+//   "either" = show regardless              (beta, market cap - both directions documented)
 //
 const ANALYZABLE_METRICS: { column: string; label: string; expectedDirection: "higher" | "lower" | "either" }[] = [
-  // Valuation — lower multiples = better value
+  // Valuation - lower multiples = better value
   { column: "pe_ratio", label: "P/E Ratio", expectedDirection: "lower" },
   { column: "price_to_book", label: "Price / Book", expectedDirection: "lower" },
   { column: "peg_ratio", label: "PEG Ratio", expectedDirection: "lower" },
   { column: "ev_to_ebitda", label: "EV / EBITDA", expectedDirection: "lower" },
-  // Removed: price_to_fair_value (overlaps with price_to_book — both measure price vs intrinsic value)
-  // Removed: earnings_yield (inverse of P/E — identical signal, different direction)
-  // Profitability — higher quality = better
+  // Removed: price_to_fair_value (overlaps with price_to_book - both measure price vs intrinsic value)
+  // Removed: earnings_yield (inverse of P/E - identical signal, different direction)
+  // Profitability - higher quality = better
   { column: "roe", label: "Return on Equity", expectedDirection: "higher" },
   { column: "roic", label: "Return on Invested Capital", expectedDirection: "higher" },
   { column: "return_on_assets", label: "Return on Assets", expectedDirection: "higher" },
   { column: "profit_margin", label: "Profit Margin", expectedDirection: "higher" },
   { column: "gross_profit_margin", label: "Gross Margin", expectedDirection: "higher" },
   { column: "operating_profit_margin", label: "Operating Margin", expectedDirection: "higher" },
-  // Growth — higher growth = better (momentum)
+  // Growth - higher growth = better (momentum)
   { column: "revenue_growth", label: "Revenue Growth (YoY)", expectedDirection: "higher" },
   { column: "earnings_growth", label: "Earnings Growth (YoY)", expectedDirection: "higher" },
   { column: "revenue_growth_3yr_avg", label: "Revenue Growth (3yr Avg)", expectedDirection: "higher" },
-  // Dividends — higher yield = value signal
+  // Dividends - higher yield = value signal
   { column: "dividend_yield", label: "Dividend Yield", expectedDirection: "higher" },
   // Payout ratio omitted: ambiguous signal (low payout = reinvestment OR unprofitable)
-  // Leverage — lower debt = safer
+  // Leverage - lower debt = safer
   { column: "debt_to_equity", label: "Debt / Equity", expectedDirection: "lower" },
   { column: "current_ratio", label: "Current Ratio", expectedDirection: "higher" },
   { column: "interest_coverage_ratio", label: "Interest Coverage", expectedDirection: "higher" },
   // Earnings consistency
   { column: "consecutive_earnings_growth", label: "Consecutive Earnings Growth (Yrs)", expectedDirection: "higher" },
-  // Cash Flow — higher = better
+  // Cash Flow - higher = better
   { column: "free_cash_flow_yield", label: "FCF Yield", expectedDirection: "higher" },
-  // Removed: free_cash_flow_per_share (absolute metric — FCF Yield is normalized by price and more useful)
-  // Market — both directions have academic support
+  // Removed: free_cash_flow_per_share (absolute metric - FCF Yield is normalized by price and more useful)
+  // Market - both directions have academic support
   { column: "market_cap", label: "Market Cap ($B)", expectedDirection: "either" },
   { column: "beta", label: "Beta", expectedDirection: "either" },
 ];
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
       return SECTOR_DISPLAY[s] || s || "Other";
     };
 
-    // Deduplicate GOOG/GOOGL — keep GOOGL (Class A), drop GOOG (Class C)
+    // Deduplicate GOOG/GOOGL - keep GOOGL (Class A), drop GOOG (Class C)
     const googlExists = stockRows.some((s) => s.symbol === "GOOGL");
     const dedupedRows = googlExists
       ? stockRows.filter((s) => s.symbol !== "GOOG")

@@ -26,7 +26,7 @@ function sectorName(raw: unknown): string {
   return SECTOR_DISPLAY[s] || s || "Other";
 }
 
-// Curated thematic groups — ticker-based for precision
+// Curated thematic groups - ticker-based for precision
 const THEMES: Record<string, string[]> = {
   ai: ["NVDA", "MSFT", "GOOGL", "META", "AMD", "PLTR", "CRM", "SNOW", "AI", "PATH", "UPST", "AMZN", "ORCL", "IBM", "SMCI", "DELL", "AVGO"],
   semiconductors: ["NVDA", "AMD", "INTC", "TSM", "AVGO", "QCOM", "TXN", "MRVL", "ASML", "LRCX", "KLAC", "AMAT", "MU", "ON", "NXPI", "ADI", "MCHP", "SWKS"],
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
 
     const scoreMap = computeBacktestScore(enriched);
 
-    // Deduplicate GOOG/GOOGL — keep GOOGL (Class A), drop GOOG (Class C)
+    // Deduplicate GOOG/GOOGL - keep GOOGL (Class A), drop GOOG (Class C)
     // Also exclude blocklisted symbols (non-operating entities)
     const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
     const dedupedStocks = allStocks.filter((s) => {
@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
       backtestScore: scoreMap.get(stock.symbol as string) || 0,
     }));
 
-    // Batch ticker lookup — returns scores for specific tickers (no pagination)
+    // Batch ticker lookup - returns scores for specific tickers (no pagination)
     if (tickersParam) {
       const tickerSet = new Set(tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean));
       const matched = filtered.filter((s) => tickerSet.has(s.symbol));
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
       filtered = filtered.filter((s) => s.industry.toLowerCase() === industryFilter.toLowerCase());
     }
 
-    // Theme filter — curated ticker lists
+    // Theme filter - curated ticker lists
     if (themeFilter && THEMES[themeFilter]) {
       const themeTickers = new Set(THEMES[themeFilter]);
       filtered = filtered.filter((s) => themeTickers.has(s.symbol));

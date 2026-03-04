@@ -351,7 +351,7 @@ export default function SignalExplorer() {
                     {compositeSignal.topStocks.map((stock) => (
                       <Link
                         key={stock.symbol}
-                        href={`/research/${stock.symbol}`}
+                        href={`/app/research/${stock.symbol}`}
                         className="flex items-center gap-2 bg-th-surface rounded-lg px-3 py-2 border border-th-accent-border hover:border-th-accent-border hover:bg-th-surface transition-colors"
                       >
                         <StockLogo ticker={stock.symbol} sector={stock.sector} />
@@ -557,7 +557,7 @@ export default function SignalExplorer() {
                             {signal.topStocks.slice(0, 5).map((stock) => (
                               <Link
                                 key={stock.symbol}
-                                href={`/research/${stock.symbol}`}
+                                href={`/app/research/${stock.symbol}`}
                                 className="flex items-center gap-2 bg-th-surface rounded-lg px-3 py-2 border border-th-border-light hover:border-th-accent-border hover:bg-th-accent-bg transition-colors"
                               >
                                 <StockLogo ticker={stock.symbol} sector={stock.sector} />

@@ -14,11 +14,11 @@ export function getDb() {
  * with indexes if they don't exist.
  * Safe to call repeatedly (all statements are IF NOT EXISTS).
  *
- * NOTE: This does NOT create the leaderboard table — that is handled
+ * NOTE: This does NOT create the leaderboard table - that is handled
  * separately to maintain backward compatibility with existing data.
  */
 export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
-  // Unified stocks table — one row per stock, all metrics in one place
+  // Unified stocks table - one row per stock, all metrics in one place
   await sql`
     CREATE TABLE IF NOT EXISTS stocks (
       id SERIAL PRIMARY KEY,
