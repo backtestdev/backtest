@@ -536,7 +536,7 @@ export function parseCSVFile(csvText: string, sourceFile: string): ImportResult 
 
   if (broker === "Unknown") {
     warnings.push(
-      "Unknown broker format detected. Some data may be incomplete — please verify the imported values."
+      "Unknown broker format detected. Some data may be incomplete - please verify the imported values."
     );
   }
 

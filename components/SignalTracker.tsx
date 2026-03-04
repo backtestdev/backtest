@@ -187,14 +187,14 @@ export default function SignalTracker() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-th-text">Signal Tracker</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-th-text">Quant Fund</h1>
           <p className="text-sm text-th-text-3 mt-1">
             Proprietary AI-driven stock picks powered by our multi-factor scoring model.
             Tracked live with real entry & exit prices since July 2025.
           </p>
         </div>
 
-        {/* Stats Cards — always visible */}
+        {/* Stats Cards - always visible */}
         {stats && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <StatCard label="Fund Value" value={fundValue != null ? formatDollarWhole(fundValue) : "\u2014"} color="neutral" />
@@ -204,7 +204,7 @@ export default function SignalTracker() {
           </div>
         )}
 
-        {/* Performance Chart — always visible */}
+        {/* Performance Chart - always visible */}
         {performance.length > 2 && (
           <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-6 shadow-sm">
             <h2 className="text-sm font-semibold text-th-text mb-4">Fund Performance vs S&P 500</h2>

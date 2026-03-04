@@ -1,5 +1,5 @@
 /**
- * Yahoo Finance Service — Historical Price Data
+ * Yahoo Finance Service - Historical Price Data
  *
  * Uses yahoo-finance2 (v3) chart API to fetch historical monthly prices
  * and compute annual returns for backtesting. Provides 20+ years of data,
@@ -108,7 +108,7 @@ export async function fetchAnnualReturns(
 
 /**
  * Fetches annual returns for multiple symbols with concurrency control.
- * Handles rate limiting and errors gracefully — failed symbols are
+ * Handles rate limiting and errors gracefully - failed symbols are
  * skipped without affecting the rest.
  *
  * @param symbols - Array of ticker symbols

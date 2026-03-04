@@ -154,9 +154,9 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         </summary>
         <div className="mt-2 text-xs text-th-text-3 leading-relaxed pl-5.5 space-y-1">
           {isTickerMode ? (
-            <p>Stocks were selected by AI based on your query — not by metric filters. Re-running the same query may return slightly different tickers.</p>
+            <p>Stocks were selected by AI based on your query - not by metric filters. Re-running the same query may return slightly different tickers.</p>
           ) : (
-            <p>Results show how stocks <em>currently</em> matching your criteria performed historically. Stocks are screened against today&apos;s metrics, not the metrics at the time — this is not a point-in-time simulation.</p>
+            <p>Results show how stocks <em>currently</em> matching your criteria performed historically. Stocks are screened against today&apos;s metrics, not the metrics at the time - this is not a point-in-time simulation.</p>
           )}
           <p>Each year, returns are equal-weighted across all matching stocks trading that year. IPOs join from their first full year.</p>
         </div>
@@ -334,7 +334,7 @@ export default function ResultsDisplay({ result, onAddToLeaderboard, onUpdatePar
         Uses representative historical data for demonstration purposes.
       </p>
 
-      {/* Save strategy — premium only */}
+      {/* Save strategy - premium only */}
       {!saved && (
         <div className="mt-6 text-center">
           {!isSignedIn ? (

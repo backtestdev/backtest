@@ -13,7 +13,7 @@ function currentMonth(): string {
 }
 
 export async function POST(request: NextRequest) {
-  // Auth check — require login to run backtests
+  // Auth check - require login to run backtests
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json(
@@ -178,7 +178,7 @@ function buildNoMatchError(
   } else if (dataSource === "hardcoded") {
     parts.push("Using fallback data (limited to ~100 stocks). Run /api/admin/refresh-data to populate the database.");
   } else if (dataSource === "fmp" && (stockUniverseSize ?? 0) > 0) {
-    parts.push("Stock database may need enrichment — metric columns could be empty. Run /api/admin/refresh-data to populate ratios & key metrics.");
+    parts.push("Stock database may need enrichment - metric columns could be empty. Run /api/admin/refresh-data to populate ratios & key metrics.");
   }
 
   parts.push("Try broadening your filters.");

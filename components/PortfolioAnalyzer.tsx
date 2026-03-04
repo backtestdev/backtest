@@ -446,7 +446,7 @@ function ConsolidatedHoldingRow({
         className={`grid grid-cols-12 gap-2 px-4 sm:px-6 py-3 items-center ${hasMultipleLots ? "cursor-pointer hover:bg-th-bg/50" : ""}`}
         onClick={hasMultipleLots ? () => setExpanded(!expanded) : undefined}
       >
-        {/* Holding — always reserve caret space for alignment */}
+        {/* Holding - always reserve caret space for alignment */}
         <div className="col-span-3 min-w-0 flex items-center gap-2">
           <span className="w-3 shrink-0 flex items-center justify-center">
             {hasMultipleLots && (
@@ -1042,7 +1042,7 @@ export default function PortfolioAnalyzer() {
             </div>
           )}
 
-          {/* Broker export instructions — compact dropdown */}
+          {/* Broker export instructions - compact dropdown */}
           <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-2">
             <label className="text-xs font-medium text-th-text-3 whitespace-nowrap">
               How to export:

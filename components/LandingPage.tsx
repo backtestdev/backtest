@@ -36,7 +36,7 @@ function FadeIn({
   );
 }
 
-// ── Animated counter ───────────────────────────────────────────────────
+// ── Stat card ──────────────────────────────────────────────────────────
 
 function StatCard({ value, label }: { value: string; label: string }) {
   return (
@@ -123,7 +123,7 @@ export default function LandingPage() {
               Sign In
             </Link>
             <Link
-              href="/app/backtest"
+              href="/app"
               className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg shadow-blue-600/20"
             >
               Open App
@@ -170,7 +170,7 @@ export default function LandingPage() {
                 href="/app/backtest"
                 className="w-full sm:w-auto px-8 py-3.5 text-base font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors shadow-lg shadow-blue-600/25"
               >
-                Start Backtesting — Free
+                Start Backtesting for Free
               </Link>
               <a
                 href="#how-it-works"
@@ -201,7 +201,7 @@ export default function LandingPage() {
                       { label: "5yr Return", value: "+187%", color: "text-emerald-400" },
                       { label: "vs S&P 500", value: "+91%", color: "text-emerald-400" },
                       { label: "Matched Stocks", value: "47", color: "text-blue-400" },
-                      { label: "Backtest Score", value: "84/100", color: "text-cyan-400" },
+                      { label: "Quant Score", value: "84/100", color: "text-cyan-400" },
                     ].map((stat) => (
                       <div key={stat.label} className="rounded-lg bg-slate-800/60 p-3 text-center">
                         <div className={`text-lg sm:text-xl font-bold ${stat.color}`}>{stat.value}</div>
@@ -235,7 +235,7 @@ export default function LandingPage() {
             <StatCard value="20+" label="Years of market data" />
             <StatCard value="10,000+" label="Stocks analyzed" />
             <StatCard value="12" label="Scoring factors" />
-            <StatCard value="5" label="AI analysis modules" />
+            <StatCard value="4" label="AI-powered modules" />
           </div>
         </FadeIn>
       </section>
@@ -283,13 +283,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Features ──────────────────────────────────────── */}
+      {/* ── Features (4 matching nav) ─────────────────────── */}
       <section className="py-20 sm:py-28 px-4 sm:px-6 bg-gradient-to-b from-transparent via-slate-900/50 to-transparent">
         <div className="max-w-5xl mx-auto">
           <FadeIn>
             <div className="text-center mb-16">
               <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-                Five tools. One platform.
+                Four tools. One platform.
               </h2>
               <p className="mt-3 text-base text-slate-400 max-w-lg mx-auto">
                 Everything you need to research, validate, and execute smarter investment strategies.
@@ -297,16 +297,26 @@ export default function LandingPage() {
             </div>
           </FadeIn>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          <div className="grid sm:grid-cols-2 gap-4 sm:gap-5">
+            <FeatureCard
+              icon={
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+                </svg>
+              }
+              title="Quant Fund"
+              description="AI-generated stock picks powered by the Quant Score. Track live performance vs the S&P 500 with fully transparent monthly returns since inception."
+              delay={0}
+            />
             <FeatureCard
               icon={
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
                 </svg>
               }
-              title="AI Stock Screener"
-              description="Describe any strategy in plain English. Our AI translates it into precise filters and backtests it against decades of data."
-              delay={0}
+              title="AI Backtest Engine"
+              description="Describe any strategy in plain English. Our AI translates it into precise filters and backtests it against decades of real market data."
+              delay={0.1}
             />
             <FeatureCard
               icon={
@@ -315,28 +325,8 @@ export default function LandingPage() {
                 </svg>
               }
               title="AI Stock Analyzer"
-              description="Every stock scored 1-100 with our proprietary Backtest Score. Filter, sort, and discover high-conviction opportunities."
-              delay={0.1}
-            />
-            <FeatureCard
-              icon={
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
-                </svg>
-              }
-              title="Signal Tracker"
-              description="Automated AI stock picks with live scoring, performance tracking vs SPY, and monthly return reporting since inception."
+              description="Every stock scored 1-100 with our proprietary Quant Score. Filter, sort, and discover high-conviction opportunities with AI-powered research."
               delay={0.2}
-            />
-            <FeatureCard
-              icon={
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-                </svg>
-              }
-              title="Signal Explorer"
-              description="Quintile analysis revealing which financial metrics actually predict returns across 5, 10, and 20-year time horizons."
-              delay={0.3}
             />
             <FeatureCard
               icon={
@@ -346,18 +336,8 @@ export default function LandingPage() {
                 </svg>
               }
               title="AI Portfolio Analyzer"
-              description="Import your portfolio and get AI-powered analysis including diversification scores, risk metrics, and optimization advice."
-              delay={0.4}
-            />
-            <FeatureCard
-              icon={
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                </svg>
-              }
-              title="AI Research Reports"
-              description="Deep-dive AI-generated research for any stock with fundamentals analysis, price targets, risk factors, and buy/hold/sell ratings."
-              delay={0.5}
+              description="Import your portfolio and get AI-powered analysis with diversification scores, risk metrics, and optimization recommendations."
+              delay={0.3}
             />
           </div>
         </div>
@@ -393,7 +373,7 @@ export default function LandingPage() {
                 <div className="text-2xl mb-3">📊</div>
                 <h3 className="text-sm font-semibold text-white mb-1.5">Data-driven traders</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  You believe in testing strategies before deploying capital. No more &quot;I think this works&quot; — now you&apos;ll know.
+                  You believe in testing strategies before deploying capital. No more &quot;I think this works.&quot; Now you&apos;ll know.
                 </p>
               </div>
             </FadeIn>
@@ -402,7 +382,7 @@ export default function LandingPage() {
                 <div className="text-2xl mb-3">🎯</div>
                 <h3 className="text-sm font-semibold text-white mb-1.5">Serious hobbyists</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  You follow markets closely and want the same analytical tools the professionals use — without the $50K price tag.
+                  You follow markets closely and want the same analytical tools the professionals use, without the $50K price tag.
                 </p>
               </div>
             </FadeIn>
@@ -428,7 +408,7 @@ export default function LandingPage() {
             </h2>
             <p className="mt-6 text-base text-slate-400 max-w-xl mx-auto leading-relaxed">
               Bloomberg terminals, FactSet, and institutional quant platforms cost tens of thousands per year.
-              SoloQuant brings the same backtesting and analysis capabilities to individual investors — at a fraction of the cost.
+              SoloQuant brings the same backtesting and analysis capabilities to individual investors at a fraction of the cost.
             </p>
             <div className="mt-8">
               <Link
@@ -459,19 +439,17 @@ export default function LandingPage() {
           <div className="grid sm:grid-cols-2 gap-4">
             <FadeIn delay={0.1}>
               <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-                <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-3">Backtest Score</h3>
+                <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-3">Quant Score</h3>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  12-factor scoring model weighing earnings yield, consecutive earnings growth, PE ratio, ROE, profit margin,
-                  beta, and more. Size-confidence dampened. Normalized 1-100.
+                  Multi-factor scoring model that evaluates every stock on a 1-100 scale across earnings, growth, value, quality, and risk factors. Higher scores surface stronger opportunities.
                 </p>
               </div>
             </FadeIn>
             <FadeIn delay={0.2}>
               <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-                <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider mb-3">Data Sources</h3>
+                <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider mb-3">Quant Fund</h3>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  Market data from Financial Modeling Prep and Yahoo Finance covering 10,000+ securities.
-                  20 years of historical prices for accurate backtesting with annual rebalancing.
+                  Stocks that score high enough are automatically added as picks. When scores drop, positions exit. Performance is tracked live vs the S&P 500, with full monthly return history.
                 </p>
               </div>
             </FadeIn>
@@ -479,17 +457,15 @@ export default function LandingPage() {
               <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
                 <h3 className="text-sm font-semibold text-emerald-400 uppercase tracking-wider mb-3">AI-Powered NLP</h3>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  Advanced language model translates natural English descriptions into precise quantitative
-                  filters — or selects specific tickers for qualitative queries like &quot;meme stocks.&quot;
+                  Advanced language model translates plain English strategy descriptions into precise quantitative filters, or selects specific tickers for qualitative queries.
                 </p>
               </div>
             </FadeIn>
             <FadeIn delay={0.4}>
               <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-                <h3 className="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-3">Signal System</h3>
+                <h3 className="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-3">Data Sources</h3>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  Fully automated pick generation. Stocks scoring 90+ enter; below 78 exit.
-                  Live performance tracked vs SPY benchmark with verifiable monthly returns.
+                  Market data from Financial Modeling Prep and Yahoo Finance covering 10,000+ securities with 20 years of historical prices for accurate backtesting.
                 </p>
               </div>
             </FadeIn>
@@ -516,7 +492,7 @@ export default function LandingPage() {
                 <div className="text-sm font-semibold text-slate-300">Free</div>
                 <div className="mt-2 text-3xl font-bold">$0</div>
                 <ul className="mt-4 space-y-2">
-                  {["3 backtests/month", "1 signal preview", "Portfolio summary", "Research reports"].map((f) => (
+                  {["3 backtests/month", "Fund preview", "Portfolio summary", "Research reports"].map((f) => (
                     <li key={f} className="flex items-center gap-2 text-sm text-slate-400">
                       <svg className="w-4 h-4 text-slate-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
@@ -534,7 +510,7 @@ export default function LandingPage() {
                 <div className="text-sm font-semibold text-blue-400">Premium</div>
                 <div className="mt-2 text-3xl font-bold">$15<span className="text-base font-normal text-slate-400">/mo</span></div>
                 <ul className="mt-4 space-y-2">
-                  {["Unlimited backtests", "All live signals", "Full AI Analyzer", "Priority support"].map((f) => (
+                  {["Unlimited backtests", "Full Quant Fund access", "Full AI Analyzer", "Priority support"].map((f) => (
                     <li key={f} className="flex items-center gap-2 text-sm text-slate-300">
                       <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
@@ -553,7 +529,7 @@ export default function LandingPage() {
                 href="/app/pricing"
                 className="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
               >
-                See full pricing details →
+                See full pricing details
               </Link>
             </div>
           </FadeIn>
@@ -575,10 +551,10 @@ export default function LandingPage() {
             </p>
             <div className="mt-8">
               <Link
-                href="/app/backtest"
+                href="/app"
                 className="inline-flex px-8 py-3.5 text-base font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors shadow-lg shadow-blue-600/25"
               >
-                Open SoloQuant — It&apos;s Free
+                Open SoloQuant for Free
               </Link>
             </div>
           </div>

@@ -1,8 +1,8 @@
 /**
  * Admin endpoint to refresh Signal Tracker picks.
  *
- * GET  /api/admin/refresh-signals — Vercel Cron handler (daily)
- * POST /api/admin/refresh-signals — Manual trigger
+ * GET  /api/admin/refresh-signals - Vercel Cron handler (daily)
+ * POST /api/admin/refresh-signals - Manual trigger
  *
  * Checks for new stocks qualifying for picks (score >= 90 with market cap
  * rules) and marks sells for stocks whose score dropped below 80.
@@ -38,7 +38,7 @@ function generateThesis(s: {
 }): string {
   const size = s.marketCapB >= 100 ? "mega-cap" : s.marketCapB >= 10 ? "large-cap" : s.marketCapB >= 2 ? "mid-cap" : "small-cap";
   const parts: string[] = [];
-  parts.push(`${s.name} earns a Backtest Score of ${s.score}, qualifying as a ${size} pick in ${s.sector || "diversified"}.`);
+  parts.push(`${s.name} earns a Quant Score of ${s.score}, qualifying as a ${size} pick in ${s.sector || "diversified"}.`);
   const strengths: string[] = [];
   if (s.earningsYield != null && s.earningsYield > 0.03) strengths.push(`earnings yield of ${(s.earningsYield * 100).toFixed(1)}%`);
   if (s.roe != null && s.roe > 0.12) strengths.push(`ROE of ${(s.roe * 100).toFixed(1)}%`);
@@ -65,7 +65,7 @@ function generateLiveSellReason(stock: Record<string, unknown> | undefined, scor
       return `ROE declined to ${(roe * 100).toFixed(1)}%, signaling deteriorating capital efficiency`;
     const pe = stock.pe_ratio != null ? Number(stock.pe_ratio) : null;
     if (pe != null && !isNaN(pe) && pe > 40)
-      return `Valuation stretched — P/E expanded to ${pe.toFixed(1)}, exceeding target range`;
+      return `Valuation stretched - P/E expanded to ${pe.toFixed(1)}, exceeding target range`;
     const rg = stock.revenue_growth != null ? Number(stock.revenue_growth) : null;
     if (rg != null && !isNaN(rg) && rg < 0)
       return `Revenue growth turned negative (${(rg * 100).toFixed(1)}% YoY), weakening growth thesis`;
@@ -127,7 +127,7 @@ async function refreshSignals() {
   const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
   const deduped = googlExists ? allStocks.filter((s) => s.symbol !== "GOOG") : allStocks;
 
-  // Existing picks — no re-pitch within 1 year, no dupes for active picks
+  // Existing picks - no re-pitch within 1 year, no dupes for active picks
   const recentPicks = await sql`SELECT symbol FROM signal_picks WHERE pick_date >= NOW() - INTERVAL '1 year'`;
   const recentSymbols = new Set(recentPicks.map((p) => p.symbol as string));
   const existingActive = await sql`SELECT symbol FROM signal_picks WHERE status = 'active'`;
@@ -192,7 +192,7 @@ async function refreshSignals() {
   let sold = 0;
   for (const pick of activePicks) {
     const score = scoreMap.get(pick.symbol as string);
-    // Skip if stock not found in scoreMap — don't sell on missing data
+    // Skip if stock not found in scoreMap - don't sell on missing data
     if (score == null) continue;
     if (score < SELL_THRESHOLD) {
       const stockData = stockInfoMap.get(pick.symbol as string);

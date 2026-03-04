@@ -2,8 +2,8 @@
  * Admin endpoint to populate historical annual returns and monthly prices
  * from Yahoo Finance.
  *
- * GET  /api/admin/refresh-prices — Vercel Cron handler (weekly)
- * POST /api/admin/refresh-prices — Manual trigger via admin UI
+ * GET  /api/admin/refresh-prices - Vercel Cron handler (weekly)
+ * POST /api/admin/refresh-prices - Manual trigger via admin UI
  *
  * Fetches 20+ years of monthly price data from Yahoo Finance for all
  * stocks in the database (plus SPY for benchmark), computes annual
@@ -274,7 +274,7 @@ export async function GET(request: NextRequest) {
         totalSymbols: Number(symbolCount[0]?.cnt || 0),
       });
     } catch {
-      return NextResponse.json({ configured: true, error: "Could not query — tables may not exist yet" });
+      return NextResponse.json({ configured: true, error: "Could not query - tables may not exist yet" });
     }
   }
 

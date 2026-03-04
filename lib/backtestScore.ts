@@ -1,11 +1,11 @@
 // Shared multi-factor scoring model used by screener and signal tracker
 
 export const SCORE_FACTORS: { column: string; weight: number; capLow: number; capHigh: number }[] = [
-  // Earnings relative to price — strongest signal (higher is better)
+  // Earnings relative to price - strongest signal (higher is better)
   { column: "earnings_yield", weight: 20, capLow: -0.1, capHigh: 0.3 },
-  // Earnings growth — capped tight to prevent turnaround distortion (higher is better)
+  // Earnings growth - capped tight to prevent turnaround distortion (higher is better)
   { column: "earnings_growth", weight: 10, capLow: -0.5, capHigh: 0.5 },
-  // Earnings consistency — years of consecutive net income growth (higher is better)
+  // Earnings consistency - years of consecutive net income growth (higher is better)
   { column: "consecutive_earnings_growth", weight: 15, capLow: 0, capHigh: 10 },
   // Value (lower is better)
   { column: "pe_ratio", weight: -10, capLow: 0, capHigh: 60 },
@@ -20,13 +20,13 @@ export const SCORE_FACTORS: { column: string; weight: number; capLow: number; ca
   { column: "free_cash_flow_yield", weight: 5, capLow: -0.2, capHigh: 0.3 },
   // Leverage (lower debt is better)
   { column: "debt_to_equity", weight: -5, capLow: 0, capHigh: 5 },
-  // Beta — higher beta stocks show stronger raw returns in signal explorer data.
+  // Beta - higher beta stocks show stronger raw returns in signal explorer data.
   // Strongest spread factor; weight aligns with empirical quintile results.
   { column: "beta", weight: 8, capLow: 0, capHigh: 3 },
-  // Size confidence — log(market cap in $B). Soft gradient within percentile
+  // Size confidence - log(market cap in $B). Soft gradient within percentile
   // ranking; the heavier size adjustment is the multiplicative dampener below.
   { column: "log_market_cap", weight: 4, capLow: -0.5, capHigh: 3.0 },
-  // Revenue consistency — how many of last 3 years had positive revenue growth (0-3)
+  // Revenue consistency - how many of last 3 years had positive revenue growth (0-3)
   { column: "revenue_growth_positive_3yr_count", weight: 8, capLow: 0, capHigh: 3 },
 ];
 
@@ -38,7 +38,7 @@ export function computeBacktestScore(stocks: Record<string, unknown>[]): Map<str
     for (const stock of stocks) {
       const val = Number(stock[factor.column]);
       if (isNaN(val) || !isFinite(val) || stock[factor.column] === null) continue;
-      // Exclude negative P/E (unprofitable) — would distort percentile ranking
+      // Exclude negative P/E (unprofitable) - would distort percentile ranking
       if (factor.column === "pe_ratio" && val <= 0) continue;
       const capped = Math.max(factor.capLow, Math.min(factor.capHigh, val));
       values.push({ symbol: stock.symbol as string, value: capped });

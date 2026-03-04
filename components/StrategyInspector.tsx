@@ -382,7 +382,7 @@ export default function StrategyInspector({ params, onUpdate, isLoading }: Strat
                   className="w-24 sm:w-28 px-3 py-2 sm:py-1.5 text-sm border border-th-border rounded-lg bg-th-surface focus:outline-none focus:border-th-focus-border"
                 />
               </div>
-              <span className="text-th-text-4 hidden sm:inline">—</span>
+              <span className="text-th-text-4 hidden sm:inline">-</span>
               <div className="flex items-center gap-2">
                 <label className="text-sm text-th-text-3">Max ($B)</label>
                 <input

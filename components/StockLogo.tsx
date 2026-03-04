@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 
 /**
- * StockLogo — company logo from FMP with letter-avatar fallback.
+ * StockLogo - company logo from FMP with letter-avatar fallback.
  * Tries to load the real logo; falls back on error or if image looks like
  * a placeholder (tiny dimensions / known-bad).
  * Detects predominantly white/light logos and inverts them so they're
@@ -45,7 +45,7 @@ function hashCode(s: string): number {
 
 // Track tickers whose logos failed / were placeholders.
 const failedTickers = new Set<string>();
-// Track tickers whose logos loaded successfully — prevents flicker on remount.
+// Track tickers whose logos loaded successfully - prevents flicker on remount.
 const loadedTickers = new Set<string>();
 // Cache light-logo detection across renders so we don't re-probe.
 const lightLogoTickers = new Set<string>();
@@ -115,10 +115,10 @@ export default function StockLogo({ ticker, sector, size = "sm" }: StockLogoProp
           setIsLightLogo(true);
         }
       } catch {
-        // Canvas tainted by CORS or unavailable — skip detection
+        // Canvas tainted by CORS or unavailable - skip detection
       }
     };
-    // onerror = CORS not supported for this image — just ignore
+    // onerror = CORS not supported for this image - just ignore
     probe.src = img.src;
   }, [markFailed, ticker]);
 

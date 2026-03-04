@@ -86,7 +86,7 @@ function generateThesis(s: StockInfo): string {
 
   // Opening: lead with the 2-3 strongest metrics
   if (top.length >= 2) {
-    parts.push(`${s.name} combines ${top[0].text} with ${top[1].text} — a compelling ${size} opportunity in ${s.sector || "the market"}.`);
+    parts.push(`${s.name} combines ${top[0].text} with ${top[1].text} - a compelling ${size} opportunity in ${s.sector || "the market"}.`);
     if (top.length >= 3)
       parts.push(`${top[2].text[0].toUpperCase() + top[2].text.slice(1)} further reinforces the quality profile.`);
   } else if (top.length === 1) {
@@ -175,17 +175,17 @@ function generateSellReason(s: StockInfo): string {
   if (s.roe != null && s.roe < 0.08)
     return `ROE declined to ${(s.roe * 100).toFixed(1)}%, signaling deteriorating capital efficiency`;
   if (s.peRatio != null && s.peRatio > 40)
-    return `Valuation stretched — P/E expanded to ${s.peRatio.toFixed(1)}, exceeding target range`;
+    return `Valuation stretched - P/E expanded to ${s.peRatio.toFixed(1)}, exceeding target range`;
   if (s.revenueGrowth != null && s.revenueGrowth < 0)
     return `Revenue growth turned negative (${(s.revenueGrowth * 100).toFixed(1)}% YoY), weakening growth thesis`;
   if (s.earningsGrowth != null && s.earningsGrowth < -0.1)
     return `Earnings declined ${(Math.abs(s.earningsGrowth) * 100).toFixed(0)}% YoY, breaking growth streak`;
   if (s.consecutiveEarningsGrowth < 1)
-    return `Earnings consistency broken — no consecutive growth years remaining`;
+    return `Earnings consistency broken - no consecutive growth years remaining`;
   // Deterministic fallback based on symbol hash
   const reasons = [
     `Score declined below hold threshold amid sector rotation in ${s.sector || "the broader market"}`,
-    `Composite quality metrics weakened across multiple factors — score dropped to ${s.score}`,
+    `Composite quality metrics weakened across multiple factors - score dropped to ${s.score}`,
     `Risk-reward profile deteriorated as fundamentals softened`,
   ];
   let hash = 0;
@@ -382,7 +382,7 @@ async function generateInitialPicks(sql: Sql) {
   console.log(`[Signal Tracker] Found ${priceRows.length} price rows for ${symbols.length} symbols`);
   const priceLookup = buildPriceLookup(priceRows);
 
-  // Calculate return from inception to latest price — prefer outperformers
+  // Calculate return from inception to latest price - prefer outperformers
   const withReturns = qualifying
     .filter((s) => {
       const p = priceLookup.get(s.symbol);
@@ -412,7 +412,7 @@ async function generateInitialPicks(sql: Sql) {
     if (monthDates.length > 0) {
       return monthDates[symHash(sym) % monthDates.length];
     }
-    // No trading days in that month — pick closest to a varied target day
+    // No trading days in that month - pick closest to a varied target day
     const targetDay = 5 + (symHash(sym) % 20); // days 5-24 of month
     const target = `${month}-${String(targetDay).padStart(2, "0")}`;
     return allDates.reduce((closest, d) =>
@@ -525,7 +525,7 @@ async function generateInitialPicks(sql: Sql) {
     .sort((a, b) => b.returnPct - a.returnPct)
     .slice(0, 8);
 
-  // Insert sell entries — picked earlier with higher score, sold when score dropped
+  // Insert sell entries - picked earlier with higher score, sold when score dropped
   const sellSchedule = [
     { pickMonth: "2025-07", sellMonth: "2025-09" },
     { pickMonth: "2025-07", sellMonth: "2025-11" },
@@ -543,12 +543,12 @@ async function generateInitialPicks(sql: Sql) {
     const prices = sellPriceLookup.get(stock.symbol)!;
     const { pickMonth, sellMonth } = sellSchedule[si];
 
-    // Entry date/price — varied within the month
+    // Entry date/price - varied within the month
     const pickDates = stock.dates.filter((d) => d.startsWith(pickMonth));
     const pickDate = pickDateInMonth(stock.symbol, pickDates, stock.dates, pickMonth);
     const entryPrice = prices.get(pickDate)!;
 
-    // Sell date/price — varied within the sell month
+    // Sell date/price - varied within the sell month
     const sellDates = stock.dates.filter((d) => d.startsWith(sellMonth));
     // Use a different hash offset for sell date so it differs from pick date
     const sellDateKey = stock.symbol + "_sell";
@@ -596,7 +596,7 @@ async function computePerformance(
   `;
   const priceLookup = buildPriceLookup(priceRows);
 
-  // Fetch SPY prices for benchmark — try DB first, Yahoo Finance fallback
+  // Fetch SPY prices for benchmark - try DB first, Yahoo Finance fallback
   const spyRows = await sql`
     SELECT date, close_price FROM stock_prices
     WHERE symbol = 'SPY' AND date >= ${INCEPTION_DATE}
@@ -730,7 +730,7 @@ export async function GET() {
       FROM signal_picks ORDER BY pick_date DESC, score DESC
     `;
 
-    // Deduplicate picks by symbol — keep the most recent entry per symbol.
+    // Deduplicate picks by symbol - keep the most recent entry per symbol.
     // Active picks take priority over sold picks for the same symbol.
     const seenSymbols = new Set<string>();
     const picks = allPicks.filter((p) => {
@@ -743,7 +743,7 @@ export async function GET() {
     // Compute live scores so they match the screener
     const { scoreMap: liveScores } = await fetchStocksWithScores(sql);
 
-    // Get latest prices for active picks — use Yahoo Finance for live quotes
+    // Get latest prices for active picks - use Yahoo Finance for live quotes
     const activeSymbols = picks.filter((p) => p.status === "active").map((p) => p.symbol as string);
     const latestPrices = new Map<string, number>();
     if (activeSymbols.length > 0) {
@@ -958,7 +958,7 @@ export async function POST() {
     await ensureSignalPicksTable(sql);
     const { infos, scoreMap } = await fetchStocksWithScores(sql);
 
-    // Existing picks — no re-pitch within 1 year, no dupes for active picks
+    // Existing picks - no re-pitch within 1 year, no dupes for active picks
     const recentPicks = await sql`
       SELECT symbol FROM signal_picks WHERE pick_date >= NOW() - INTERVAL '1 year'
     `;
@@ -1004,7 +1004,7 @@ export async function POST() {
     let sold = 0;
     for (const pick of activePicks) {
       const score = scoreMap.get(pick.symbol as string);
-      // Skip if stock not found in scoreMap — don't sell on missing data
+      // Skip if stock not found in scoreMap - don't sell on missing data
       if (score == null) continue;
       if (score < SELL_THRESHOLD) {
         const stockInfo = infoMap.get(pick.symbol as string);

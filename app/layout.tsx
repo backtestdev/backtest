@@ -12,11 +12,11 @@ const geistSans = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "SoloQuant — Test Before You Invest",
+  title: "SoloQuant - Test Before You Invest",
   description:
     "Institutional-grade backtesting and stock screening for individual investors. Describe a strategy in plain English and see how it would have performed.",
   openGraph: {
-    title: "SoloQuant — Test Before You Invest",
+    title: "SoloQuant - Test Before You Invest",
     description:
       "Institutional-grade backtesting and stock screening for individual investors. Describe a strategy in plain English and see how it would have performed.",
     siteName: "SoloQuant",
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "SoloQuant — Test Before You Invest",
+    title: "SoloQuant - Test Before You Invest",
     description:
       "Institutional-grade backtesting and stock screening for individual investors.",
   },

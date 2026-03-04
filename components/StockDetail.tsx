@@ -329,7 +329,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
                     <span className="text-xl font-bold text-th-text-2">${f.price.toFixed(2)}</span>
                   )}
                   {backtestScore != null && (
-                    <Tooltip content="Backtest Score. Composite 1-100 score based on earnings yield, growth, consistency, value, quality, and leverage factors." position="bottom">
+                    <Tooltip content="Quant Score. Composite 1-100 score based on earnings yield, growth, consistency, value, quality, and leverage factors." position="bottom">
                       <span className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
                         backtestScore >= 70 ? "bg-th-positive-bg text-th-positive-text" :
                         backtestScore >= 40 ? "bg-th-warning-bg text-th-warning-text" :
@@ -366,7 +366,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
               </div>
             </div>
 
-            {/* Recommendation gauge — driven by backtest score */}
+            {/* Recommendation gauge - driven by backtest score */}
             {recConfig && (
               <div className="flex-shrink-0 w-full sm:w-44">
                 <RecommendationGauge
@@ -404,7 +404,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
           )}
         </div>
 
-        {/* Price Chart — monthly closes from Yahoo Finance, shown near top */}
+        {/* Price Chart - monthly closes from Yahoo Finance, shown near top */}
         {priceHistory.length > 2 && (
           <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
@@ -449,7 +449,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
           </div>
         </div>
 
-        {/* Revenue & Net Income — LINE charts */}
+        {/* Revenue & Net Income - LINE charts */}
         {data.revenueTrend && data.revenueTrend.length > 1 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6">

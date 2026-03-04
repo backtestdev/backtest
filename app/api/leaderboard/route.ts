@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
     const queryHash = description ? generateQueryHash(description) : null;
 
     // Only block truly identical strategies (same exact parsed parameters).
-    // query_hash is still stored for reference but not used for dedup —
+    // query_hash is still stored for reference but not used for dedup -
     // similar queries can produce meaningfully different strategies.
     if (parametersHash) {
       const sql = getDb();

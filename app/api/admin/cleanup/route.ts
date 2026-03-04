@@ -1,10 +1,10 @@
 /**
  * Admin endpoint to purge non-company entries from the stock database.
  *
- * POST /api/admin/cleanup — deletes funds, indexes, SPACs, trusts, etc.
+ * POST /api/admin/cleanup - deletes funds, indexes, SPACs, trusts, etc.
  *
  * Protected by x-admin-secret header (same as refresh-data).
- * Works with the unified single `stocks` table — no orphan cleanup needed.
+ * Works with the unified single `stocks` table - no orphan cleanup needed.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,7 +14,7 @@ import { NON_COMPANY_PATTERN } from "@/lib/stockFilters";
 
 export const runtime = "nodejs";
 
-// Use shared pattern — no local definition needed
+// Use shared pattern - no local definition needed
 
 export async function POST(request: NextRequest) {
   const adminSecret = process.env.ADMIN_SECRET;

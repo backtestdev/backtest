@@ -8,7 +8,7 @@ import { useEffect } from "react";
  * >8 days for prices), the GET handlers auto-trigger a background refresh.
  *
  * This acts as a safety net for when Vercel cron fails or CRON_SECRET
- * is misconfigured — normal user traffic keeps the data fresh.
+ * is misconfigured - normal user traffic keeps the data fresh.
  */
 export default function AutoRefresh() {
   useEffect(() => {

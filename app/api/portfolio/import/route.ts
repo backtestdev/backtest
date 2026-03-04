@@ -20,7 +20,7 @@ async function fileToCSVText(file: File): Promise<string> {
     return XLSX.utils.sheet_to_csv(firstSheet);
   }
 
-  // CSV — read as text
+  // CSV - read as text
   return await file.text();
 }
 

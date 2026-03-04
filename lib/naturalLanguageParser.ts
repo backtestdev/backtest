@@ -20,7 +20,7 @@ const METRIC_ALIASES: Record<string, string[]> = {
   forward_pe: ["forward pe", "forward p/e", "fwd pe", "fwd p/e"],
   price_to_book: ["pb", "p/b", "pb ratio", "price to book", "price-to-book"],
   dividend_yield: ["dividend", "div yield", "dividend yield", "yield"],
-  // dividend_growth_years not reliably populated — "dividend growth" handled by composites in rule-based parser
+  // dividend_growth_years not reliably populated - "dividend growth" handled by composites in rule-based parser
   payout_ratio: ["payout", "payout ratio", "dividend payout"],
   revenue_growth: ["revenue growth", "rev growth", "sales growth", "top line growth"],
   revenue_growth_quarters: ["revenue growth quarters", "consecutive quarters revenue"],
@@ -186,7 +186,7 @@ Available metrics:
 - payout_ratio (dividend payout ratio as decimal, e.g. 0.5 for 50%. NOTE: for "dividend aristocrats" or "consecutive dividend growth" requests, use dividend_yield > 0.025 + payout_ratio < 0.7 + payout_ratio > 0 + free_cash_flow_per_share > 0 as a proxy)
 - revenue_growth (year-over-year revenue growth rate as decimal, e.g. 0.20 for 20%. This is most recent year vs prior year)
 - revenue_growth_3yr_avg (3-year average annual revenue growth rate as decimal)
-- revenue_growth_quarters (consecutive years of revenue growth — despite the name this is years, not quarters)
+- revenue_growth_quarters (consecutive years of revenue growth - despite the name this is years, not quarters)
 - earnings_growth (year-over-year earnings/net income growth rate as decimal)
 - earnings_growth_3yr_avg (3-year average annual earnings growth rate as decimal)
 - eps_growth_yoy (year-over-year EPS growth as decimal)
@@ -649,7 +649,7 @@ function fallbackParse(input: string, reason: string): StrategyParameters {
     filters.push({ metric: "profit_margin", operator: ">", value: 0 });
   }
 
-  // 52-week high — near highs
+  // 52-week high - near highs
   const near52HighMatch = lower.match(/within\s*(\d+)\s*%?\s*(?:of\s*)?(?:52[\s-]*week\s*high|52w\s*high)/);
   if (near52HighMatch) {
     filters.push({ metric: "week52_high_pct", operator: ">=", value: 1 - parseFloat(near52HighMatch[1]) / 100 });

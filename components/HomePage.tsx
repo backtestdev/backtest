@@ -191,10 +191,10 @@ export default function HomePage() {
       <header className="pt-8 sm:pt-12 md:pt-16 pb-4 text-center px-4">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-th-accent-bg border border-th-accent-border rounded-full text-xs font-medium text-th-accent-text mb-4">
           <span className="w-1.5 h-1.5 rounded-full bg-th-accent animate-pulse" />
-          AI-Powered Stock Screening
+          AI-Powered Backtesting
         </div>
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-th-text tracking-tight">
-          AI Stock Screener
+          AI Backtest Engine
         </h1>
         <p className="mt-3 text-base sm:text-lg text-th-text-3 max-w-lg mx-auto leading-relaxed">
           Screen stocks using natural language.

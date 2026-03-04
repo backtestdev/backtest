@@ -27,7 +27,7 @@ export const NON_COMPANY_PATTERN = [
   // Depositary / preferred
   'Depositary (Shares?|Receipt)',
   'Preferred (Shares?|Stock|Securities)',
-  // Debt instruments — percentage rates in name (bond coupons like "4.625%")
+  // Debt instruments - percentage rates in name (bond coupons like "4.625%")
   '\\d+\\.?\\d*%',
   'Fixed.Income',
   '\\ySenior Notes?\\y',
@@ -40,7 +40,7 @@ export const NON_COMPANY_PATTERN = [
   '\\yUnits?$',
   // Limited partnerships
   'L\\.P\\.?$',
-  // Finance subsidiaries (issue debt on behalf of parent — not operating companies)
+  // Finance subsidiaries (issue debt on behalf of parent - not operating companies)
   '\\yFinance (Co\\b|Inc\\b|LLC\\b)',
   '\\yFunding (Co\\b|Inc\\b|LLC\\b)',
 ].join('|');

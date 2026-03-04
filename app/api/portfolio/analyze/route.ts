@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
 
-    // Fetch stock data for all holdings — include price from stocks table as fallback
+    // Fetch stock data for all holdings - include price from stocks table as fallback
     const stockRows = await sql`
       SELECT symbol, company_name AS name, sector, market_cap, price,
              price_to_earnings_ratio AS pe_ratio,
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       crypto: "Crypto",
     };
 
-    // Build enriched holdings (one per input row — consolidation happens client-side)
+    // Build enriched holdings (one per input row - consolidation happens client-side)
     const enrichedHoldings = holdings.map((h) => {
       const sym = h.symbol.toUpperCase();
       const stock = stockMap.get(sym);
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       let gainLossPct: number | null;
 
       if (isValueBased && h.currentValue && h.currentValue > 0) {
-        // Non-stock with manual current value — use directly
+        // Non-stock with manual current value - use directly
         currentValue = h.currentValue;
         currentPrice = h.shares > 0 ? h.currentValue / h.shares : 0;
         costBasisTotal = h.initialInvestment || null;
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
       return sum + beta * weight;
     }, 0);
 
-    // AI analysis — senior wealth advisor tone
+    // AI analysis - senior wealth advisor tone
     let aiAnalysis: string | null = null;
     const openaiKey = process.env.OPENAI_API_KEY;
     if (openaiKey) {
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
         const hasNonStockAssets = Object.keys(assetClassAlloc).some(k => k !== "stock");
 
         const profileContext = profile
-          ? `\n\nINVESTOR PROFILE (use this to tailor every recommendation — reference it explicitly when it influences your advice):\n- Age: ${profile.age || "not provided"}\n- Risk tolerance: ${profile.riskTolerance || "not provided"}\n- Estimated net worth: ${profile.netWorth || "not provided"}`
+          ? `\n\nINVESTOR PROFILE (use this to tailor every recommendation - reference it explicitly when it influences your advice):\n- Age: ${profile.age || "not provided"}\n- Risk tolerance: ${profile.riskTolerance || "not provided"}\n- Estimated net worth: ${profile.netWorth || "not provided"}`
           : "";
 
         const response = await openai.chat.completions.create({
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
           messages: [
             {
               role: "system",
-              content: `You are a senior wealth management advisor at a top-tier firm, providing a portfolio review. Your tone is professional, direct, and confident — like a seasoned advisor speaking to a client in a private meeting.
+              content: `You are a senior wealth management advisor at a top-tier firm, providing a portfolio review. Your tone is professional, direct, and confident - like a seasoned advisor speaking to a client in a private meeting.
 
 Today's date is ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}. Base your analysis on current market conditions as of today. Do NOT reference any knowledge cutoff date.
 
@@ -275,10 +275,10 @@ A 2-3 sentence executive summary of the portfolio's character (growth-heavy? con
 2-3 specific positives (e.g., "Strong NVDA position capturing AI growth at 35% of portfolio").
 
 ## Risk Factors
-2-3 specific risks with context (e.g., "70% Technology sector — a single sector downturn would hit hard").
+2-3 specific risks with context (e.g., "70% Technology sector - a single sector downturn would hit hard").
 
 ## Recommendations
-3-4 specific, actionable recommendations. These should be the kind of advice a top wealth advisor would give — not generic platitudes. Consider:
+3-4 specific, actionable recommendations. These should be the kind of advice a top wealth advisor would give - not generic platitudes. Consider:
 - Position sizing (any holdings too large or too small to matter?)
 - Sector diversification gaps
 - Income vs growth balance for the investor's stage of life
