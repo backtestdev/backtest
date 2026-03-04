@@ -27,11 +27,6 @@ export const PLANS = {
   },
 } as const;
 
-export const STRIPE_PRICE_IDS = {
-  monthly: process.env.STRIPE_MONTHLY_PRICE_ID || "",
-  annual: process.env.STRIPE_ANNUAL_PRICE_ID || "",
-};
-
 /**
  * Determine tier from Clerk user publicMetadata.
  * Returns "free" if no metadata or plan not set to "premium".

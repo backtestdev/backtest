@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useUser, SignUpButton } from "@clerk/nextjs";
 import { useSubscription } from "@/components/SubscriptionProvider";
-import { PLANS, STRIPE_PRICE_IDS } from "@/lib/subscription";
+import { PLANS } from "@/lib/subscription";
 import { useSearchParams } from "next/navigation";
 
 const FREE_FEATURES = [
@@ -42,21 +42,12 @@ export default function PricingPage() {
   );
 
   const handleUpgrade = async () => {
-    const priceId = billing === "annual"
-      ? STRIPE_PRICE_IDS.annual
-      : STRIPE_PRICE_IDS.monthly;
-
-    if (!priceId) {
-      alert("Stripe price IDs not configured. Contact support.");
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ billing }),
       });
       const data = await res.json();
       if (data.url) {

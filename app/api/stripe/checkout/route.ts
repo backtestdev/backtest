@@ -15,10 +15,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { priceId } = await req.json();
+    const { billing } = await req.json();
+
+    const priceId = billing === "monthly"
+      ? process.env.STRIPE_MONTHLY_PRICE_ID
+      : process.env.STRIPE_ANNUAL_PRICE_ID;
 
     if (!priceId) {
-      return NextResponse.json({ error: "Price ID required" }, { status: 400 });
+      console.error("Missing STRIPE price env var for billing:", billing);
+      return NextResponse.json({ error: "Stripe price IDs not configured" }, { status: 500 });
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
