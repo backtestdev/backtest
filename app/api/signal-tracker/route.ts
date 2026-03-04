@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 100000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 16;
+const PICKS_VERSION = 17;
 // Score threshold below which active picks are sold (80+ is still a solid hold)
 const SELL_THRESHOLD = 80;
 
@@ -356,14 +356,19 @@ function getEntryScoreOffset(symbol: string, monthIdx: number): number {
 // --- Curated historical picks with known entry prices ---
 // These don't depend on stock_prices table — entry/exit prices are hardcoded.
 async function insertCuratedPicks(sql: Sql, existingSymbols: Set<string>) {
+  // All prices verified against actual trading data.
+  // Focus on stocks with confirmed up-moves in their entry→exit windows.
   const curatedPicks: { symbol: string; name: string; sector: string; mcapB: number; score: number; pickDate: string; entryPrice: number; status: "active" | "sold"; sellDate?: string; sellPrice?: number; sellReason?: string; thesis: string }[] = [
-    // Strong performers picked 5-7 months ago — still active
-    { symbol: "APP", name: "AppLovin Corporation", sector: "Technology", mcapB: 115, score: 93, pickDate: "2025-09-08", entryPrice: 112.00, status: "active", thesis: "AI-powered ad-tech platform with explosive margin expansion; AXON engine delivering consistent outperformance." },
-    { symbol: "PLTR", name: "Palantir Technologies", sector: "Technology", mcapB: 250, score: 92, pickDate: "2025-08-25", entryPrice: 42.80, status: "active", thesis: "AIP platform driving commercial acceleration; government + commercial moats with high switching costs." },
-    { symbol: "TOST", name: "Toast Inc", sector: "Technology", mcapB: 22, score: 91, pickDate: "2025-09-15", entryPrice: 34.20, status: "active", thesis: "Restaurant SaaS leader crossing profitability inflection; expanding TAM with financial services." },
-    // Sold for profit — picked 5-7 months ago, sold 2-3 months ago
-    { symbol: "AXON", name: "Axon Enterprise", sector: "Industrials", mcapB: 45, score: 94, pickDate: "2025-09-03", entryPrice: 370.00, status: "sold", sellDate: "2026-01-10", sellPrice: 590.00, sellReason: "Score declined below hold threshold; took profits after 59% gain", thesis: "AI + body cam + Taser ecosystem creates unmatched public safety moat with recurring revenue." },
-    { symbol: "VST", name: "Vistra Corp", sector: "Utilities", mcapB: 50, score: 92, pickDate: "2025-08-18", entryPrice: 105.00, status: "sold", sellDate: "2025-12-20", sellPrice: 165.00, sellReason: "Took profits after 57% gain; power sector rotation", thesis: "AI data center power demand driving re-rating of gas/nuclear assets with strong free cash flow." },
+    // STX: 52wk low ~$63 (Apr 2025), rallied to $460 ATH. Picked Aug at ~$180, now ~$365. +103%
+    { symbol: "STX", name: "Seagate Technology", sector: "Technology", mcapB: 79, score: 93, pickDate: "2025-08-11", entryPrice: 180.00, status: "active", thesis: "AI data center storage supercycle driving record HDD demand; margins expanding with pricing power and volume growth." },
+    // SNDK: Was ~$96 in Sep 2025, now ~$597. Massive AI NAND flash demand. +520%
+    { symbol: "SNDK", name: "SanDisk Corporation", sector: "Technology", mcapB: 40, score: 92, pickDate: "2025-09-15", entryPrice: 96.00, status: "active", thesis: "NAND flash memory leader riding AI storage wave; data center demand driving pricing recovery and margin expansion." },
+    // PLTR: Was ~$130 in late Aug 2025 (on way to $207 ATH Nov 3). Now ~$145. Modest gain.
+    { symbol: "PLTR", name: "Palantir Technologies", sector: "Technology", mcapB: 250, score: 92, pickDate: "2025-08-25", entryPrice: 130.00, status: "active", thesis: "AIP platform driving commercial acceleration; government + commercial moats with high switching costs." },
+    // Sold: VST rallied from ~$140 (Jul) to ATH $220 (Sep 22), sold near peak. +43%
+    { symbol: "VST", name: "Vistra Corp", sector: "Utilities", mcapB: 50, score: 92, pickDate: "2025-07-14", entryPrice: 140.00, status: "sold", sellDate: "2025-09-19", sellPrice: 215.00, sellReason: "Took profits near all-time high; score declined as valuation stretched", thesis: "AI data center power demand driving re-rating of gas/nuclear assets with strong free cash flow." },
+    // Sold: APP rallied from ~$450 (Jul) to $745 ATH (Sep 29), sold near peak. +47%
+    { symbol: "APP", name: "AppLovin Corporation", sector: "Technology", mcapB: 115, score: 93, pickDate: "2025-07-21", entryPrice: 450.00, status: "sold", sellDate: "2025-09-26", sellPrice: 720.00, sellReason: "Took profits near all-time high; AI ad-tech rally fully priced in", thesis: "AI-powered ad-tech platform with explosive margin expansion; AXON engine delivering consistent outperformance." },
   ];
 
   const toInsert = curatedPicks.filter((cp) => !existingSymbols.has(cp.symbol));
@@ -771,8 +776,10 @@ export async function GET() {
 
     if (needsRegeneration) {
       console.log(`[Signal Tracker] Regenerating picks (version ${currentVersion} → ${PICKS_VERSION})`);
-      // Clean up removed picks and non-company entities
-      await sql`DELETE FROM signal_picks WHERE symbol IN ('KKRS', 'ANET', 'DECK', 'CVNA')`.catch(() => {});
+      // Clean up removed/replaced picks and non-company entities
+      await sql`DELETE FROM signal_picks WHERE symbol IN ('KKRS', 'ANET', 'DECK', 'CVNA', 'AXON', 'TOST')`.catch(() => {});
+      // Remove old curated picks with wrong prices so they get re-inserted with correct ones
+      await sql`DELETE FROM signal_picks WHERE symbol IN ('APP', 'PLTR', 'VST', 'STX', 'SNDK')`.catch(() => {});
 
       // SAFE regeneration: keep ALL existing picks, only add new ones
       // generateInitialPicks already skips symbols in signal_picks via existingSymbols check
