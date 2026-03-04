@@ -34,6 +34,19 @@ interface Pick {
   sellReason: string | null;
 }
 
+interface Trade {
+  id: string;
+  date: string;
+  type: "buy" | "sell";
+  symbol: string;
+  companyName: string;
+  price: number;
+  shares: number;
+  amount: number;
+  score: number;
+  reason: string;
+}
+
 interface PerformancePoint {
   date: string;
   portfolioValue: number;
@@ -108,6 +121,7 @@ export default function SignalTracker() {
   const { isSignedIn } = useUser();
   const { isPremium } = useSubscription();
   const [picks, setPicks] = useState<Pick[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
   const [performance, setPerformance] = useState<PerformancePoint[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [fundValue, setFundValue] = useState<number | null>(null);
@@ -115,6 +129,7 @@ export default function SignalTracker() {
   const [error, setError] = useState<string | null>(null);
   const [expandedPick, setExpandedPick] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "sold">("all");
+  const [activeTab, setActiveTab] = useState<"picks" | "trades">("picks");
 
   useEffect(() => {
     fetch("/api/signal-tracker")
@@ -122,6 +137,7 @@ export default function SignalTracker() {
       .then((data) => {
         if (data.error) throw new Error(data.error);
         setPicks(data.picks || []);
+        setTrades(data.trades || []);
         setPerformance(data.performance || []);
         setStats(data.stats || null);
         setFundValue(data.fundValue ?? null);
@@ -225,7 +241,80 @@ export default function SignalTracker() {
           </div>
         )}
 
+        {/* Tab Switcher: Picks vs Trades */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setActiveTab("picks")}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+              activeTab === "picks"
+                ? "bg-th-nav-active text-white"
+                : "text-th-text-3 hover:text-th-text-2 hover:bg-th-hover"
+            }`}
+          >
+            Stock Picks
+          </button>
+          <button
+            onClick={() => setActiveTab("trades")}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+              activeTab === "trades"
+                ? "bg-th-nav-active text-white"
+                : "text-th-text-3 hover:text-th-text-2 hover:bg-th-hover"
+            }`}
+          >
+            Trade Log
+          </button>
+        </div>
+
+        {/* Trades Tab */}
+        {activeTab === "trades" && (
+          <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-th-text mb-4">All Transactions</h2>
+            {trades.length === 0 ? (
+              <p className="text-sm text-th-text-3 text-center py-8">No trades recorded yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {trades.map((trade) => (
+                  <div key={trade.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
+                    trade.type === "buy"
+                      ? "border-th-positive-border bg-th-positive-bg/30"
+                      : "border-th-negative-border bg-th-negative-bg/30"
+                  }`}>
+                    <div className={`flex-shrink-0 w-12 text-center text-[10px] font-bold uppercase tracking-wider py-1 rounded ${
+                      trade.type === "buy"
+                        ? "bg-th-positive-bg text-th-positive"
+                        : "bg-th-negative-bg text-th-negative"
+                    }`}>
+                      {trade.type}
+                    </div>
+                    <div className="flex-shrink-0">
+                      <StockLogo ticker={trade.symbol} size="sm" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-th-text">{trade.symbol}</span>
+                        <span className="text-[10px] text-th-text-4">{trade.companyName}</span>
+                      </div>
+                      <p className="text-[10px] text-th-text-3 truncate">{trade.reason}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0 hidden sm:block">
+                      <p className="text-xs font-medium text-th-text">{trade.shares.toFixed(2)} shares @ {formatCurrency(trade.price)}</p>
+                      <p className="text-[10px] text-th-text-3">{formatDate(trade.date)}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className={`text-sm font-bold ${trade.type === "buy" ? "text-th-text" : trade.amount > 0 ? "text-th-positive" : "text-th-negative"}`}>
+                        {formatCurrency(trade.amount)}
+                      </p>
+                      <p className="text-[10px] text-th-text-3 sm:hidden">{formatDate(trade.date)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Picks Section */}
+        {activeTab === "picks" && (
         <div className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-th-text">Stock Picks</h2>
@@ -328,6 +417,7 @@ export default function SignalTracker() {
             </div>
           )}
         </div>
+        )}
 
         {/* Fund allocation summary */}
         {stats && (
