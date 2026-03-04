@@ -291,7 +291,138 @@ async function refreshSignals() {
     recorded++;
   }
 
-  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded };
+  // --- Correct stale entry prices for existing picks ---
+  // Fetches actual historical close prices from Yahoo Finance for each pick's pick_date
+  // and updates if the stored entry_price differs (fixes picks that used stale stock_prices data)
+  let corrected = 0;
+  const allActivePicks = await sql`
+    SELECT id, symbol, pick_date, entry_price
+    FROM signal_picks WHERE status = 'active'
+  `;
+
+  if (allActivePicks.length > 0) {
+    const corrections = await Promise.allSettled(
+      allActivePicks.map(async (pick) => {
+        const sym = pick.symbol as string;
+        const pickDate = new Date(pick.pick_date as string);
+        const storedPrice = Number(pick.entry_price);
+
+        // Fetch a 5-day window around the pick_date to account for weekends/holidays
+        const dayBefore = new Date(pickDate.getTime() - 2 * 86400000);
+        const dayAfter = new Date(pickDate.getTime() + 3 * 86400000);
+
+        try {
+          const result = await yf.chart(sym, {
+            period1: dayBefore,
+            period2: dayAfter,
+            interval: "1d",
+          });
+
+          if (!result.quotes || result.quotes.length === 0) return null;
+
+          const pickDateStr = pickDate.toISOString().slice(0, 10);
+
+          // Find exact date match first, then closest trading day on or before pick_date
+          let correctPrice: number | null = null;
+          let closestDate: string | null = null;
+
+          for (const q of result.quotes) {
+            const qDate = q.date.toISOString().slice(0, 10);
+            const price = q.adjclose ?? q.close;
+            if (!price || price <= 0) continue;
+
+            if (qDate === pickDateStr) {
+              correctPrice = Math.round(price * 100) / 100;
+              closestDate = qDate;
+              break;
+            }
+            // Track closest date on or before pick_date
+            if (qDate <= pickDateStr) {
+              correctPrice = Math.round(price * 100) / 100;
+              closestDate = qDate;
+            }
+          }
+
+          if (correctPrice && Math.abs(correctPrice - storedPrice) > 0.01) {
+            await sql`
+              UPDATE signal_picks SET entry_price = ${correctPrice} WHERE id = ${pick.id}
+            `;
+            console.log(`[refresh-signals] Corrected ${sym} entry price: $${storedPrice} → $${correctPrice} (pick date: ${pickDateStr}, price date: ${closestDate})`);
+            return { symbol: sym, old: storedPrice, new: correctPrice };
+          }
+          return null;
+        } catch (e) {
+          console.error(`[refresh-signals] Failed to correct price for ${sym}:`, e);
+          return null;
+        }
+      })
+    );
+
+    for (const r of corrections) {
+      if (r.status === "fulfilled" && r.value != null) corrected++;
+    }
+  }
+
+  // Also correct sell prices for recently sold picks (within last 7 days)
+  let sellsCorrected = 0;
+  const recentSold = await sql`
+    SELECT id, symbol, sell_date, sell_price
+    FROM signal_picks WHERE status = 'sold' AND sell_date >= NOW() - INTERVAL '7 days'
+  `;
+
+  if (recentSold.length > 0) {
+    const sellCorrections = await Promise.allSettled(
+      recentSold.map(async (pick) => {
+        const sym = pick.symbol as string;
+        const sellDate = new Date(pick.sell_date as string);
+        const storedSellPrice = Number(pick.sell_price);
+        if (!storedSellPrice || storedSellPrice <= 0) return null;
+
+        const dayBefore = new Date(sellDate.getTime() - 2 * 86400000);
+        const dayAfter = new Date(sellDate.getTime() + 3 * 86400000);
+
+        try {
+          const result = await yf.chart(sym, {
+            period1: dayBefore,
+            period2: dayAfter,
+            interval: "1d",
+          });
+
+          if (!result.quotes || result.quotes.length === 0) return null;
+
+          const sellDateStr = sellDate.toISOString().slice(0, 10);
+          let correctPrice: number | null = null;
+
+          for (const q of result.quotes) {
+            const qDate = q.date.toISOString().slice(0, 10);
+            const price = q.adjclose ?? q.close;
+            if (!price || price <= 0) continue;
+            if (qDate === sellDateStr) { correctPrice = Math.round(price * 100) / 100; break; }
+            if (qDate <= sellDateStr) { correctPrice = Math.round(price * 100) / 100; }
+          }
+
+          if (correctPrice && Math.abs(correctPrice - storedSellPrice) > 0.01) {
+            await sql`UPDATE signal_picks SET sell_price = ${correctPrice} WHERE id = ${pick.id}`;
+            console.log(`[refresh-signals] Corrected ${sym} sell price: $${storedSellPrice} → $${correctPrice}`);
+            return { symbol: sym, old: storedSellPrice, new: correctPrice };
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    for (const r of sellCorrections) {
+      if (r.status === "fulfilled" && r.value != null) sellsCorrected++;
+    }
+  }
+
+  if (corrected > 0 || sellsCorrected > 0) {
+    console.log(`[refresh-signals] Price corrections: ${corrected} entry prices, ${sellsCorrected} sell prices`);
+  }
+
+  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded, priceCorrections: corrected, sellPriceCorrections: sellsCorrected };
 }
 
 // GET: Vercel Cron handler
