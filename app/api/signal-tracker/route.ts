@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 100000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 15;
+const PICKS_VERSION = 16;
 // Score threshold below which active picks are sold (80+ is still a solid hold)
 const SELL_THRESHOLD = 80;
 
@@ -358,14 +358,11 @@ function getEntryScoreOffset(symbol: string, monthIdx: number): number {
 async function insertCuratedPicks(sql: Sql, existingSymbols: Set<string>) {
   const curatedPicks: { symbol: string; name: string; sector: string; mcapB: number; score: number; pickDate: string; entryPrice: number; status: "active" | "sold"; sellDate?: string; sellPrice?: number; sellReason?: string; thesis: string }[] = [
     // Strong performers picked 5-7 months ago — still active
-    { symbol: "ANET", name: "Arista Networks", sector: "Technology", mcapB: 120, score: 94, pickDate: "2025-08-12", entryPrice: 85.50, status: "active", thesis: "Dominant in cloud networking with 40%+ margins, AI/ML data center buildout driving sustained revenue acceleration." },
     { symbol: "APP", name: "AppLovin Corporation", sector: "Technology", mcapB: 115, score: 93, pickDate: "2025-09-08", entryPrice: 112.00, status: "active", thesis: "AI-powered ad-tech platform with explosive margin expansion; AXON engine delivering consistent outperformance." },
     { symbol: "PLTR", name: "Palantir Technologies", sector: "Technology", mcapB: 250, score: 92, pickDate: "2025-08-25", entryPrice: 42.80, status: "active", thesis: "AIP platform driving commercial acceleration; government + commercial moats with high switching costs." },
     { symbol: "TOST", name: "Toast Inc", sector: "Technology", mcapB: 22, score: 91, pickDate: "2025-09-15", entryPrice: 34.20, status: "active", thesis: "Restaurant SaaS leader crossing profitability inflection; expanding TAM with financial services." },
     // Sold for profit — picked 5-7 months ago, sold 2-3 months ago
-    { symbol: "DECK", name: "Deckers Outdoor", sector: "Consumer Cyclical", mcapB: 25, score: 93, pickDate: "2025-08-05", entryPrice: 155.00, status: "sold", sellDate: "2025-12-15", sellPrice: 210.00, sellReason: "Score declined below hold threshold after valuation expansion", thesis: "HOKA brand driving 30%+ growth with premium positioning and margin expansion." },
     { symbol: "AXON", name: "Axon Enterprise", sector: "Industrials", mcapB: 45, score: 94, pickDate: "2025-09-03", entryPrice: 370.00, status: "sold", sellDate: "2026-01-10", sellPrice: 590.00, sellReason: "Score declined below hold threshold; took profits after 59% gain", thesis: "AI + body cam + Taser ecosystem creates unmatched public safety moat with recurring revenue." },
-    { symbol: "CVNA", name: "Carvana Co", sector: "Consumer Cyclical", mcapB: 48, score: 91, pickDate: "2025-10-01", entryPrice: 215.00, status: "sold", sellDate: "2026-01-20", sellPrice: 290.00, sellReason: "Valuation stretched, score declined below threshold", thesis: "Turnaround success story — massive cost restructuring driving profitability inflection." },
     { symbol: "VST", name: "Vistra Corp", sector: "Utilities", mcapB: 50, score: 92, pickDate: "2025-08-18", entryPrice: 105.00, status: "sold", sellDate: "2025-12-20", sellPrice: 165.00, sellReason: "Took profits after 57% gain; power sector rotation", thesis: "AI data center power demand driving re-rating of gas/nuclear assets with strong free cash flow." },
   ];
 
@@ -774,8 +771,8 @@ export async function GET() {
 
     if (needsRegeneration) {
       console.log(`[Signal Tracker] Regenerating picks (version ${currentVersion} → ${PICKS_VERSION})`);
-      // Clean up non-company entities
-      await sql`DELETE FROM signal_picks WHERE symbol IN ('KKRS')`.catch(() => {});
+      // Clean up removed picks and non-company entities
+      await sql`DELETE FROM signal_picks WHERE symbol IN ('KKRS', 'ANET', 'DECK', 'CVNA')`.catch(() => {});
 
       // SAFE regeneration: keep ALL existing picks, only add new ones
       // generateInitialPicks already skips symbols in signal_picks via existingSymbols check
