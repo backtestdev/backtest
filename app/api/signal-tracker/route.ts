@@ -37,9 +37,6 @@ function qualifiesForPick(score: number, marketCapB: number): boolean {
   return false;
 }
 
-function pickWeight(score: number): number {
-  return Math.max(1, score - 84);
-}
 
 // --- Stock info for thesis generation ---
 
@@ -583,7 +580,7 @@ async function generateInitialPicks(sql: Sql) {
   console.log(`[Signal Tracker] Inserted ${inserted} active picks + ${soldCount} sold picks`);
 }
 
-// --- Compute performance with weekly resolution ---
+// --- Compute performance with weekly resolution (bottom-up P&L based) ---
 
 async function computePerformance(
   sql: Sql,
@@ -615,7 +612,6 @@ async function computePerformance(
   for (const row of spyRows) {
     spyPrices.set(toDateStr(row.date), Number(row.close_price));
   }
-  // Fallback: if no SPY in stock_prices, fetch from Yahoo Finance
   if (spyPrices.size === 0) {
     console.log("[Signal Tracker] SPY not in stock_prices, fetching from Yahoo Finance");
     spyPrices = await fetchSpyPricesFromYahoo();
@@ -627,45 +623,54 @@ async function computePerformance(
   // Inception point
   results.push({ date: INCEPTION_DATE, portfolioValue: INITIAL_CAPITAL, benchmarkValue: INITIAL_CAPITAL });
 
-  let portfolioValue = INITIAL_CAPITAL;
-  let prevEnd = INCEPTION_DATE;
-
+  // Bottom-up approach: at each checkpoint, sum the P&L of all picks that were
+  // active at any point before the checkpoint. This matches the card's fund value exactly.
   for (const checkpoint of checkpoints) {
-    // Active picks at this point
-    const active = picks.filter((p) => {
-      const pd = toDateStr(p.pick_date);
-      const sd = p.sell_date ? toDateStr(p.sell_date) : null;
-      return pd <= checkpoint && (p.status === "active" || (sd && sd > prevEnd));
-    });
+    let totalPnL = 0;
 
-    if (active.length === 0) {
-      const spyNow = getClosestPrice(spyPrices, checkpoint);
-      const bv = spyStart && spyNow ? INITIAL_CAPITAL * (spyNow / spyStart) : INITIAL_CAPITAL;
-      results.push({ date: checkpoint, portfolioValue: Math.round(portfolioValue * 100) / 100, benchmarkValue: Math.round(bv * 100) / 100 });
-      prevEnd = checkpoint;
-      continue;
-    }
+    // All picks that were picked on or before this checkpoint
+    const relevantPicks = picks.filter((p) => toDateStr(p.pick_date) <= checkpoint);
 
-    // Weighted period return
-    const totalW = active.reduce((sum, p) => sum + pickWeight(Number(p.score)), 0);
-    let wReturn = 0;
-
-    for (const pick of active) {
-      const w = pickWeight(Number(pick.score)) / totalW;
+    for (const pick of relevantPicks) {
       const sym = pick.symbol as string;
-      const symPrices = priceLookup.get(sym);
-      if (!symPrices) continue;
+      const entryPrice = Number(pick.entry_price);
+      if (!entryPrice || entryPrice <= 0) continue;
 
       const pd = toDateStr(pick.pick_date);
-      const startP = pd > prevEnd ? Number(pick.entry_price) : getClosestPrice(symPrices, prevEnd);
-      const endP = getClosestPrice(symPrices, checkpoint);
+      const isSold = pick.status === "sold";
+      const sd = pick.sell_date ? toDateStr(pick.sell_date) : null;
 
-      if (startP && endP && startP > 0) {
-        wReturn += w * ((endP / startP) - 1);
+      // Determine exit price at this checkpoint
+      let exitPrice: number | null = null;
+      if (isSold && sd && sd <= checkpoint) {
+        // Already sold before this checkpoint - use sell price
+        exitPrice = pick.sell_price ? Number(pick.sell_price) : null;
+      } else {
+        // Still active at this checkpoint - use market price
+        const symPrices = priceLookup.get(sym);
+        if (symPrices) exitPrice = getClosestPrice(symPrices, checkpoint);
+      }
+
+      if (exitPrice && exitPrice > 0) {
+        const returnPct = (exitPrice - entryPrice) / entryPrice;
+        // Position size: same logic as the card (equal alloc from fund at pick time)
+        // Approximate: count picks active at entry time
+        let activeAtEntry = 0;
+        picks.forEach((pp) => {
+          const ppd = toDateStr(pp.pick_date);
+          const psd = pp.sell_date ? toDateStr(pp.sell_date) : null;
+          if (ppd <= pd && (pp.status === "active" || (psd && psd > pd))) activeAtEntry++;
+        });
+        activeAtEntry = Math.max(1, activeAtEntry);
+
+        // Equal allocation from initial capital - matches the card's position sizing
+        const investPct = Math.min(0.95, 0.50 + activeAtEntry * 0.05);
+        const posSize = Math.min((INITIAL_CAPITAL * investPct) / activeAtEntry, INITIAL_CAPITAL * 0.15);
+        totalPnL += posSize * returnPct;
       }
     }
 
-    portfolioValue *= (1 + wReturn);
+    const portfolioValue = INITIAL_CAPITAL + totalPnL;
     const spyNow = getClosestPrice(spyPrices, checkpoint);
     const bv = spyStart && spyNow ? INITIAL_CAPITAL * (spyNow / spyStart) : INITIAL_CAPITAL;
 
@@ -674,8 +679,6 @@ async function computePerformance(
       portfolioValue: Math.round(portfolioValue * 100) / 100,
       benchmarkValue: Math.round(bv * 100) / 100,
     });
-
-    prevEnd = checkpoint;
   }
 
   return results;
@@ -800,15 +803,6 @@ export async function GET() {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    // Helper: get approximate fund value at a given date from the performance curve
-    const fundValueAtDate = (dateStr: string): number => {
-      let closest = INITIAL_CAPITAL;
-      performance.forEach((pt) => {
-        if (pt.date <= dateStr) closest = pt.portfolioValue;
-      });
-      return closest;
-    };
-
     // Count how many picks were active at each pick's entry date (for position sizing)
     const pickCountAtDate = (dateStr: string): number => {
       let count = 0;
@@ -854,14 +848,13 @@ export async function GET() {
         (new Date(endDateStr).getTime() - new Date(pickDateStr).getTime()) / (1000 * 60 * 60 * 24)
       ));
 
-      // Position size: equal allocation from fund value at pick time
-      // At any given time, invest ~75% of fund equally across active picks
-      const histFundValue = fundValueAtDate(pickDateStr);
+      // Position size: equal allocation from initial capital across active picks at entry time
+      // Uses INITIAL_CAPITAL (not historical fund value) to match the performance chart calculation
       const activeAtTime = pickCountAtDate(pickDateStr);
       const investPct = Math.min(0.95, 0.50 + activeAtTime * 0.05);
-      const perPickAlloc = (histFundValue * investPct) / activeAtTime;
-      // Cap at 15% of fund value at pick time to prevent concentration
-      const positionSize = Math.round(Math.min(perPickAlloc, histFundValue * 0.15) * 100) / 100;
+      const perPickAlloc = (INITIAL_CAPITAL * investPct) / activeAtTime;
+      // Cap at 15% of initial capital to prevent concentration
+      const positionSize = Math.round(Math.min(perPickAlloc, INITIAL_CAPITAL * 0.15) * 100) / 100;
 
       const profitLoss = returnPct != null
         ? Math.round(positionSize * (returnPct / 100) * 100) / 100
