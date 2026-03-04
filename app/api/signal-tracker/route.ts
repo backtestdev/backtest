@@ -788,7 +788,6 @@ export async function GET() {
 
     // Fund value from monthly compounded weighted returns (source of truth)
     const fundValue = latest ? latest.portfolioValue : INITIAL_CAPITAL;
-    const targetTotalPnL = fundValue - INITIAL_CAPITAL;
 
     // --- Score-weighted position sizing ---
     // Active picks: allocate a growing portion of fund value, scaling toward 90-95% as more picks are called
@@ -806,6 +805,9 @@ export async function GET() {
       totalActiveWeight += w;
     }
 
+    // Per-position cap: no single position should exceed 20% of current fund value
+    const maxPositionSize = fundValue * 0.20;
+
     // First pass: compute raw return data for all picks
     const pickReturns = new Map<string, { returnPct: number; exitPrice: number | null }>();
     for (const p of picks) {
@@ -819,39 +821,29 @@ export async function GET() {
       pickReturns.set(p.id as string, { returnPct: returnPct ?? 0, exitPrice });
     }
 
-    // Compute active P&L using proper allocation
-    let totalActivePnL = 0;
-    for (const p of activePicks) {
-      const sym = p.symbol as string;
-      const w = activeWeightMap.get(sym) || 0;
-      const posSize = totalActiveWeight > 0 ? (w / totalActiveWeight) * investableAmount : 0;
-      const ret = pickReturns.get(p.id as string);
-      if (ret) totalActivePnL += posSize * (ret.returnPct / 100);
-    }
-
-    // Sold picks: scale position sizes so total P&L (active + sold) = fund value - initial capital
-    // This ensures displayed numbers are consistent with fund value
-    const targetSoldPnL = targetTotalPnL - totalActivePnL;
-
-    // Compute raw sold P&L with baseline sizing
-    let totalSoldWeight = 0;
-    for (const p of soldPicks) totalSoldWeight += pickWeight(Number(p.score));
-    const soldBaseAlloc = INITIAL_CAPITAL * 0.7; // baseline sold allocation (proportional to initial capital)
-
-    let rawSoldPnL = 0;
-    for (const p of soldPicks) {
-      const w = pickWeight(Number(p.score));
-      const rawSize = totalSoldWeight > 0 ? (w / totalSoldWeight) * soldBaseAlloc : 0;
-      const ret = pickReturns.get(p.id as string);
-      if (ret) rawSoldPnL += rawSize * (ret.returnPct / 100);
-    }
-
-    // Scale sold positions so their P&L fills the gap (bounded to avoid extremes)
-    const soldScale = rawSoldPnL > 0 ? Math.max(0.5, Math.min(5, targetSoldPnL / rawSoldPnL)) : 1;
-
     // Track totals for stats
     let totalInvested = 0;
     const today = new Date().toISOString().slice(0, 10);
+
+    // Compute historical fund value at each pick's entry date for realistic sold position sizing
+    const perfByDate = new Map<string, number>();
+    for (const pt of performance) {
+      perfByDate.set(pt.date, pt.portfolioValue);
+    }
+    // Helper: get approximate fund value at a given date
+    const fundValueAtDate = (dateStr: string): number => {
+      if (perfByDate.has(dateStr)) return perfByDate.get(dateStr)!;
+      // Find closest month-end before this date
+      let closest = INITIAL_CAPITAL;
+      performance.forEach((pt) => {
+        if (pt.date <= dateStr) closest = pt.portfolioValue;
+      });
+      return closest;
+    };
+
+    // Sold picks: use historical fund value at pick time for realistic sizing
+    let totalSoldWeight = 0;
+    for (const p of soldPicks) totalSoldWeight += pickWeight(Number(p.score));
 
     const mappedPicks = picks.map((p) => {
       const sym = p.symbol as string;
@@ -878,14 +870,24 @@ export async function GET() {
         positionSize = totalActiveWeight > 0
           ? Math.round((w / totalActiveWeight) * investableAmount * 100) / 100
           : 0;
+        // Cap individual position to prevent unrealistic concentration
+        positionSize = Math.min(positionSize, maxPositionSize);
         portfolioPct = fundValue > 0
           ? Math.round((positionSize / fundValue) * 1000) / 10
           : 0;
         totalInvested += positionSize;
       } else {
+        // Use historical fund value at pick time for realistic position sizing
+        const histFundValue = fundValueAtDate(pickDateStr);
+        // At pick time, assume same invest % logic applied
+        const histInvestPct = Math.min(0.95, 0.50 + 5 * 0.05); // approximate with ~5 picks active at the time
+        const histInvestable = histFundValue * histInvestPct;
         const w = pickWeight(Number(p.score));
-        const rawSize = totalSoldWeight > 0 ? (w / totalSoldWeight) * soldBaseAlloc : 0;
-        positionSize = Math.round(rawSize * soldScale * 100) / 100;
+        // Allocate proportionally to weight, capped at 20% of historical fund value
+        const rawSize = totalSoldWeight > 0
+          ? Math.min((w / totalSoldWeight) * histInvestable, histFundValue * 0.20)
+          : 0;
+        positionSize = Math.round(rawSize * 100) / 100;
         portfolioPct = 0;
       }
 
