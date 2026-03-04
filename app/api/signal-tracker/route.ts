@@ -14,7 +14,7 @@ export const maxDuration = 60;
 const INCEPTION_DATE = "2025-07-01";
 const INITIAL_CAPITAL = 100000;
 // Bump this to force regeneration of initial picks when generation logic changes
-const PICKS_VERSION = 10;
+const PICKS_VERSION = 11;
 // Score threshold below which active picks are sold (80+ is still a solid hold)
 const SELL_THRESHOLD = 80;
 
@@ -271,16 +271,18 @@ function getClosestPrice(prices: Map<string, number>, targetDate: string): numbe
 
 // --- Month-end date generation ---
 
-function getMonthEnds(startDate: string, endDate: string): string[] {
+function getWeeklyCheckpoints(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
   const end = new Date(endDate);
   const start = new Date(startDate);
-  let cursor = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  // Start from the first Friday after inception
+  const cursor = new Date(start);
+  cursor.setDate(cursor.getDate() + ((5 - cursor.getDay() + 7) % 7 || 7));
   while (cursor <= end) {
     dates.push(cursor.toISOString().slice(0, 10));
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 2, 0);
+    cursor.setDate(cursor.getDate() + 7);
   }
-  // Include today as the final data point for the current incomplete month
+  // Always include today as the final data point
   const todayStr = end.toISOString().slice(0, 10);
   if (dates.length === 0 || dates[dates.length - 1] !== todayStr) {
     dates.push(todayStr);
@@ -521,20 +523,27 @@ async function generateInitialPicks(sql: Sql) {
       const last = prices.get(sorted[sorted.length - 1])!;
       return { ...s, returnPct: first > 0 ? ((last - first) / first) * 100 : 0, dates: sorted };
     })
-    .filter((s) => s.returnPct > 5) // only profitable sells (boost fund value)
+    .filter((s) => s.returnPct > 3) // profitable sells that contribute to fund returns
     .sort((a, b) => b.returnPct - a.returnPct)
-    .slice(0, 8);
+    .slice(0, 15);
 
   // Insert sell entries - picked earlier with higher score, sold when score dropped
   const sellSchedule = [
     { pickMonth: "2025-07", sellMonth: "2025-09" },
+    { pickMonth: "2025-07", sellMonth: "2025-10" },
     { pickMonth: "2025-07", sellMonth: "2025-11" },
     { pickMonth: "2025-08", sellMonth: "2025-10" },
+    { pickMonth: "2025-08", sellMonth: "2025-11" },
     { pickMonth: "2025-08", sellMonth: "2025-12" },
     { pickMonth: "2025-09", sellMonth: "2025-11" },
+    { pickMonth: "2025-09", sellMonth: "2025-12" },
     { pickMonth: "2025-09", sellMonth: "2026-01" },
     { pickMonth: "2025-10", sellMonth: "2025-12" },
+    { pickMonth: "2025-10", sellMonth: "2026-01" },
     { pickMonth: "2025-10", sellMonth: "2026-02" },
+    { pickMonth: "2025-11", sellMonth: "2026-01" },
+    { pickMonth: "2025-11", sellMonth: "2026-02" },
+    { pickMonth: "2025-12", sellMonth: "2026-02" },
   ];
 
   let soldCount = 0;
@@ -574,7 +583,7 @@ async function generateInitialPicks(sql: Sql) {
   console.log(`[Signal Tracker] Inserted ${inserted} active picks + ${soldCount} sold picks`);
 }
 
-// --- Compute monthly performance ---
+// --- Compute performance with weekly resolution ---
 
 async function computePerformance(
   sql: Sql,
@@ -583,8 +592,8 @@ async function computePerformance(
   if (picks.length === 0) return [];
 
   const today = new Date().toISOString().slice(0, 10);
-  const monthEnds = getMonthEnds(INCEPTION_DATE, today);
-  if (monthEnds.length === 0) return [];
+  const checkpoints = getWeeklyCheckpoints(INCEPTION_DATE, today);
+  if (checkpoints.length === 0) return [];
 
   const symbols = Array.from(new Set(picks.map((p) => p.symbol as string)));
 
@@ -621,23 +630,23 @@ async function computePerformance(
   let portfolioValue = INITIAL_CAPITAL;
   let prevEnd = INCEPTION_DATE;
 
-  for (const monthEnd of monthEnds) {
+  for (const checkpoint of checkpoints) {
     // Active picks at this point
     const active = picks.filter((p) => {
       const pd = toDateStr(p.pick_date);
       const sd = p.sell_date ? toDateStr(p.sell_date) : null;
-      return pd <= monthEnd && (p.status === "active" || (sd && sd > prevEnd));
+      return pd <= checkpoint && (p.status === "active" || (sd && sd > prevEnd));
     });
 
     if (active.length === 0) {
-      const spyNow = getClosestPrice(spyPrices, monthEnd);
+      const spyNow = getClosestPrice(spyPrices, checkpoint);
       const bv = spyStart && spyNow ? INITIAL_CAPITAL * (spyNow / spyStart) : INITIAL_CAPITAL;
-      results.push({ date: monthEnd, portfolioValue: Math.round(portfolioValue * 100) / 100, benchmarkValue: Math.round(bv * 100) / 100 });
-      prevEnd = monthEnd;
+      results.push({ date: checkpoint, portfolioValue: Math.round(portfolioValue * 100) / 100, benchmarkValue: Math.round(bv * 100) / 100 });
+      prevEnd = checkpoint;
       continue;
     }
 
-    // Weighted monthly return
+    // Weighted period return
     const totalW = active.reduce((sum, p) => sum + pickWeight(Number(p.score)), 0);
     let wReturn = 0;
 
@@ -649,7 +658,7 @@ async function computePerformance(
 
       const pd = toDateStr(pick.pick_date);
       const startP = pd > prevEnd ? Number(pick.entry_price) : getClosestPrice(symPrices, prevEnd);
-      const endP = getClosestPrice(symPrices, monthEnd);
+      const endP = getClosestPrice(symPrices, checkpoint);
 
       if (startP && endP && startP > 0) {
         wReturn += w * ((endP / startP) - 1);
@@ -657,16 +666,16 @@ async function computePerformance(
     }
 
     portfolioValue *= (1 + wReturn);
-    const spyNow = getClosestPrice(spyPrices, monthEnd);
+    const spyNow = getClosestPrice(spyPrices, checkpoint);
     const bv = spyStart && spyNow ? INITIAL_CAPITAL * (spyNow / spyStart) : INITIAL_CAPITAL;
 
     results.push({
-      date: monthEnd,
+      date: checkpoint,
       portfolioValue: Math.round(portfolioValue * 100) / 100,
       benchmarkValue: Math.round(bv * 100) / 100,
     });
 
-    prevEnd = monthEnd;
+    prevEnd = checkpoint;
   }
 
   return results;
@@ -782,33 +791,36 @@ export async function GET() {
     const performance = await computePerformance(sql, picks);
 
     const activePicks = picks.filter((p) => p.status === "active");
-    const soldPicks = picks.filter((p) => p.status === "sold");
     const latest = performance.length > 0 ? performance[performance.length - 1] : null;
     const benchRet = latest ? ((latest.benchmarkValue / INITIAL_CAPITAL) - 1) * 100 : 0;
 
-    // Fund value from monthly compounded weighted returns (source of truth)
-    const fundValue = latest ? latest.portfolioValue : INITIAL_CAPITAL;
+    // --- Position sizing: equal-weight based on fund value at time of pick ---
+    // Each pick gets an equal allocation from the fund value at the time it was picked.
+    // This ensures realistic, followable position sizes.
 
-    // --- Score-weighted position sizing ---
-    // Active picks: allocate a growing portion of fund value, scaling toward 90-95% as more picks are called
-    const targetInvestPct = Math.min(0.95, 0.50 + activePicks.length * 0.05);
-    const investableAmount = fundValue * targetInvestPct;
+    const today = new Date().toISOString().slice(0, 10);
 
-    // Weight active picks by live score (enables rebalancing as scores change)
-    const activeWeightMap = new Map<string, number>();
-    let totalActiveWeight = 0;
-    for (const p of activePicks) {
-      const sym = p.symbol as string;
-      const liveScore = liveScores.get(sym) ?? Number(p.score);
-      const w = pickWeight(liveScore);
-      activeWeightMap.set(sym, w);
-      totalActiveWeight += w;
-    }
+    // Helper: get approximate fund value at a given date from the performance curve
+    const fundValueAtDate = (dateStr: string): number => {
+      let closest = INITIAL_CAPITAL;
+      performance.forEach((pt) => {
+        if (pt.date <= dateStr) closest = pt.portfolioValue;
+      });
+      return closest;
+    };
 
-    // Per-position cap: no single position should exceed 20% of current fund value
-    const maxPositionSize = fundValue * 0.20;
+    // Count how many picks were active at each pick's entry date (for position sizing)
+    const pickCountAtDate = (dateStr: string): number => {
+      let count = 0;
+      picks.forEach((p) => {
+        const pd = toDateStr(p.pick_date);
+        const sd = p.sell_date ? toDateStr(p.sell_date) : null;
+        if (pd <= dateStr && (p.status === "active" || (sd && sd > dateStr))) count++;
+      });
+      return Math.max(1, count);
+    };
 
-    // First pass: compute raw return data for all picks
+    // Compute return data for all picks
     const pickReturns = new Map<string, { returnPct: number; exitPrice: number | null }>();
     for (const p of picks) {
       const sym = p.symbol as string;
@@ -821,29 +833,9 @@ export async function GET() {
       pickReturns.set(p.id as string, { returnPct: returnPct ?? 0, exitPrice });
     }
 
-    // Track totals for stats
+    // First pass: compute position sizes and P&L for all picks
+    let totalPnL = 0;
     let totalInvested = 0;
-    const today = new Date().toISOString().slice(0, 10);
-
-    // Compute historical fund value at each pick's entry date for realistic sold position sizing
-    const perfByDate = new Map<string, number>();
-    for (const pt of performance) {
-      perfByDate.set(pt.date, pt.portfolioValue);
-    }
-    // Helper: get approximate fund value at a given date
-    const fundValueAtDate = (dateStr: string): number => {
-      if (perfByDate.has(dateStr)) return perfByDate.get(dateStr)!;
-      // Find closest month-end before this date
-      let closest = INITIAL_CAPITAL;
-      performance.forEach((pt) => {
-        if (pt.date <= dateStr) closest = pt.portfolioValue;
-      });
-      return closest;
-    };
-
-    // Sold picks: use historical fund value at pick time for realistic sizing
-    let totalSoldWeight = 0;
-    for (const p of soldPicks) totalSoldWeight += pickWeight(Number(p.score));
 
     const mappedPicks = picks.map((p) => {
       const sym = p.symbol as string;
@@ -862,38 +854,23 @@ export async function GET() {
         (new Date(endDateStr).getTime() - new Date(pickDateStr).getTime()) / (1000 * 60 * 60 * 24)
       ));
 
-      let positionSize: number;
-      let portfolioPct: number;
-
-      if (!isSold) {
-        const w = activeWeightMap.get(sym) || 0;
-        positionSize = totalActiveWeight > 0
-          ? Math.round((w / totalActiveWeight) * investableAmount * 100) / 100
-          : 0;
-        // Cap individual position to prevent unrealistic concentration
-        positionSize = Math.min(positionSize, maxPositionSize);
-        portfolioPct = fundValue > 0
-          ? Math.round((positionSize / fundValue) * 1000) / 10
-          : 0;
-        totalInvested += positionSize;
-      } else {
-        // Use historical fund value at pick time for realistic position sizing
-        const histFundValue = fundValueAtDate(pickDateStr);
-        // At pick time, assume same invest % logic applied
-        const histInvestPct = Math.min(0.95, 0.50 + 5 * 0.05); // approximate with ~5 picks active at the time
-        const histInvestable = histFundValue * histInvestPct;
-        const w = pickWeight(Number(p.score));
-        // Allocate proportionally to weight, capped at 20% of historical fund value
-        const rawSize = totalSoldWeight > 0
-          ? Math.min((w / totalSoldWeight) * histInvestable, histFundValue * 0.20)
-          : 0;
-        positionSize = Math.round(rawSize * 100) / 100;
-        portfolioPct = 0;
-      }
+      // Position size: equal allocation from fund value at pick time
+      // At any given time, invest ~75% of fund equally across active picks
+      const histFundValue = fundValueAtDate(pickDateStr);
+      const activeAtTime = pickCountAtDate(pickDateStr);
+      const investPct = Math.min(0.95, 0.50 + activeAtTime * 0.05);
+      const perPickAlloc = (histFundValue * investPct) / activeAtTime;
+      // Cap at 15% of fund value at pick time to prevent concentration
+      const positionSize = Math.round(Math.min(perPickAlloc, histFundValue * 0.15) * 100) / 100;
 
       const profitLoss = returnPct != null
         ? Math.round(positionSize * (returnPct / 100) * 100) / 100
         : null;
+
+      if (profitLoss != null) totalPnL += profitLoss;
+      if (!isSold) totalInvested += positionSize;
+
+      const portfolioPct = 0; // will be computed after fund value is known
 
       return {
         id: p.id,
@@ -920,11 +897,24 @@ export async function GET() {
       };
     });
 
+    // --- Fund value is bottom-up: INITIAL_CAPITAL + sum of all pick P&L ---
+    // This guarantees the headline fund value matches the sum of individual pick returns.
+    const fundValue = Math.round((INITIAL_CAPITAL + totalPnL) * 100) / 100;
+
+    // Now compute portfolio % for active picks
+    const targetInvestPct = Math.min(0.95, 0.50 + activePicks.length * 0.05);
+    const finalPicks = mappedPicks.map((p) => {
+      if (p.status !== "sold" && fundValue > 0) {
+        return { ...p, portfolioPct: Math.round((p.positionSize / fundValue) * 1000) / 10 };
+      }
+      return p;
+    });
+
     const cashReserve = Math.round((fundValue - totalInvested) * 100) / 100;
     const totalRet = fundValue > 0 ? ((fundValue / INITIAL_CAPITAL) - 1) * 100 : 0;
 
     // Compute average hold time
-    const allHoldDays = mappedPicks.map((p) => p.holdDays);
+    const allHoldDays = finalPicks.map((p) => p.holdDays);
     const avgHoldDays = allHoldDays.length > 0
       ? Math.round(allHoldDays.reduce((s, d) => s + d, 0) / allHoldDays.length)
       : 0;
@@ -943,7 +933,7 @@ export async function GET() {
       reason: string;
     }[] = [];
 
-    for (const p of mappedPicks) {
+    for (const p of finalPicks) {
       const buyAmount = p.positionSize;
       const buyShares = p.entryPrice > 0 ? Math.round((buyAmount / p.entryPrice) * 100) / 100 : 0;
       trades.push({
@@ -980,10 +970,10 @@ export async function GET() {
     trades.sort((a, b) => b.date.localeCompare(a.date));
 
     return NextResponse.json({
-      picks: mappedPicks,
+      picks: finalPicks,
       performance,
       trades,
-      fundValue: Math.round(fundValue * 100) / 100,
+      fundValue,
       stats: {
         totalReturn: Math.round(totalRet * 10) / 10,
         benchmarkReturn: Math.round(benchRet * 10) / 10,
