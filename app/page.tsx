@@ -1,7 +1,7 @@
-import SignalTracker from "@/components/SignalTracker";
+import LandingPage from "@/components/LandingPage";
 
 export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <SignalTracker />;
+  return <LandingPage />;
 }

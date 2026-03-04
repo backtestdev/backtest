@@ -257,7 +257,7 @@ export default function HomePage() {
                 Upgrade to Premium for unlimited backtests, strategy saving, and full access to all features.
               </p>
               <Link
-                href="/pricing"
+                href="/app/pricing"
                 className="inline-flex items-center gap-2 mt-5 px-6 py-2.5 text-sm font-medium text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -276,7 +276,7 @@ export default function HomePage() {
                 <p className="text-xs text-th-text-3">
                   {backtestsRemaining} of {PLANS.free.backtestsPerMonth} free backtest{PLANS.free.backtestsPerMonth > 1 ? "s" : ""} remaining this month
                   {backtestsUsed > 0 && (
-                    <> &middot; <Link href="/pricing" className="text-th-accent hover:underline">Upgrade for unlimited</Link></>
+                    <> &middot; <Link href="/app/pricing" className="text-th-accent hover:underline">Upgrade for unlimited</Link></>
                   )}
                 </p>
               </div>
@@ -329,7 +329,7 @@ export default function HomePage() {
           <p className="text-xs text-th-text-4">
             For educational purposes only. Not financial advice. Past performance
             does not guarantee future results
-            <a href="/admin/stocks" className="text-th-text-4 hover:text-th-text-3 transition-colors">.</a>
+            <a href="/app/admin/stocks" className="text-th-text-4 hover:text-th-text-3 transition-colors">.</a>
           </p>
         </footer>
       </main>

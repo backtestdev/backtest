@@ -9,7 +9,7 @@ import { useSubscription } from "./SubscriptionProvider";
 
 const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode }[] = [
   {
-    href: "/",
+    href: "/app",
     label: "Signal Tracker",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -18,7 +18,7 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
     ),
   },
   {
-    href: "/backtest",
+    href: "/app/backtest",
     label: "AI Stock Screener",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -27,7 +27,7 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
     ),
   },
   {
-    href: "/screener",
+    href: "/app/screener",
     label: "AI Stock Analyzer",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -36,7 +36,7 @@ const NAV_ITEMS: { href: string; label: string; beta?: boolean; icon: ReactNode 
     ),
   },
   {
-    href: "/portfolio",
+    href: "/app/portfolio",
     label: "AI Portfolio Analyzer",
     beta: true,
     icon: (
@@ -73,11 +73,11 @@ function ThemeToggle() {
 
 function UpgradeButton() {
   const pathname = usePathname();
-  const isActive = pathname === "/pricing";
+  const isActive = pathname === "/app/pricing";
 
   return (
     <Link
-      href="/pricing"
+      href="/app/pricing"
       className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
         isActive
           ? "bg-th-accent text-white"
@@ -121,7 +121,7 @@ export default function Navigation() {
       <div className="hidden md:flex items-center gap-1">
         {NAV_ITEMS.map((item) => {
           const isActive = item.href === "/"
-            ? pathname === "/"
+            ? pathname === "/app"
             : pathname.startsWith(item.href);
 
           return (
@@ -185,7 +185,7 @@ export default function Navigation() {
             <nav className="flex flex-col px-4 py-3 gap-1">
               {NAV_ITEMS.map((item) => {
                 const isActive = item.href === "/"
-                  ? pathname === "/"
+                  ? pathname === "/app"
                   : pathname.startsWith(item.href);
 
                 return (
@@ -211,7 +211,7 @@ export default function Navigation() {
               })}
               {showUpgrade && (
                 <Link
-                  href="/pricing"
+                  href="/app/pricing"
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-3 px-4 py-3 text-base font-semibold text-th-accent rounded-xl hover:bg-th-accent-bg transition-colors"
                 >

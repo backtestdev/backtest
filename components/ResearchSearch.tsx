@@ -11,7 +11,7 @@ export default function ResearchSearch() {
     e.preventDefault();
     const cleaned = ticker.trim().toUpperCase();
     if (cleaned && /^[A-Z]{1,5}$/.test(cleaned)) {
-      router.push(`/research/${cleaned}`);
+      router.push(`/app/research/${cleaned}`);
     }
   };
 
@@ -47,7 +47,7 @@ export default function ResearchSearch() {
           {["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM"].map((t) => (
             <button
               key={t}
-              onClick={() => router.push(`/research/${t}`)}
+              onClick={() => router.push(`/app/research/${t}`)}
               className="px-3 py-2 sm:py-1.5 text-xs font-medium text-th-text-3 bg-th-surface border border-th-border rounded-lg hover:border-th-accent-border hover:text-th-accent transition-colors min-h-[44px] sm:min-h-0"
             >
               {t}

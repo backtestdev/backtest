@@ -271,7 +271,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
     return (
       <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
         <div className="max-w-4xl mx-auto">
-          <Link href="/screener" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-6 transition-colors min-h-[44px]">
+          <Link href="/app/screener" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-6 transition-colors min-h-[44px]">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
@@ -310,7 +310,7 @@ export default function StockDetail({ ticker }: { ticker: string }) {
     <div className="min-h-screen bg-th-bg px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-4xl mx-auto">
         {/* Back link */}
-        <Link href="/screener" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-4 sm:mb-6 transition-colors min-h-[44px]">
+        <Link href="/app/screener" className="inline-flex items-center gap-1 text-sm text-th-text-3 hover:text-th-text-2 mb-4 sm:mb-6 transition-colors min-h-[44px]">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
           </svg>
@@ -346,14 +346,14 @@ export default function StockDetail({ ticker }: { ticker: string }) {
                 <p className="text-th-text-3 mt-0.5">{data.companyName}</p>
                 <div className="flex items-center gap-3 mt-1.5 text-sm text-th-text-3 flex-wrap">
                   {f.sector && (
-                    <Link href={`/screener?sector=${encodeURIComponent(f.sector)}`} className="hover:text-th-accent transition-colors">
+                    <Link href={`/app/screener?sector=${encodeURIComponent(f.sector)}`} className="hover:text-th-accent transition-colors">
                       {f.sector}
                     </Link>
                   )}
                   {f.industry && (
                     <>
                       <span className="text-th-text-4">·</span>
-                      <Link href={`/screener?industry=${encodeURIComponent(f.industry)}`} className="hover:text-th-accent transition-colors">
+                      <Link href={`/app/screener?industry=${encodeURIComponent(f.industry)}`} className="hover:text-th-accent transition-colors">
                         {f.industry}
                       </Link>
                     </>

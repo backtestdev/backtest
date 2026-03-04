@@ -206,7 +206,7 @@ export default function StockScreener() {
   const navigateToStock = (ticker: string) => {
     setSearchQuery("");
     setShowDropdown(false);
-    router.push(`/screener/${ticker}`);
+    router.push(`/app/screener/${ticker}`);
   };
 
   const setCapFilter = (min: number, max: number) => {

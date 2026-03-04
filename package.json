@@ -1,5 +1,5 @@
 {
-  "name": "backtest-scaffold",
+  "name": "soloquant",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,6 +13,7 @@
     "@neondatabase/serverless": "^1.0.2",
     "@radix-ui/react-collapsible": "^1.1.12",
     "bad-words": "^4.0.0",
+    "framer-motion": "^12.35.0",
     "next": "14.2.35",
     "openai": "^6.19.0",
     "react": "^18",

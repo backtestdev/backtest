@@ -269,7 +269,7 @@ export default function AdminStocks() {
   return (
     <div className="min-h-screen bg-th-bg px-6 py-16">
       <div className="max-w-xl mx-auto">
-        <a href="/" className="text-sm text-th-text-3 hover:text-th-text-2 transition-colors">
+        <a href="/app" className="text-sm text-th-text-3 hover:text-th-text-2 transition-colors">
           &larr; Back
         </a>
 
