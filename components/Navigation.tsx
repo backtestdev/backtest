@@ -95,7 +95,7 @@ function UpgradeButton() {
 export default function Navigation() {
   const pathname = usePathname();
   useUser(); // keep Clerk context active
-  const { isPremium } = useSubscription();
+  const { isPremium, isPassUser } = useSubscription();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile menu on route change
@@ -113,8 +113,8 @@ export default function Navigation() {
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  // Show upgrade for all non-premium users (including guests and free/temp pass users)
-  const showUpgrade = !isPremium;
+  // Show upgrade for non-premium users AND pass users (premium via free pass, no Stripe sub)
+  const showUpgrade = !isPremium || isPassUser;
 
   return (
     <>
