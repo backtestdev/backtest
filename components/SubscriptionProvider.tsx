@@ -7,6 +7,7 @@ import { SubscriptionTier, getTierFromMetadata, PLANS } from "@/lib/subscription
 interface SubscriptionContextType {
   tier: SubscriptionTier;
   isPremium: boolean;
+  isPassUser: boolean; // premium via free pass, not a paid Stripe subscription
   isLoaded: boolean;
   backtestsUsed: number;
   backtestsRemaining: number;
@@ -18,6 +19,7 @@ interface SubscriptionContextType {
 const SubscriptionContext = createContext<SubscriptionContextType>({
   tier: "free",
   isPremium: false,
+  isPassUser: false,
   isLoaded: false,
   backtestsUsed: 0,
   backtestsRemaining: PLANS.free.backtestsPerMonth,
@@ -30,10 +32,11 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const { user, isLoaded } = useUser();
   const [backtestsUsed, setBacktestsUsed] = useState(0);
 
-  const tier = getTierFromMetadata(
-    user?.publicMetadata as Record<string, unknown> | undefined
-  );
+  const metadata = user?.publicMetadata as Record<string, unknown> | undefined;
+  const tier = getTierFromMetadata(metadata);
   const isPremium = tier === "premium";
+  // Pass user = premium via free pass (no Stripe subscription)
+  const isPassUser = isPremium && !!metadata?.premiumPassExpiresAt && !metadata?.stripeSubscriptionId;
 
   // Fetch usage from server for logged-in free users
   const refreshUsage = useCallback(async () => {
@@ -71,6 +74,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       value={{
         tier,
         isPremium,
+        isPassUser,
         isLoaded,
         backtestsUsed,
         backtestsRemaining,
