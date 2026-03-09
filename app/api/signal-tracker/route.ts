@@ -819,7 +819,64 @@ export async function GET() {
     });
 
     // Compute live scores so they match the screener
-    const { scoreMap: liveScores } = await fetchStocksWithScores(sql);
+    const { infos, scoreMap: liveScores } = await fetchStocksWithScores(sql);
+
+    // --- Inline sell processing: catch any active picks that should have been sold ---
+    // This ensures sells happen even if the cron job hasn't been running.
+    const infoMap = new Map<string, StockInfo>();
+    for (const info of infos) infoMap.set(info.symbol, info);
+    const activeSellCandidates = picks.filter((p) => {
+      if (p.status !== "active") return false;
+      const score = liveScores.get(p.symbol as string);
+      return score != null && score < SELL_THRESHOLD;
+    });
+
+    if (activeSellCandidates.length > 0) {
+      console.log(`[Signal Tracker GET] Processing ${activeSellCandidates.length} inline sells: ${activeSellCandidates.map((p) => p.symbol).join(", ")}`);
+      const sellSyms = activeSellCandidates.map((p) => p.symbol as string);
+      const inlineSellPrices = new Map<string, number>();
+      try {
+        const quotes = await Promise.allSettled(
+          sellSyms.map(async (sym) => {
+            const q = await yf.quote(sym);
+            return { symbol: sym, price: q?.regularMarketPrice ?? null };
+          })
+        );
+        for (const result of quotes) {
+          if (result.status === "fulfilled" && result.value.price != null) {
+            inlineSellPrices.set(result.value.symbol, Math.round(result.value.price * 100) / 100);
+          }
+        }
+      } catch (e) {
+        console.error("[Signal Tracker GET] Inline sell price fetch failed:", e);
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      for (const pick of activeSellCandidates) {
+        const sym = pick.symbol as string;
+        const stockInfo = infoMap.get(sym);
+        const score = liveScores.get(sym) || 0;
+        const sellReason = stockInfo
+          ? generateSellReason(stockInfo)
+          : `Score declined to ${score}, below hold threshold of ${SELL_THRESHOLD}`;
+        let sellPrice = inlineSellPrices.get(sym) ?? null;
+        if (sellPrice == null) {
+          const pr = await sql`SELECT close_price FROM stock_prices WHERE symbol = ${sym} ORDER BY date DESC LIMIT 1`;
+          sellPrice = pr.length > 0 ? Number(pr[0].close_price) : null;
+        }
+        await sql`
+          UPDATE signal_picks SET status = 'sold', sell_date = ${today},
+            sell_price = ${sellPrice}, sell_reason = ${sellReason}
+          WHERE id = ${pick.id}
+        `;
+        // Update the in-memory pick so the response reflects the sell
+        pick.status = "sold";
+        pick.sell_date = today;
+        pick.sell_price = sellPrice;
+        pick.sell_reason = sellReason;
+      }
+      console.log(`[Signal Tracker GET] Inline sells completed: ${activeSellCandidates.length} picks sold`);
+    }
 
     // Get latest prices for active picks - use Yahoo Finance for live quotes
     const activeSymbols = picks.filter((p) => p.status === "active").map((p) => p.symbol as string);

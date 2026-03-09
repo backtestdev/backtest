@@ -93,6 +93,24 @@ function checkAuth(request: NextRequest): boolean {
   return false;
 }
 
+// Check if signal refresh is stale (hasn't run in >26 hours).
+// This allows auto-triggering even when cron/auth fails.
+async function isSignalRefreshStale(): Promise<boolean> {
+  const sql = getDb();
+  if (!sql) return false;
+  try {
+    const meta = await sql`
+      SELECT value FROM stock_meta WHERE key = 'last_signal_refresh'
+    `;
+    if (meta.length === 0) return true; // never run
+    const lastRefreshMs = new Date(meta[0].value as string).getTime();
+    const hoursSince = (Date.now() - lastRefreshMs) / (1000 * 60 * 60);
+    return hoursSince > 26; // stale if >26 hours (cron runs daily at 7am UTC)
+  } catch {
+    return true; // table missing or error = treat as stale
+  }
+}
+
 async function refreshSignals() {
   const sql = getDb();
   if (!sql) return { error: "Database not configured", status: 503 };
@@ -430,13 +448,26 @@ async function refreshSignals() {
     console.log(`[refresh-signals] Price corrections: ${corrected} entry prices, ${sellsCorrected} sell prices`);
   }
 
+  // Record last refresh timestamp for staleness detection
+  await sql`
+    INSERT INTO stock_meta (key, value, updated_at) VALUES ('last_signal_refresh', ${new Date().toISOString()}, NOW())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `.catch(() => {});
+
   return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded, priceCorrections: corrected, sellPriceCorrections: sellsCorrected };
 }
 
-// GET: Vercel Cron handler
+// GET: Vercel Cron handler (also auto-triggers when stale, even without auth)
 export async function GET(request: NextRequest) {
-  if (!checkAuth(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const isAuthed = checkAuth(request);
+
+  if (!isAuthed) {
+    // Allow auto-refresh if data is stale (cron may not be running)
+    const stale = await isSignalRefreshStale();
+    if (!stale) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.log("[refresh-signals] Auto-triggering: data is stale and cron may not be running");
   }
 
   try {
