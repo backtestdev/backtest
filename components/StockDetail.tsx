@@ -72,6 +72,11 @@ interface PriceHistoryPoint {
   price: number;
 }
 
+interface ScoreHistoryPoint {
+  date: string;
+  score: number;
+}
+
 interface ResearchData {
   ticker: string;
   companyName: string;
@@ -83,6 +88,7 @@ interface ResearchData {
   revenueTrend?: RevenueTrendPoint[];
   priceHistory?: PriceHistoryPoint[];
   report: AIReport | null;
+  scoreHistory?: ScoreHistoryPoint[];
   error?: string;
 }
 
@@ -188,10 +194,10 @@ const RECOMMENDATION_CONFIG: Record<string, { label: string; angle: number }> = 
 // Derive recommendation from backtest score (single source of truth)
 function scoreToRecommendation(score: number | null): string {
   if (score == null) return "HOLD";
-  if (score >= 85) return "STRONG_BUY";
-  if (score >= 65) return "BUY";
-  if (score >= 40) return "HOLD";
-  if (score >= 20) return "SELL";
+  if (score >= 90) return "STRONG_BUY";
+  if (score >= 80) return "BUY";
+  if (score >= 60) return "HOLD";
+  if (score >= 40) return "SELL";
   return "STRONG_SELL";
 }
 
@@ -208,12 +214,31 @@ function formatRecommendationText(text: string): string {
 
 // ── Main component ───────────────────────────────────────────────────
 
+interface ScoreFactorBreakdownItem {
+  factor: string;
+  label: string;
+  weight: number;
+  direction: "higher_better" | "lower_better";
+  rawValue: number | null;
+  percentile: number | null;
+  contribution: number;
+  maxContribution: number;
+}
+
+interface ScoreBreakdownData {
+  symbol: string;
+  finalScore: number;
+  sizeConfidence: number;
+  factors: ScoreFactorBreakdownItem[];
+}
+
 export default function StockDetail({ ticker }: { ticker: string }) {
   const { isSignedIn } = useUser();
   const [data, setData] = useState<ResearchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [backtestScore, setBacktestScore] = useState<number | null>(null);
+  const [scoreBreakdown, setScoreBreakdown] = useState<ScoreBreakdownData | null>(null);
 
   const fetchResearch = useCallback(async () => {
     setLoading(true);
@@ -239,6 +264,9 @@ export default function StockDetail({ ticker }: { ticker: string }) {
       .then((json) => {
         if (json.stocks && json.stocks.length > 0) {
           setBacktestScore(json.stocks[0].backtestScore ?? null);
+        }
+        if (json.scoreBreakdown) {
+          setScoreBreakdown(json.scoreBreakdown);
         }
       })
       .catch(() => {});
@@ -543,6 +571,73 @@ export default function StockDetail({ ticker }: { ticker: string }) {
               </svg>
             </summary>
             <p className="text-sm text-th-text-3 leading-relaxed mt-3">{data.description}</p>
+          </details>
+        )}
+
+        {/* Quant Score Breakdown */}
+        {scoreBreakdown && (
+          <details className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 group">
+            <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <h2 className="text-sm font-semibold text-th-text">Quant Score Breakdown</h2>
+              <svg className="w-4 h-4 text-th-text-3 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-3 text-xs text-th-text-3">
+                <span>Final Score: <span className="font-bold text-th-text">{scoreBreakdown.finalScore}</span> / 100</span>
+                <span>Size Confidence: <span className="font-medium text-th-text-2">{(scoreBreakdown.sizeConfidence * 100).toFixed(0)}%</span></span>
+              </div>
+              <div className="space-y-2">
+                {scoreBreakdown.factors
+                  .sort((a, b) => b.maxContribution - a.maxContribution)
+                  .map((f) => {
+                    const pctOfMax = f.maxContribution > 0 ? (f.contribution / f.maxContribution) * 100 : 0;
+                    const barColor = pctOfMax >= 70 ? "bg-emerald-500" : pctOfMax >= 40 ? "bg-blue-500" : pctOfMax >= 20 ? "bg-amber-500" : "bg-red-500";
+                    const dirLabel = f.direction === "higher_better" ? "Higher is better" : "Lower is better";
+                    return (
+                      <div key={f.factor} className="text-xs">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-th-text">{f.label}</span>
+                            <span className="text-th-text-4">({dirLabel}, wt: {Math.abs(f.weight)})</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {f.rawValue != null ? (
+                              <span className="text-th-text-2 tabular-nums">
+                                {Math.abs(f.rawValue) < 1 ? `${(f.rawValue * 100).toFixed(1)}%` : f.rawValue.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-th-text-4 italic">N/A</span>
+                            )}
+                            {f.percentile != null && (
+                              <span className="text-th-text-3 tabular-nums">P{(f.percentile * 100).toFixed(0)}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-th-skeleton rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.max(2, pctOfMax)}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </details>
+        )}
+
+        {/* Score History */}
+        {data.scoreHistory && data.scoreHistory.length > 1 && (
+          <details className="bg-th-surface rounded-2xl border border-th-border-light p-4 sm:p-6 mb-4 group">
+            <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <h2 className="text-sm font-semibold text-th-text">Score History</h2>
+              <svg className="w-4 h-4 text-th-text-3 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-4">
+              <ScoreHistoryChart data={data.scoreHistory} />
+            </div>
           </details>
         )}
 
@@ -944,5 +1039,76 @@ function PriceRangeBar({ currentPrice, bear, base, bull }: {
         <p className="text-[9px] text-th-text-3 text-center">Current</p>
       </div>
     </div>
+  );
+}
+
+// ── Score History Chart ──────────────────────────────────────────────
+
+function ScoreHistoryChart({ data }: { data: ScoreHistoryPoint[] }) {
+  if (data.length < 2) return null;
+
+  const scores = data.map((d) => d.score);
+  const minScore = Math.min(...scores, 0);
+  const maxScore = Math.max(...scores, 100);
+  const range = maxScore - minScore || 1;
+
+  const width = 400;
+  const height = 140;
+  const pad = { top: 16, right: 15, bottom: 28, left: 36 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+
+  const points = data.map((d, i) => ({
+    x: pad.left + (i / (data.length - 1)) * chartW,
+    y: pad.top + chartH - ((d.score - minScore) / range) * chartH,
+    score: d.score,
+    date: d.date,
+  }));
+
+  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+  // Color zones
+  const zoneY = (score: number) => pad.top + chartH - ((score - minScore) / range) * chartH;
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
+      {/* Zone backgrounds */}
+      {maxScore > 60 && (
+        <rect x={pad.left} y={zoneY(Math.min(maxScore, 100))} width={chartW}
+          height={zoneY(60) - zoneY(Math.min(maxScore, 100))}
+          fill="var(--positive)" opacity="0.04" />
+      )}
+      {minScore < 40 && (
+        <rect x={pad.left} y={zoneY(40)} width={chartW}
+          height={zoneY(Math.max(minScore, 0)) - zoneY(40)}
+          fill="var(--negative)" opacity="0.04" />
+      )}
+
+      {/* Grid lines at key thresholds */}
+      {[40, 60, 80].filter(v => v >= minScore && v <= maxScore).map((v) => (
+        <g key={v}>
+          <line x1={pad.left} y1={zoneY(v)} x2={pad.left + chartW} y2={zoneY(v)}
+            stroke="var(--border-light)" strokeWidth="1" strokeDasharray="3 3" />
+          <text x={pad.left - 6} y={zoneY(v) + 3} textAnchor="end" className="text-[9px]" fill="var(--text-3)">{v}</text>
+        </g>
+      ))}
+
+      {/* Line */}
+      <path d={pathD} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* Points */}
+      {points.map((p, i) => {
+        const color = p.score >= 80 ? "var(--positive)" : p.score >= 60 ? "var(--accent)" : p.score >= 40 ? "var(--warning)" : "var(--negative)";
+        return (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r="4" fill="var(--bg-surface)" stroke={color} strokeWidth="2" />
+            <text x={p.x} y={p.y - 8} textAnchor="middle" className="text-[9px] font-semibold" fill="var(--text-2)">{p.score}</text>
+            <text x={p.x} y={height - 6} textAnchor="middle" className="text-[9px]" fill="var(--text-3)">
+              {p.date.slice(0, 7)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }

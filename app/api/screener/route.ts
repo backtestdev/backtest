@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
-import { computeBacktestScore } from "@/lib/backtestScore";
+import { computeBacktestScore, computeScoreBreakdown } from "@/lib/backtestScore";
 
 export const dynamic = "force-dynamic";
 
@@ -135,11 +135,18 @@ export async function GET(request: NextRequest) {
     if (tickersParam) {
       const tickerSet = new Set(tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean));
       const matched = filtered.filter((s) => tickerSet.has(s.symbol));
+      // Include score breakdown for single-ticker lookups
+      let scoreBreakdown = null;
+      if (tickerSet.size === 1) {
+        const singleTicker = Array.from(tickerSet)[0];
+        scoreBreakdown = computeScoreBreakdown(singleTicker, enriched);
+      }
       return NextResponse.json({
         stocks: matched,
         totalCount: matched.length,
         page: 1,
         perPage: matched.length,
+        scoreBreakdown,
       });
     }
 

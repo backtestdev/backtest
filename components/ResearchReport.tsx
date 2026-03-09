@@ -208,10 +208,10 @@ const RECOMMENDATION_CONFIG: Record<string, {
 // Derive recommendation from backtest score (the single source of truth)
 function scoreToRecommendation(score: number | null): string {
   if (score == null) return "HOLD";
-  if (score >= 85) return "STRONG_BUY";
-  if (score >= 65) return "BUY";
-  if (score >= 40) return "HOLD";
-  if (score >= 20) return "SELL";
+  if (score >= 90) return "STRONG_BUY";
+  if (score >= 80) return "BUY";
+  if (score >= 60) return "HOLD";
+  if (score >= 40) return "SELL";
   return "STRONG_SELL";
 }
 

@@ -269,26 +269,34 @@ async function refreshSignals() {
     }
   }
 
-  // Record score snapshot for all active signal picks + all high-scoring stocks (score >= 80).
-  // Tracking a broader set allows monitoring candidates before they become signals.
+  // Record monthly score snapshot for ALL stocks on the 1st of each month.
+  // This provides comprehensive historical score data for trend analysis.
   await ensureSignalScoreHistoryTable(sql);
-  const today = new Date().toISOString().slice(0, 10);
-  const activeAfterSells = await sql`SELECT symbol FROM signal_picks WHERE status = 'active'`;
-  const snapshotSymbols = new Set(activeAfterSells.map((p) => p.symbol as string));
-  // Also track all high-scoring stocks for trend analysis
-  scoreMap.forEach((score, sym) => {
-    if (score >= 80) snapshotSymbols.add(sym);
-  });
+  const now = new Date();
+  const dayOfMonth = now.getUTCDate();
+  // Record on the 1st of the month (or always for the current month if no snapshot exists yet)
+  const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  // Check if we already have a snapshot for this month
+  const existingSnapshot = await sql`
+    SELECT 1 FROM signal_score_history WHERE recorded_at = ${monthKey} LIMIT 1
+  `;
+  const shouldRecord = dayOfMonth <= 3 || existingSnapshot.length === 0;
   let recorded = 0;
-  for (const sym of Array.from(snapshotSymbols)) {
-    const score = scoreMap.get(sym);
-    if (score == null) continue;
-    await sql`
-      INSERT INTO signal_score_history (symbol, score, recorded_at)
-      VALUES (${sym}, ${score}, ${today})
-      ON CONFLICT (symbol, recorded_at) DO UPDATE SET score = EXCLUDED.score
-    `.catch(() => {});
-    recorded++;
+  if (shouldRecord) {
+    // Record scores for ALL stocks (not just high-scoring) for complete history
+    const allSymbols = Array.from(scoreMap.entries());
+    // Batch insert in groups of 100 for efficiency
+    for (let i = 0; i < allSymbols.length; i += 100) {
+      const batch = allSymbols.slice(i, i + 100);
+      for (const [sym, score] of batch) {
+        await sql`
+          INSERT INTO signal_score_history (symbol, score, recorded_at)
+          VALUES (${sym}, ${score}, ${monthKey})
+          ON CONFLICT (symbol, recorded_at) DO UPDATE SET score = EXCLUDED.score
+        `.catch(() => {});
+        recorded++;
+      }
+    }
   }
 
   // --- Correct stale entry prices for existing picks ---
