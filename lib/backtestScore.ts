@@ -87,3 +87,127 @@ export function computeBacktestScore(stocks: Record<string, unknown>[]): Map<str
 
   return scores;
 }
+
+// Human-readable labels for score factors
+const FACTOR_LABELS: Record<string, string> = {
+  earnings_yield: "Earnings Yield",
+  earnings_growth: "Earnings Growth",
+  consecutive_earnings_growth: "Consecutive Earnings Growth",
+  pe_ratio: "P/E Ratio",
+  ev_to_ebitda: "EV/EBITDA",
+  roe: "Return on Equity",
+  profit_margin: "Profit Margin",
+  roic: "Return on Invested Capital",
+  revenue_growth: "Revenue Growth",
+  free_cash_flow_yield: "FCF Yield",
+  debt_to_equity: "Debt/Equity",
+  beta: "Beta",
+  log_market_cap: "Market Cap (Size)",
+  revenue_growth_positive_3yr_count: "Revenue Consistency (3yr)",
+};
+
+export interface ScoreFactorBreakdown {
+  factor: string;
+  label: string;
+  weight: number;
+  direction: "higher_better" | "lower_better";
+  rawValue: number | null;
+  percentile: number | null; // 0-1
+  contribution: number; // points contributed (before normalization)
+  maxContribution: number; // max possible contribution = abs(weight)
+}
+
+export interface ScoreBreakdown {
+  symbol: string;
+  finalScore: number;
+  sizeConfidence: number;
+  factors: ScoreFactorBreakdown[];
+}
+
+/**
+ * Compute a detailed score breakdown for a specific stock.
+ * Requires the full stock population (same as computeBacktestScore) for percentile context.
+ */
+export function computeScoreBreakdown(
+  targetSymbol: string,
+  stocks: Record<string, unknown>[]
+): ScoreBreakdown | null {
+  const factors: ScoreFactorBreakdown[] = [];
+
+  for (const factor of SCORE_FACTORS) {
+    const values: { symbol: string; value: number }[] = [];
+    let targetRawValue: number | null = null;
+
+    for (const stock of stocks) {
+      const val = Number(stock[factor.column]);
+      if (isNaN(val) || !isFinite(val) || stock[factor.column] === null) continue;
+      if (factor.column === "pe_ratio" && val <= 0) continue;
+      const capped = Math.max(factor.capLow, Math.min(factor.capHigh, val));
+      values.push({ symbol: stock.symbol as string, value: capped });
+      if (stock.symbol === targetSymbol) targetRawValue = val;
+    }
+
+    if (values.length < 10) {
+      factors.push({
+        factor: factor.column,
+        label: FACTOR_LABELS[factor.column] || factor.column,
+        weight: factor.weight,
+        direction: factor.weight > 0 ? "higher_better" : "lower_better",
+        rawValue: targetRawValue,
+        percentile: null,
+        contribution: 0,
+        maxContribution: Math.abs(factor.weight),
+      });
+      continue;
+    }
+
+    values.sort((a, b) => a.value - b.value || a.symbol.localeCompare(b.symbol));
+    const targetIdx = values.findIndex((v) => v.symbol === targetSymbol);
+
+    if (targetIdx === -1) {
+      factors.push({
+        factor: factor.column,
+        label: FACTOR_LABELS[factor.column] || factor.column,
+        weight: factor.weight,
+        direction: factor.weight > 0 ? "higher_better" : "lower_better",
+        rawValue: null,
+        percentile: null,
+        contribution: 0,
+        maxContribution: Math.abs(factor.weight),
+      });
+      continue;
+    }
+
+    const percentile = targetIdx / (values.length - 1);
+    const contribution = factor.weight > 0
+      ? percentile * Math.abs(factor.weight)
+      : (1 - percentile) * Math.abs(factor.weight);
+    factors.push({
+      factor: factor.column,
+      label: FACTOR_LABELS[factor.column] || factor.column,
+      weight: factor.weight,
+      direction: factor.weight > 0 ? "higher_better" : "lower_better",
+      rawValue: targetRawValue,
+      percentile,
+      contribution,
+      maxContribution: Math.abs(factor.weight),
+    });
+  }
+
+  // Compute size confidence
+  const targetStock = stocks.find((s) => s.symbol === targetSymbol);
+  if (!targetStock) return null;
+  const mcapB = (Number(targetStock.market_cap || 0)) / 1_000_000_000;
+  const sizeConfidence = mcapB > 0 ? Math.min(1.0, 0.70 + 0.10 * Math.log10(mcapB)) : 0.50;
+
+  // Get final score from computeBacktestScore for accuracy
+  const scoreMap = computeBacktestScore(stocks);
+  const finalScore = scoreMap.get(targetSymbol) || 0;
+
+  return {
+    symbol: targetSymbol,
+    finalScore,
+    sizeConfidence,
+    factors,
+  };
+}

@@ -387,6 +387,52 @@ export async function GET(request: NextRequest) {
     // Yahoo Finance unavailable - chart will be empty
   }
 
+  // Compute quant score for this stock (requires full population for percentile ranking)
+  let quantScore: number | null = null;
+  let quantRecommendation: string = "HOLD";
+  if (sql) {
+    try {
+      const allStocksForScore = await sql`
+        SELECT symbol, company_name AS name, sector, industry,
+               price_to_earnings_ratio AS pe_ratio, ev_to_ebitda, earnings_yield,
+               return_on_equity AS roe, return_on_invested_capital AS roic,
+               net_profit_margin AS profit_margin,
+               revenue_growth_yoy AS revenue_growth, earnings_growth_yoy AS earnings_growth,
+               dividend_yield, debt_to_equity_ratio AS debt_to_equity,
+               current_ratio, free_cash_flow_yield, market_cap, beta,
+               consecutive_net_income_growth_years AS consecutive_earnings_growth,
+               revenue_growth_positive_3yr_count
+        FROM stocks
+        WHERE market_cap IS NOT NULL AND market_cap > 0.1
+          AND is_etf IS NOT TRUE
+      `;
+      const enrichedForScore = allStocksForScore.map((s) => {
+        const mcapB = (Number(s.market_cap) || 0) / 1e9;
+        return { ...(s as unknown as Record<string, unknown>), log_market_cap: mcapB > 0 ? Math.log10(mcapB) : -1 };
+      });
+      const { computeBacktestScore } = await import("@/lib/backtestScore");
+      const scoreMap = computeBacktestScore(enrichedForScore);
+      quantScore = scoreMap.get(ticker) ?? null;
+    } catch (e) {
+      console.error("[research] Failed to compute quant score:", e);
+    }
+  }
+
+  // Use client-provided score as fallback
+  const scoreParam = request.nextUrl.searchParams.get("score");
+  if (quantScore == null && scoreParam) {
+    quantScore = Number(scoreParam);
+    if (isNaN(quantScore)) quantScore = null;
+  }
+
+  if (quantScore != null) {
+    if (quantScore >= 90) quantRecommendation = "STRONG_BUY";
+    else if (quantScore >= 80) quantRecommendation = "BUY";
+    else if (quantScore >= 60) quantRecommendation = "HOLD";
+    else if (quantScore >= 40) quantRecommendation = "SELL";
+    else quantRecommendation = "STRONG_SELL";
+  }
+
   // Generate AI report only for authenticated users
   let report: ResearchReport | null = null;
 
@@ -396,6 +442,24 @@ export async function GET(request: NextRequest) {
       try {
         const openai = new OpenAI({ apiKey: openaiKey });
         const context = buildFinancialContext(profile, income, metrics, ratios);
+
+        // Build target price constraints based on quant score recommendation
+        const currentPrice = profile.price || 0;
+        let targetConstraint = "";
+        if (currentPrice > 0 && quantScore != null) {
+          const recLabel = quantRecommendation.replace("_", " ");
+          if (quantRecommendation === "STRONG_BUY") {
+            targetConstraint = `\n- MANDATORY: Our quant model rates this stock ${quantScore}/100 (${recLabel}). The probability-weighted target MUST be at least 20% above the current price of $${currentPrice.toFixed(2)}. Base case target should be above current price. Structure your bear/base/bull targets accordingly.`;
+          } else if (quantRecommendation === "BUY") {
+            targetConstraint = `\n- MANDATORY: Our quant model rates this stock ${quantScore}/100 (${recLabel}). The probability-weighted target MUST be at least 10% above the current price of $${currentPrice.toFixed(2)}. Base case target should be above current price. Structure your bear/base/bull targets accordingly.`;
+          } else if (quantRecommendation === "HOLD") {
+            targetConstraint = `\n- MANDATORY: Our quant model rates this stock ${quantScore}/100 (${recLabel}). The probability-weighted target should be within -10% to +10% of the current price of $${currentPrice.toFixed(2)}. Structure your bear/base/bull targets accordingly.`;
+          } else if (quantRecommendation === "SELL") {
+            targetConstraint = `\n- MANDATORY: Our quant model rates this stock ${quantScore}/100 (${recLabel}). The probability-weighted target MUST be at least 10% below the current price of $${currentPrice.toFixed(2)}. Base case target should be below current price. Structure your bear/base/bull targets accordingly.`;
+          } else {
+            targetConstraint = `\n- MANDATORY: Our quant model rates this stock ${quantScore}/100 (${recLabel}). The probability-weighted target MUST be at least 20% below the current price of $${currentPrice.toFixed(2)}. Base and bull case targets should still be below current price or only marginally above. Structure your bear/base/bull targets accordingly.`;
+          }
+        }
 
         const response = await openai.chat.completions.create({
           model: "gpt-4o-mini",
@@ -412,7 +476,7 @@ You MUST respond with valid JSON matching this exact structure:
   "baseCase": { "targetPrice": <number>, "probability": <number 0-100>, "rationale": "2-3 sentences" },
   "bearCase": { "targetPrice": <number>, "probability": <number 0-100>, "rationale": "2-3 sentences" },
   "riskFactors": ["risk1", "risk2", "risk3", "risk4"],
-  "recommendation": "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL",
+  "recommendation": "${quantRecommendation}",
   "recommendationRationale": "1-2 sentence justification"
 }
 
@@ -421,9 +485,8 @@ Rules:
 - Probabilities across bull/base/bear must sum to 100
 - Be specific about financial metrics in your rationale
 - Risk factors should be concise (1 sentence each)
-- Base recommendation on the probability-weighted expected return vs current price
-- Use STRONG_BUY for >20% expected upside, BUY for 10-20%, HOLD for -10% to 10%, SELL for -10% to -20%, STRONG_SELL for >20% downside
-- CRITICAL: The probability-weighted target must be CONSISTENT with the recommendation. If recommending SELL or STRONG_SELL, the weighted average target MUST be below the current price. If recommending BUY or STRONG_BUY, it MUST be above.
+- The recommendation field MUST be "${quantRecommendation}" - this is set by our quant model and cannot be overridden
+- Your price targets must be CONSISTENT with this recommendation${targetConstraint}
 - Do NOT include any text outside the JSON object`,
             },
             {
@@ -437,11 +500,31 @@ Rules:
         if (content) {
           const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
           report = JSON.parse(cleaned) as ResearchReport;
+          // Override AI recommendation with quant score (single source of truth)
+          if (quantScore != null) {
+            report.recommendation = quantRecommendation as ResearchReport["recommendation"];
+          }
         }
       } catch (e) {
         console.error("Research AI generation failed:", e);
       }
     }
+  }
+
+  // Fetch score history for this stock
+  let scoreHistory: { date: string; score: number }[] = [];
+  if (sql) {
+    try {
+      const historyRows = await sql`
+        SELECT recorded_at, score FROM signal_score_history
+        WHERE symbol = ${ticker}
+        ORDER BY recorded_at ASC
+      `;
+      scoreHistory = historyRows.map((r) => ({
+        date: String(r.recorded_at).slice(0, 10),
+        score: Number(r.score),
+      }));
+    } catch { /* score history unavailable */ }
   }
 
   return NextResponse.json({
@@ -456,6 +539,7 @@ Rules:
     quarterlyTrend,
     priceHistory,
     report,
+    scoreHistory,
   });
 }
 

@@ -468,7 +468,7 @@ export async function ensureSignalPicksTable(sql: NeonQueryFunction<false, false
 
 /**
  * Ensures the signal_score_history table exists for tracking score snapshots over time.
- * Recorded weekly by the refresh-signals cron job.
+ * Recorded monthly (1st of each month) by the refresh-signals cron job for all stocks.
  */
 export async function ensureSignalScoreHistoryTable(sql: NeonQueryFunction<false, false>) {
   await sql`
