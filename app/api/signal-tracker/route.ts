@@ -878,6 +878,26 @@ export async function GET() {
       console.log(`[Signal Tracker GET] Inline sells completed: ${activeSellCandidates.length} picks sold`);
     }
 
+    // Fire-and-forget: trigger full refresh-signals in background if stale.
+    // This handles new buy generation and score history recording that inline sells can't do.
+    try {
+      const lastRefreshRow = await sql`SELECT value FROM stock_meta WHERE key = 'last_signal_refresh'`.catch(() => []);
+      const lastRefreshMs = lastRefreshRow.length > 0 ? new Date(lastRefreshRow[0].value as string).getTime() : 0;
+      const hoursSinceSignalRefresh = (Date.now() - lastRefreshMs) / (1000 * 60 * 60);
+      if (hoursSinceSignalRefresh > 26) {
+        const baseUrl = process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const headers: Record<string, string> = {};
+        if (process.env.CRON_SECRET) headers["Authorization"] = `Bearer ${process.env.CRON_SECRET}`;
+        else if (process.env.ADMIN_SECRET) headers["x-admin-secret"] = process.env.ADMIN_SECRET;
+        // Fire and forget - don't await
+        fetch(`${baseUrl}/api/admin/refresh-signals`, { method: "POST", headers, signal: AbortSignal.timeout(55000) })
+          .then((r) => console.log(`[Signal Tracker GET] Background refresh-signals: ${r.status}`))
+          .catch((e) => console.warn("[Signal Tracker GET] Background refresh-signals failed:", e));
+      }
+    } catch { /* non-fatal */ }
+
     // Get latest prices for active picks - use Yahoo Finance for live quotes
     const activeSymbols = picks.filter((p) => p.status === "active").map((p) => p.symbol as string);
     const latestPrices = new Map<string, number>();
