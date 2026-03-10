@@ -38,6 +38,7 @@ const THEMES: Record<string, string[]> = {
   fintech: ["SQ", "PYPL", "SOFI", "AFRM", "COIN", "HOOD", "NU", "FI", "GPN", "FIS", "FISV", "TOST", "BILL", "FOUR", "RPAY"],
   defense: ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BWXT", "TDG", "HWM", "KTOS", "RKLB"],
   clean_energy: ["ENPH", "SEDG", "FSLR", "RUN", "PLUG", "BE", "NEE", "AES", "CWEN", "NOVA", "ARRY", "SHLS", "DQ"],
+  quantum: ["IONQ", "RGTI", "QBTS", "QUBT", "ARQQ", "IBM", "GOOGL", "MSFT", "HON", "INTC"],
 };
 
 export async function GET(request: NextRequest) {

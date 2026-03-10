@@ -52,6 +52,7 @@ const THEME_BUTTONS = [
   { id: "fintech", label: "Fintech" },
   { id: "defense", label: "Defense" },
   { id: "clean_energy", label: "Clean Energy" },
+  { id: "quantum", label: "Quantum" },
 ];
 
 function formatMarketCap(b: number): string {
