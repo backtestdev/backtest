@@ -621,10 +621,41 @@ export async function GET(request: NextRequest) {
     // Release lock
     try { await sql`DELETE FROM stock_meta WHERE key = 'refresh_lock'`; } catch { /* ignore */ }
 
+    // Chain refresh-signals after successful stock refresh.
+    // This ensures signal picks (buy/sell) are processed daily even if
+    // the refresh-signals cron isn't firing independently.
+    let signalResult: Record<string, unknown> | null = null;
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const headers: Record<string, string> = {};
+      if (process.env.CRON_SECRET) {
+        headers["Authorization"] = `Bearer ${process.env.CRON_SECRET}`;
+      } else if (process.env.ADMIN_SECRET) {
+        headers["x-admin-secret"] = process.env.ADMIN_SECRET;
+      }
+      console.log(`[${trigger}] Chaining refresh-signals...`);
+      const signalRes = await fetch(`${baseUrl}/api/admin/refresh-signals`, {
+        method: "POST",
+        headers,
+        signal: AbortSignal.timeout(55000), // 55s timeout
+      });
+      if (signalRes.ok) {
+        signalResult = await signalRes.json() as Record<string, unknown>;
+        console.log(`[${trigger}] refresh-signals chained: added=${signalResult.added}, sold=${signalResult.sold}`);
+      } else {
+        console.warn(`[${trigger}] refresh-signals chain returned ${signalRes.status}`);
+      }
+    } catch (e) {
+      console.warn(`[${trigger}] refresh-signals chain failed (non-fatal):`, e);
+    }
+
     return NextResponse.json({
       success: true,
       trigger,
       ...result,
+      signalRefresh: signalResult,
       message: `Batch ${result.batchRange} of ${result.totalStocks}: ${result.enriched} enriched, ${result.noData} no data, ${result.enrichFailed} errors. ${result.runsRemaining > 0 ? `~${result.runsRemaining} runs remaining.` : 'Full cycle complete!'}`,
     });
   } catch (error) {

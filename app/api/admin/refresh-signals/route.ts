@@ -448,6 +448,13 @@ async function refreshSignals() {
     console.log(`[refresh-signals] Price corrections: ${corrected} entry prices, ${sellsCorrected} sell prices`);
   }
 
+  // Clean up old daily score history records (before the monthly switch).
+  // Keep only records where recorded_at falls on the 1st of a month.
+  await sql`
+    DELETE FROM signal_score_history
+    WHERE EXTRACT(DAY FROM recorded_at) != 1
+  `.catch(() => {});
+
   // Record last refresh timestamp for staleness detection
   await sql`
     INSERT INTO stock_meta (key, value, updated_at) VALUES ('last_signal_refresh', ${new Date().toISOString()}, NOW())
