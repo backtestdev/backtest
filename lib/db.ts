@@ -458,12 +458,15 @@ export async function ensureSignalPicksTable(sql: NeonQueryFunction<false, false
       sell_date DATE,
       sell_price DECIMAL(12,4),
       sell_reason TEXT,
+      deep_thesis TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_signal_picks_symbol ON signal_picks(symbol)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_signal_picks_status ON signal_picks(status)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_signal_picks_date ON signal_picks(pick_date)`;
+  // Add deep_thesis column if missing (migration for existing tables)
+  await sql`ALTER TABLE signal_picks ADD COLUMN IF NOT EXISTS deep_thesis TEXT`.catch(() => {});
 }
 
 /**
