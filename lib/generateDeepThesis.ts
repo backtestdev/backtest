@@ -30,6 +30,13 @@ interface StockData {
   roic: number | null;
 }
 
+interface DeepThesisOptions {
+  /** Pick date for backdating the analysis (e.g. "2025-08-11") */
+  pickDate?: string;
+  /** Entry price at the time of the pick */
+  entryPrice?: number;
+}
+
 const SYSTEM_PROMPT = `You are a senior equity research analyst writing a concise investment thesis for individual investors. Write in a confident, analytical tone. Be specific — avoid generic filler. Structure your response with these sections using markdown headers:
 
 ## Executive Summary
@@ -78,7 +85,7 @@ function buildMetricsString(stock: StockData): string {
   return lines.join("\n");
 }
 
-export async function generateDeepThesis(stock: StockData): Promise<string | null> {
+export async function generateDeepThesis(stock: StockData, options?: DeepThesisOptions): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     console.warn("[deep-thesis] No OPENAI_API_KEY configured, skipping deep thesis generation");
@@ -86,7 +93,20 @@ export async function generateDeepThesis(stock: StockData): Promise<string | nul
   }
 
   const metrics = buildMetricsString(stock);
-  const userPrompt = `Given the following fundamental data for ${stock.symbol} (${stock.name}), write a 400-500 word investment pitch that explains WHY this stock scores ${stock.score}/100 on our quantitative model and what the qualitative story is. Be specific about competitive positioning, industry dynamics, and near-term catalysts. Avoid generic language.\n\nData:\n${metrics}`;
+
+  // Build date context for backdated analyses
+  let dateContext = "";
+  if (options?.pickDate) {
+    const d = new Date(options.pickDate);
+    const monthName = d.toLocaleString("en-US", { month: "long", timeZone: "UTC" });
+    const year = d.getUTCFullYear();
+    dateContext = `\n\nIMPORTANT: This analysis is dated ${monthName} ${year}. Write as if you are analyzing this stock in ${monthName} ${year} — reference catalysts, industry conditions, and macro context relevant to that time period. Do not reference events after ${monthName} ${year}.`;
+    if (options.entryPrice) {
+      dateContext += `\nEntry price at time of pick: $${options.entryPrice.toFixed(2)}`;
+    }
+  }
+
+  const userPrompt = `Given the following fundamental data for ${stock.symbol} (${stock.name}), write a 400-500 word investment pitch that explains WHY this stock scores ${stock.score}/100 on our quantitative model and what the qualitative story is. Be specific about competitive positioning, industry dynamics, and near-term catalysts. Avoid generic language.\n\nData:\n${metrics}${dateContext}`;
 
   try {
     const openai = new OpenAI({ apiKey });
