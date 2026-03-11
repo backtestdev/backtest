@@ -26,7 +26,7 @@ const PREMIUM_FEATURES = [
 
 export default function PricingPage() {
   const { isSignedIn } = useUser();
-  const { isPremium } = useSubscription();
+  const { isPremium, isPassUser } = useSubscription();
   const searchParams = useSearchParams();
   const success = searchParams.get("success") === "true";
   const canceled = searchParams.get("canceled") === "true";
@@ -69,6 +69,8 @@ export default function PricingPage() {
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to open billing portal.");
       }
     } catch {
       alert("Failed to open billing portal.");
@@ -190,13 +192,21 @@ export default function PricingPage() {
                 Billed monthly
               </p>
             )}
-            {isPremium ? (
+            {isPremium && !isPassUser ? (
               <button
                 onClick={handleManage}
                 disabled={loading}
                 className="w-full py-2.5 text-sm font-medium text-th-accent bg-th-accent-bg border border-th-accent-border rounded-xl hover:bg-th-accent-muted transition-colors disabled:opacity-50"
               >
                 {loading ? "Loading..." : "Manage Subscription"}
+              </button>
+            ) : isSignedIn && isPassUser ? (
+              <button
+                onClick={handleUpgrade}
+                disabled={loading}
+                className="w-full py-2.5 text-sm font-semibold text-white bg-th-accent rounded-xl hover:bg-th-accent-hover transition-colors disabled:opacity-50 shadow-sm"
+              >
+                {loading ? "Loading..." : "Upgrade to Paid Plan"}
               </button>
             ) : isSignedIn ? (
               <button
