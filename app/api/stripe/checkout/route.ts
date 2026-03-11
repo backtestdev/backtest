@@ -38,17 +38,17 @@ export async function POST(req: NextRequest) {
         metadata: { clerkUserId: userId },
       },
       metadata: { clerkUserId: userId },
-      success_url: `${appUrl}/pricing?success=true`,
-      cancel_url: `${appUrl}/pricing?canceled=true`,
+      success_url: `${appUrl}/app/pricing?success=true`,
+      cancel_url: `${appUrl}/app/pricing?canceled=true`,
       allow_promotion_codes: true,
     });
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Stripe checkout error:", error);
-    return NextResponse.json(
-      { error: "Failed to create checkout session" },
-      { status: 500 }
-    );
+    const message = error instanceof Stripe.errors.StripeError
+      ? error.message
+      : "Failed to create checkout session";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
