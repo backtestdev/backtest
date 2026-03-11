@@ -22,7 +22,7 @@ export const PLANS = {
     price: {
       monthly: 1999, // cents
       annual: 1499, // cents/month
-      annualTotal: 17988, // cents/year
+      annualTotal: 17900, // cents/year
     },
   },
 } as const;
