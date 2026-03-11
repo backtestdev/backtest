@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb, ensureSignalPicksTable } from "@/lib/db";
+import { getDb, ensureSignalPicksTable, ensureSignalRebalancesTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
 import { generateDeepThesis } from "@/lib/generateDeepThesis";
@@ -662,7 +662,8 @@ async function generateInitialPicks(sql: Sql) {
 async function computePerformance(
   sql: Sql,
   picks: Record<string, unknown>[],
-  livePrices?: Map<string, number>
+  livePrices?: Map<string, number>,
+  rebalanceRows?: Record<string, unknown>[]
 ): Promise<{ date: string; portfolioValue: number; benchmarkValue: number }[]> {
   if (picks.length === 0) return [];
 
@@ -742,7 +743,6 @@ async function computePerformance(
       if (exitPrice && exitPrice > 0) {
         const returnPct = (exitPrice - entryPrice) / entryPrice;
         // Position size: same logic as the card (equal alloc from fund at pick time)
-        // Approximate: count picks active at entry time
         let activeAtEntry = 0;
         picks.forEach((pp) => {
           const ppd = toDateStr(pp.pick_date);
@@ -751,10 +751,25 @@ async function computePerformance(
         });
         activeAtEntry = Math.max(1, activeAtEntry);
 
-        // Equal allocation from initial capital - matches the card's position sizing
         const investPct = Math.min(0.95, 0.50 + activeAtEntry * 0.05);
         const posSize = Math.min((INITIAL_CAPITAL * investPct) / activeAtEntry, INITIAL_CAPITAL * 0.15);
         totalPnL += posSize * returnPct;
+
+        // Add P&L from rebalance tranches that occurred before this checkpoint
+        if (rebalanceRows) {
+          for (const rb of rebalanceRows) {
+            if (rb.pick_id !== pick.id) continue;
+            const rbDate = toDateStr(rb.rebalance_date);
+            if (rbDate > checkpoint) continue; // rebalance hasn't happened yet at this checkpoint
+            const rbPrice = Number(rb.price_at_rebalance);
+            const rbAmount = Number(rb.add_amount);
+            if (rbPrice > 0) {
+              // If sold before checkpoint, use sell price; otherwise use checkpoint price
+              const rbExitPrice = (isSold && sd && sd <= checkpoint && pick.sell_price) ? Number(pick.sell_price) : exitPrice;
+              totalPnL += rbAmount * ((rbExitPrice - rbPrice) / rbPrice);
+            }
+          }
+        }
       }
     }
 
@@ -953,7 +968,11 @@ export async function GET() {
       }
     }
 
-    const performance = await computePerformance(sql, picks, latestPrices);
+    // Load rebalance records early — needed by both performance chart and position sizing
+    await ensureSignalRebalancesTable(sql);
+    const rebalanceRows = await sql`SELECT * FROM signal_rebalances ORDER BY rebalance_date`;
+
+    const performance = await computePerformance(sql, picks, latestPrices, rebalanceRows);
 
     const activePicks = picks.filter((p) => p.status === "active");
     const latest = performance.length > 0 ? performance[performance.length - 1] : null;
@@ -989,7 +1008,18 @@ export async function GET() {
       pickReturns.set(p.id as string, { returnPct: returnPct ?? 0, exitPrice });
     }
 
-    // First pass: compute position sizes and P&L for all picks
+    // Group rebalances by pick_id: total add_amount and individual events
+    const rebalanceByPick = new Map<string, { totalAddAmount: number; totalAddShares: number; events: typeof rebalanceRows }>();
+    for (const rb of rebalanceRows) {
+      const pickId = rb.pick_id as string;
+      const existing = rebalanceByPick.get(pickId) || { totalAddAmount: 0, totalAddShares: 0, events: [] };
+      existing.totalAddAmount += Number(rb.add_amount);
+      existing.totalAddShares += Number(rb.add_shares);
+      existing.events.push(rb);
+      rebalanceByPick.set(pickId, existing);
+    }
+
+    // First pass: compute position sizes and P&L for all picks (including rebalance top-ups)
     let totalPnL = 0;
     let totalInvested = 0;
 
@@ -999,7 +1029,7 @@ export async function GET() {
       const entryPrice = Number(p.entry_price);
       const isSold = p.status === "sold";
       const ret = pickReturns.get(p.id as string)!;
-      const returnPct = ret.exitPrice && entryPrice > 0 ? ret.returnPct : null;
+      const exitPrice = ret.exitPrice;
 
       const sellScore = isSold ? (liveScores.get(sym) ?? null) : null;
 
@@ -1010,17 +1040,43 @@ export async function GET() {
         (new Date(endDateStr).getTime() - new Date(pickDateStr).getTime()) / (1000 * 60 * 60 * 24)
       ));
 
-      // Position size: equal allocation from initial capital across active picks at entry time
-      // Uses INITIAL_CAPITAL (not historical fund value) to match the performance chart calculation
+      // Base position size: equal allocation from initial capital across active picks at entry time
       const activeAtTime = pickCountAtDate(pickDateStr);
       const investPct = Math.min(0.95, 0.50 + activeAtTime * 0.05);
       const perPickAlloc = (INITIAL_CAPITAL * investPct) / activeAtTime;
-      // Cap at 15% of initial capital to prevent concentration
-      const positionSize = Math.round(Math.min(perPickAlloc, INITIAL_CAPITAL * 0.15) * 100) / 100;
+      const basePositionSize = Math.round(Math.min(perPickAlloc, INITIAL_CAPITAL * 0.15) * 100) / 100;
 
-      const profitLoss = returnPct != null
-        ? Math.round(positionSize * (returnPct / 100) * 100) / 100
-        : null;
+      // Add rebalance top-ups to position size
+      const rb = rebalanceByPick.get(p.id as string);
+      const rebalanceAddAmount = rb ? rb.totalAddAmount : 0;
+      const positionSize = Math.round((basePositionSize + rebalanceAddAmount) * 100) / 100;
+
+      // P&L: base position P&L + rebalance tranche P&L
+      let profitLoss: number | null = null;
+      if (exitPrice && entryPrice > 0) {
+        // Base tranche P&L
+        const baseReturnPct = (exitPrice - entryPrice) / entryPrice;
+        profitLoss = basePositionSize * baseReturnPct;
+
+        // Each rebalance tranche has its own cost basis
+        if (rb) {
+          for (const ev of rb.events) {
+            const rbPrice = Number(ev.price_at_rebalance);
+            const rbAmount = Number(ev.add_amount);
+            if (rbPrice > 0) {
+              const rbReturnPct = (exitPrice - rbPrice) / rbPrice;
+              profitLoss += rbAmount * rbReturnPct;
+            }
+          }
+        }
+        profitLoss = Math.round(profitLoss * 100) / 100;
+      }
+
+      // Return % is weighted across all tranches
+      let returnPct: number | null = null;
+      if (profitLoss != null && positionSize > 0) {
+        returnPct = Math.round((profitLoss / positionSize) * 1000) / 10;
+      }
 
       if (profitLoss != null) totalPnL += profitLoss;
       if (!isSold) totalInvested += positionSize;
@@ -1041,7 +1097,7 @@ export async function GET() {
         pickDate: pickDateStr,
         entryPrice,
         currentPrice: isSold ? null : currentPrice,
-        returnPct: returnPct != null ? Math.round(returnPct * 10) / 10 : null,
+        returnPct,
         positionSize,
         portfolioPct,
         profitLoss,
@@ -1058,7 +1114,6 @@ export async function GET() {
     const fundValue = Math.round((INITIAL_CAPITAL + totalPnL) * 100) / 100;
 
     // Now compute portfolio % for active picks
-    const targetInvestPct = Math.min(0.95, 0.50 + activePicks.length * 0.05);
     const finalPicks = mappedPicks.map((p) => {
       if (p.status !== "sold" && fundValue > 0) {
         return { ...p, portfolioPct: Math.round((p.positionSize / fundValue) * 1000) / 10 };
@@ -1067,6 +1122,7 @@ export async function GET() {
     });
 
     const cashReserve = Math.round((fundValue - totalInvested) * 100) / 100;
+    const actualInvestedPct = fundValue > 0 ? (totalInvested / fundValue) * 100 : 0;
     const totalRet = fundValue > 0 ? ((fundValue / INITIAL_CAPITAL) - 1) * 100 : 0;
 
     // Compute average hold time
@@ -1075,11 +1131,11 @@ export async function GET() {
       ? Math.round(allHoldDays.reduce((s, d) => s + d, 0) / allHoldDays.length)
       : 0;
 
-    // Build trade log: each pick generates a BUY event, sold picks also generate a SELL event
+    // Build trade log: BUY at entry, ADD for rebalance top-ups, SELL at exit
     const trades: {
       id: string;
       date: string;
-      type: "buy" | "sell";
+      type: "buy" | "sell" | "add";
       symbol: string;
       companyName: string;
       price: number;
@@ -1090,8 +1146,12 @@ export async function GET() {
     }[] = [];
 
     for (const p of finalPicks) {
-      const buyAmount = p.positionSize;
-      const buyShares = p.entryPrice > 0 ? Math.round((buyAmount / p.entryPrice) * 100) / 100 : 0;
+      // Base position size (before rebalances)
+      const rb = rebalanceByPick.get(p.id as string);
+      const rebalanceAddAmount = rb ? rb.totalAddAmount : 0;
+      const basePosSize = Math.round((p.positionSize - rebalanceAddAmount) * 100) / 100;
+
+      const buyShares = p.entryPrice > 0 ? Math.round((basePosSize / p.entryPrice) * 100) / 100 : 0;
       trades.push({
         id: `${p.id}-buy`,
         date: p.pickDate,
@@ -1100,13 +1160,35 @@ export async function GET() {
         companyName: p.companyName as string,
         price: p.entryPrice,
         shares: buyShares,
-        amount: buyAmount,
+        amount: basePosSize,
         score: p.entryScore,
         reason: `Quant Score ${p.entryScore} - qualifies for fund`,
       });
 
+      // Rebalance top-up entries
+      if (rb) {
+        for (const ev of rb.events) {
+          const addAmt = Number(ev.add_amount);
+          const addShares = Number(ev.add_shares);
+          const addPrice = Number(ev.price_at_rebalance);
+          trades.push({
+            id: `${ev.id}-add`,
+            date: toDateStr(ev.rebalance_date),
+            type: "add",
+            symbol: p.symbol,
+            companyName: p.companyName as string,
+            price: addPrice,
+            shares: addShares,
+            amount: addAmt,
+            score: p.currentScore ?? p.entryScore,
+            reason: "Rebalance - deploying cash reserve to active positions",
+          });
+        }
+      }
+
       if (p.status === "sold" && p.sellDate && p.sellPrice) {
-        const sellAmount = Math.round(buyShares * p.sellPrice * 100) / 100;
+        const totalShares = buyShares + (rb ? rb.totalAddShares : 0);
+        const sellAmount = Math.round(totalShares * p.sellPrice * 100) / 100;
         trades.push({
           id: `${p.id}-sell`,
           date: p.sellDate,
@@ -1114,7 +1196,7 @@ export async function GET() {
           symbol: p.symbol,
           companyName: p.companyName as string,
           price: p.sellPrice,
-          shares: buyShares,
+          shares: totalShares,
           amount: sellAmount,
           score: p.sellScore ?? p.entryScore,
           reason: p.sellReason || "Score below hold threshold",
@@ -1139,7 +1221,7 @@ export async function GET() {
         inceptionDate: INCEPTION_DATE,
         totalInvested: Math.round(totalInvested * 100) / 100,
         cashReserve,
-        investedPct: Math.round(targetInvestPct * 1000) / 10,
+        investedPct: Math.round(actualInvestedPct * 10) / 10,
         avgHoldDays,
       },
     });

@@ -38,7 +38,7 @@ interface Pick {
 interface Trade {
   id: string;
   date: string;
-  type: "buy" | "sell";
+  type: "buy" | "sell" | "add";
   symbol: string;
   companyName: string;
   price: number;
@@ -276,14 +276,18 @@ export default function SignalTracker() {
               <div className="space-y-1.5">
                 {trades.map((trade) => (
                   <div key={trade.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
-                    trade.type === "buy"
-                      ? "border-th-positive-border bg-th-positive-bg/30"
-                      : "border-th-negative-border bg-th-negative-bg/30"
+                    trade.type === "sell"
+                      ? "border-th-negative-border bg-th-negative-bg/30"
+                      : trade.type === "add"
+                        ? "border-blue-500/30 bg-blue-500/10"
+                        : "border-th-positive-border bg-th-positive-bg/30"
                   }`}>
                     <div className={`flex-shrink-0 w-12 text-center text-[10px] font-bold uppercase tracking-wider py-1 rounded ${
-                      trade.type === "buy"
-                        ? "bg-th-positive-bg text-th-positive"
-                        : "bg-th-negative-bg text-th-negative"
+                      trade.type === "sell"
+                        ? "bg-th-negative-bg text-th-negative"
+                        : trade.type === "add"
+                          ? "bg-blue-500/20 text-blue-400"
+                          : "bg-th-positive-bg text-th-positive"
                     }`}>
                       {trade.type}
                     </div>
@@ -302,7 +306,7 @@ export default function SignalTracker() {
                       <p className="text-[10px] text-th-text-3">{formatDate(trade.date)}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className={`text-sm font-bold ${trade.type === "buy" ? "text-th-text" : trade.amount > 0 ? "text-th-positive" : "text-th-negative"}`}>
+                      <p className={`text-sm font-bold ${trade.type === "sell" ? (trade.amount > 0 ? "text-th-positive" : "text-th-negative") : "text-th-text"}`}>
                         {formatCurrency(trade.amount)}
                       </p>
                       <p className="text-[10px] text-th-text-3 sm:hidden">{formatDate(trade.date)}</p>

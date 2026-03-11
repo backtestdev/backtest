@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, ensureSignalPicksTable, ensureSignalScoreHistoryTable } from "@/lib/db";
+import { getDb, ensureSignalPicksTable, ensureSignalScoreHistoryTable, ensureSignalRebalancesTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
 import { generateDeepThesis } from "@/lib/generateDeepThesis";
@@ -472,6 +472,135 @@ async function refreshSignals() {
     WHERE EXTRACT(DAY FROM recorded_at) != 1
   `.catch(() => {});
 
+  // --- Periodic rebalance: deploy excess cash to active positions (1st & 15th of month) ---
+  const REBALANCE_INITIAL_CAPITAL = 100000;
+  const todayDate = new Date();
+  const rebalanceDayOfMonth = todayDate.getUTCDate();
+  const isRebalanceDay = rebalanceDayOfMonth === 1 || rebalanceDayOfMonth === 15;
+  let rebalanced = 0;
+
+  if (isRebalanceDay) {
+    await ensureSignalRebalancesTable(sql);
+    const rebalanceDateStr = todayDate.toISOString().slice(0, 10);
+
+    // Check if we already rebalanced today
+    const existingRebalance = await sql`
+      SELECT 1 FROM signal_rebalances WHERE rebalance_date = ${rebalanceDateStr} LIMIT 1
+    `;
+
+    if (existingRebalance.length === 0) {
+      // Compute current fund value bottom-up (mirrors signal-tracker logic)
+      const allPicks = await sql`SELECT * FROM signal_picks ORDER BY pick_date`;
+      const existingRebalances = await sql`SELECT * FROM signal_rebalances ORDER BY rebalance_date`;
+
+      // Build rebalance totals per pick
+      const rbByPick = new Map<string, number>();
+      for (const rb of existingRebalances) {
+        const pid = rb.pick_id as string;
+        rbByPick.set(pid, (rbByPick.get(pid) || 0) + Number(rb.add_amount));
+      }
+
+      // Get latest prices for active picks
+      const activePickSyms = allPicks.filter((p) => p.status === "active").map((p) => p.symbol as string);
+      const livePrices = new Map<string, number>();
+      if (activePickSyms.length > 0) {
+        const quotes = await Promise.allSettled(
+          activePickSyms.map(async (sym) => {
+            const q = await yf.quote(sym);
+            return { symbol: sym, price: q?.regularMarketPrice ?? null };
+          })
+        );
+        for (const r of quotes) {
+          if (r.status === "fulfilled" && r.value.price != null) {
+            livePrices.set(r.value.symbol, r.value.price);
+          }
+        }
+      }
+
+      // Compute fund value and total invested
+      let totalPnL = 0;
+      let totalInvested = 0;
+      const activePicksForRebalance: { id: string; symbol: string; currentPrice: number }[] = [];
+
+      const pickCountAtDate = (dateStr: string): number => {
+        let count = 0;
+        allPicks.forEach((p) => {
+          const pd = (p.pick_date instanceof Date ? p.pick_date.toISOString() : String(p.pick_date)).slice(0, 10);
+          const sd = p.sell_date ? (p.sell_date instanceof Date ? p.sell_date.toISOString() : String(p.sell_date)).slice(0, 10) : null;
+          if (pd <= dateStr && (p.status === "active" || (sd && sd > dateStr))) count++;
+        });
+        return Math.max(1, count);
+      };
+
+      for (const p of allPicks) {
+        const sym = p.symbol as string;
+        const entryPrice = Number(p.entry_price);
+        if (!entryPrice || entryPrice <= 0) continue;
+
+        const pd = (p.pick_date instanceof Date ? p.pick_date.toISOString() : String(p.pick_date)).slice(0, 10);
+        const isSold = p.status === "sold";
+        const exitPrice = isSold && p.sell_price ? Number(p.sell_price) : (livePrices.get(sym) || null);
+        if (!exitPrice) continue;
+
+        // Base position size
+        const activeAtTime = pickCountAtDate(pd);
+        const investPct = Math.min(0.95, 0.50 + activeAtTime * 0.05);
+        const basePos = Math.min((REBALANCE_INITIAL_CAPITAL * investPct) / activeAtTime, REBALANCE_INITIAL_CAPITAL * 0.15);
+        const rbAdd = rbByPick.get(p.id as string) || 0;
+        const totalPos = basePos + rbAdd;
+
+        // P&L: base tranche
+        let pnl = basePos * ((exitPrice - entryPrice) / entryPrice);
+        // P&L: rebalance tranches (use rebalance price as cost basis)
+        if (rbAdd > 0) {
+          const pickRebalances = existingRebalances.filter((r) => r.pick_id === p.id);
+          for (const rb of pickRebalances) {
+            const rbPrice = Number(rb.price_at_rebalance);
+            const rbAmt = Number(rb.add_amount);
+            if (rbPrice > 0) pnl += rbAmt * ((exitPrice - rbPrice) / rbPrice);
+          }
+        }
+        totalPnL += pnl;
+        if (!isSold) {
+          totalInvested += totalPos;
+          activePicksForRebalance.push({ id: p.id as string, symbol: sym, currentPrice: exitPrice });
+        }
+      }
+
+      const fundValue = REBALANCE_INITIAL_CAPITAL + totalPnL;
+      const cashReserve = fundValue - totalInvested;
+      const cashPct = fundValue > 0 ? cashReserve / fundValue : 0;
+
+      console.log(`[refresh-signals] Rebalance check: fund=$${Math.round(fundValue)}, invested=$${Math.round(totalInvested)}, cash=$${Math.round(cashReserve)} (${(cashPct * 100).toFixed(1)}%)`);
+
+      // Only rebalance if cash > 30% and there are active picks to top up
+      if (cashPct > 0.30 && activePicksForRebalance.length > 0) {
+        // Deploy cash down to ~10% buffer
+        const targetCash = fundValue * 0.10;
+        const deployable = Math.max(0, cashReserve - targetCash);
+        const perPickAdd = Math.round((deployable / activePicksForRebalance.length) * 100) / 100;
+
+        if (perPickAdd >= 100) { // minimum $100 per position to be worth a trade
+          console.log(`[refresh-signals] Rebalancing: deploying $${Math.round(deployable)} across ${activePicksForRebalance.length} positions ($${perPickAdd}/ea)`);
+
+          for (const pick of activePicksForRebalance) {
+            const shares = Math.round((perPickAdd / pick.currentPrice) * 100) / 100;
+            await sql`
+              INSERT INTO signal_rebalances (id, rebalance_date, pick_id, symbol, add_amount, add_shares, price_at_rebalance)
+              VALUES (${uuidv4()}, ${rebalanceDateStr}, ${pick.id}, ${pick.symbol}, ${perPickAdd}, ${shares}, ${Math.round(pick.currentPrice * 100) / 100})
+            `;
+            rebalanced++;
+          }
+          console.log(`[refresh-signals] Rebalanced ${rebalanced} positions on ${rebalanceDateStr}`);
+        } else {
+          console.log(`[refresh-signals] Skipping rebalance: per-pick amount $${perPickAdd} below $100 minimum`);
+        }
+      }
+    } else {
+      console.log(`[refresh-signals] Already rebalanced today (${rebalanceDateStr}), skipping`);
+    }
+  }
+
   // --- Backfill deep_thesis for existing picks that don't have one ---
   let deepThesisBackfilled = 0;
   const picksNeedingDeepThesis = await sql`
@@ -539,7 +668,7 @@ async function refreshSignals() {
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
   `.catch(() => {});
 
-  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded, priceCorrections: corrected, sellPriceCorrections: sellsCorrected, deepThesisBackfilled };
+  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded, priceCorrections: corrected, sellPriceCorrections: sellsCorrected, deepThesisBackfilled, rebalanced };
 }
 
 // GET: Vercel Cron handler (also auto-triggers when stale, even without auth)
