@@ -22,7 +22,7 @@ import YahooFinance from "yahoo-finance2";
 const yf = new YahooFinance({ suppressNotices: ["ripHistorical"] });
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // Use shared exclusion list for signal picks (bonds, notes, non-operating entities)
 const SYMBOL_BLOCKLIST = SYMBOL_EXCLUSIONS;
@@ -472,13 +472,74 @@ async function refreshSignals() {
     WHERE EXTRACT(DAY FROM recorded_at) != 1
   `.catch(() => {});
 
+  // --- Backfill deep_thesis for existing picks that don't have one ---
+  let deepThesisBackfilled = 0;
+  const picksNeedingDeepThesis = await sql`
+    SELECT id, symbol, score, pick_date, entry_price
+    FROM signal_picks WHERE deep_thesis IS NULL
+    ORDER BY pick_date DESC
+  `;
+
+  if (picksNeedingDeepThesis.length > 0) {
+    console.log(`[refresh-signals] Backfilling deep thesis for ${picksNeedingDeepThesis.length} picks`);
+    for (const pick of picksNeedingDeepThesis) {
+      const sym = pick.symbol as string;
+      const stockData = stockInfoMap.get(sym);
+      if (!stockData) continue;
+
+      const mcapB = (Number(stockData.market_cap) || 0) / 1e9;
+      const stockForThesis = {
+        symbol: sym,
+        name: (stockData.name as string) || "",
+        sector: (stockData.sector as string) || "",
+        industry: (stockData.industry as string) || "",
+        marketCapB: mcapB,
+        score: Number(pick.score),
+        earningsYield: stockData.earnings_yield != null ? Number(stockData.earnings_yield) : null,
+        roe: stockData.roe != null ? Number(stockData.roe) : null,
+        profitMargin: stockData.profit_margin != null ? Number(stockData.profit_margin) : null,
+        revenueGrowth: stockData.revenue_growth != null ? Number(stockData.revenue_growth) : null,
+        earningsGrowth: stockData.earnings_growth != null ? Number(stockData.earnings_growth) : null,
+        consecutiveEarningsGrowth: Number(stockData.consecutive_earnings_growth) || 0,
+        peRatio: stockData.pe_ratio != null && Number(stockData.pe_ratio) > 0 ? Number(stockData.pe_ratio) : null,
+        debtToEquity: stockData.debt_to_equity != null ? Number(stockData.debt_to_equity) : null,
+        currentRatio: stockData.current_ratio != null ? Number(stockData.current_ratio) : null,
+        dividendYield: stockData.dividend_yield != null ? Number(stockData.dividend_yield) : null,
+        freeCashFlowYield: stockData.free_cash_flow_yield != null ? Number(stockData.free_cash_flow_yield) : null,
+        beta: stockData.beta != null ? Number(stockData.beta) : null,
+        priceToBook: stockData.price_to_book != null ? Number(stockData.price_to_book) : null,
+        pegRatio: stockData.peg_ratio != null ? Number(stockData.peg_ratio) : null,
+        evToEbitda: stockData.ev_to_ebitda != null ? Number(stockData.ev_to_ebitda) : null,
+        roic: stockData.roic != null ? Number(stockData.roic) : null,
+      };
+
+      const pickDateStr = pick.pick_date instanceof Date
+        ? pick.pick_date.toISOString().slice(0, 10)
+        : String(pick.pick_date).slice(0, 10);
+
+      const deepThesis = await generateDeepThesis(stockForThesis, {
+        pickDate: pickDateStr,
+        entryPrice: pick.entry_price ? Number(pick.entry_price) : undefined,
+      }).catch((err) => {
+        console.error(`[refresh-signals] Deep thesis backfill failed for ${sym}:`, err);
+        return null;
+      });
+
+      if (deepThesis) {
+        await sql`UPDATE signal_picks SET deep_thesis = ${deepThesis} WHERE id = ${pick.id}`;
+        deepThesisBackfilled++;
+        console.log(`[refresh-signals] Backfilled deep thesis for ${sym} (pick date: ${pickDateStr})`);
+      }
+    }
+  }
+
   // Record last refresh timestamp for staleness detection
   await sql`
     INSERT INTO stock_meta (key, value, updated_at) VALUES ('last_signal_refresh', ${new Date().toISOString()}, NOW())
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
   `.catch(() => {});
 
-  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded, priceCorrections: corrected, sellPriceCorrections: sellsCorrected };
+  return { success: true, added, sold, checked: activePicks.length, scoreSnapshots: recorded, priceCorrections: corrected, sellPriceCorrections: sellsCorrected, deepThesisBackfilled };
 }
 
 // GET: Vercel Cron handler (also auto-triggers when stale, even without auth)
