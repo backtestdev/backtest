@@ -20,6 +20,7 @@ interface Pick {
   currentScore: number | null;
   sellScore: number | null;
   thesis: string;
+  deepThesis: string | null;
   pickDate: string;
   entryPrice: number;
   currentPrice: number | null;
@@ -479,6 +480,48 @@ function ScoreBadge({ score, size = "sm" }: { score: number; size?: "sm" | "xs" 
   );
 }
 
+// --- Deep Thesis Section ---
+
+function DeepThesisSection({ deepThesis }: { deepThesis: string }) {
+  const [showFull, setShowFull] = useState(false);
+
+  // Simple markdown-to-JSX: split on ## headers and render sections
+  const sections = deepThesis.split(/^## /m).filter(Boolean);
+
+  return (
+    <div className="mt-2 p-3 rounded-lg bg-gradient-to-br from-th-accent/5 to-th-bg border border-th-accent/20">
+      <button
+        onClick={() => setShowFull(!showFull)}
+        className="w-full flex items-center justify-between group"
+      >
+        <p className="text-[10px] font-semibold text-th-accent uppercase tracking-wider">
+          AI Research Analysis
+        </p>
+        <span className="text-[10px] text-th-accent group-hover:underline">
+          {showFull ? "Collapse" : "Read Full Analysis"}
+        </span>
+      </button>
+      {showFull && (
+        <div className="mt-3 space-y-3">
+          {sections.map((section, i) => {
+            const newlineIdx = section.indexOf("\n");
+            const heading = newlineIdx > 0 ? section.slice(0, newlineIdx).trim() : "";
+            const body = newlineIdx > 0 ? section.slice(newlineIdx + 1).trim() : section.trim();
+            return (
+              <div key={i}>
+                {heading && (
+                  <p className="text-[10px] font-bold text-th-text uppercase tracking-wider mb-1">{heading}</p>
+                )}
+                <p className="text-xs text-th-text-2 leading-relaxed">{body}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Pick Card ---
 
 function PickCard({ pick, expanded, onToggle }: {
@@ -605,6 +648,9 @@ function PickCard({ pick, expanded, onToggle }: {
                 <p className="text-[10px] font-semibold text-th-accent uppercase tracking-wider mb-1">Investment Thesis</p>
                 <p className="text-xs text-th-text-2 leading-relaxed">{pick.thesis}</p>
               </div>
+            )}
+            {pick.deepThesis && (
+              <DeepThesisSection deepThesis={pick.deepThesis} />
             )}
             {!isActive && pick.sellDate && (
               <div className={`mt-2 p-2.5 rounded-lg border ${

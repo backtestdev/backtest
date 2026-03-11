@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, ensureSignalPicksTable, ensureSignalScoreHistoryTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
+import { generateDeepThesis } from "@/lib/generateDeepThesis";
 import { v4 as uuidv4 } from "uuid";
 import YahooFinance from "yahoo-finance2";
 
@@ -175,8 +176,18 @@ async function refreshSignals() {
       roe: s.roe != null ? Number(s.roe) : null,
       profitMargin: s.profit_margin != null ? Number(s.profit_margin) : null,
       revenueGrowth: s.revenue_growth != null ? Number(s.revenue_growth) : null,
+      earningsGrowth: s.earnings_growth != null ? Number(s.earnings_growth) : null,
       consecutiveEarningsGrowth: Number(s.consecutive_earnings_growth) || 0,
       peRatio: s.pe_ratio != null && Number(s.pe_ratio) > 0 ? Number(s.pe_ratio) : null,
+      debtToEquity: s.debt_to_equity != null ? Number(s.debt_to_equity) : null,
+      currentRatio: s.current_ratio != null ? Number(s.current_ratio) : null,
+      dividendYield: s.dividend_yield != null ? Number(s.dividend_yield) : null,
+      freeCashFlowYield: s.free_cash_flow_yield != null ? Number(s.free_cash_flow_yield) : null,
+      beta: s.beta != null ? Number(s.beta) : null,
+      priceToBook: s.price_to_book != null ? Number(s.price_to_book) : null,
+      pegRatio: s.peg_ratio != null ? Number(s.peg_ratio) : null,
+      evToEbitda: s.ev_to_ebitda != null ? Number(s.ev_to_ebitda) : null,
+      roic: s.roic != null ? Number(s.roic) : null,
     }));
 
   let added = 0;
@@ -220,10 +231,16 @@ async function refreshSignals() {
     for (const stock of newQualifiers) {
       const price = priceMap.get(stock.symbol);
       if (!price) continue;
+      const thesis = generateThesis(stock);
+      // Generate deep AI thesis in parallel with insert (non-blocking on failure)
+      const deepThesis = await generateDeepThesis(stock).catch((err) => {
+        console.error(`[refresh-signals] Deep thesis generation failed for ${stock.symbol}:`, err);
+        return null;
+      });
       await sql`
-        INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
+        INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, deep_thesis, pick_date, entry_price, status)
         VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
-                ${stock.marketCapB * 1e9}, ${stock.score}, ${generateThesis(stock)},
+                ${stock.marketCapB * 1e9}, ${stock.score}, ${thesis}, ${deepThesis},
                 ${today}, ${price}, 'active')
       `;
       added++;

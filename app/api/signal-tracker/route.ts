@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb, ensureSignalPicksTable } from "@/lib/db";
 import { computeBacktestScore } from "@/lib/backtestScore";
 import { NON_COMPANY_PATTERN, SYMBOL_EXCLUSIONS } from "@/lib/stockFilters";
+import { generateDeepThesis } from "@/lib/generateDeepThesis";
 import { v4 as uuidv4 } from "uuid";
 import { NeonQueryFunction } from "@neondatabase/serverless";
 import YahooFinance from "yahoo-finance2";
@@ -52,6 +53,15 @@ interface StockInfo {
   earningsGrowth: number | null;
   consecutiveEarningsGrowth: number;
   peRatio: number | null;
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  dividendYield: number | null;
+  freeCashFlowYield: number | null;
+  beta: number | null;
+  priceToBook: number | null;
+  pegRatio: number | null;
+  evToEbitda: number | null;
+  roic: number | null;
 }
 
 function generateThesis(s: StockInfo): string {
@@ -245,6 +255,15 @@ async function fetchStocksWithScores(sql: Sql) {
     earningsGrowth: stock.earnings_growth != null ? Number(stock.earnings_growth) : null,
     consecutiveEarningsGrowth: Number(stock.consecutive_earnings_growth) || 0,
     peRatio: stock.pe_ratio != null && Number(stock.pe_ratio) > 0 ? Number(stock.pe_ratio) : null,
+    debtToEquity: stock.debt_to_equity != null ? Number(stock.debt_to_equity) : null,
+    currentRatio: stock.current_ratio != null ? Number(stock.current_ratio) : null,
+    dividendYield: stock.dividend_yield != null ? Number(stock.dividend_yield) : null,
+    freeCashFlowYield: stock.free_cash_flow_yield != null ? Number(stock.free_cash_flow_yield) : null,
+    beta: stock.beta != null ? Number(stock.beta) : null,
+    priceToBook: stock.price_to_book != null ? Number(stock.price_to_book) : null,
+    pegRatio: stock.peg_ratio != null ? Number(stock.peg_ratio) : null,
+    evToEbitda: stock.ev_to_ebitda != null ? Number(stock.ev_to_ebitda) : null,
+    roic: stock.roic != null ? Number(stock.roic) : null,
   }));
 
   return { infos, scoreMap };
@@ -803,7 +822,7 @@ export async function GET() {
 
     const allPicks = await sql`
       SELECT id, symbol, company_name, sector, market_cap_at_pick,
-             score, thesis, pick_date, entry_price, status,
+             score, thesis, deep_thesis, pick_date, entry_price, status,
              sell_date, sell_price, sell_reason, created_at
       FROM signal_picks ORDER BY pick_date DESC, score DESC
     `;
@@ -1018,6 +1037,7 @@ export async function GET() {
         currentScore: liveScores.get(sym) ?? null,
         sellScore,
         thesis: p.thesis,
+        deepThesis: p.deep_thesis || null,
         pickDate: pickDateStr,
         entryPrice,
         currentPrice: isSold ? null : currentPrice,
@@ -1191,10 +1211,15 @@ export async function POST() {
       for (const stock of newQualifiers) {
         const price = priceMap.get(stock.symbol);
         if (!price) continue;
+        const thesis = generateThesis(stock);
+        const deepThesis = await generateDeepThesis(stock).catch((err) => {
+          console.error(`[Signal Tracker POST] Deep thesis generation failed for ${stock.symbol}:`, err);
+          return null;
+        });
         await sql`
-          INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, pick_date, entry_price, status)
+          INSERT INTO signal_picks (id, symbol, company_name, sector, market_cap_at_pick, score, thesis, deep_thesis, pick_date, entry_price, status)
           VALUES (${uuidv4()}, ${stock.symbol}, ${stock.name}, ${stock.sector},
-                  ${stock.marketCapB * 1e9}, ${stock.score}, ${generateThesis(stock)},
+                  ${stock.marketCapB * 1e9}, ${stock.score}, ${thesis}, ${deepThesis},
                   ${today}, ${price}, 'active')
         `;
         added++;
