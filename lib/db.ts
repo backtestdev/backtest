@@ -470,6 +470,27 @@ export async function ensureSignalPicksTable(sql: NeonQueryFunction<false, false
 }
 
 /**
+ * Ensures the signal_rebalances table exists for tracking periodic position top-ups.
+ * When cash reserve exceeds 30% of fund value, the system reallocates to active picks.
+ */
+export async function ensureSignalRebalancesTable(sql: NeonQueryFunction<false, false>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS signal_rebalances (
+      id TEXT PRIMARY KEY,
+      rebalance_date DATE NOT NULL,
+      pick_id TEXT NOT NULL REFERENCES signal_picks(id),
+      symbol VARCHAR(10) NOT NULL,
+      add_amount DECIMAL(12,2) NOT NULL,
+      add_shares DECIMAL(12,4) NOT NULL,
+      price_at_rebalance DECIMAL(12,4) NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signal_rebalances_date ON signal_rebalances(rebalance_date)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_signal_rebalances_pick ON signal_rebalances(pick_id)`;
+}
+
+/**
  * Ensures the signal_score_history table exists for tracking score snapshots over time.
  * Recorded monthly (1st of each month) by the refresh-signals cron job for all stocks.
  */
