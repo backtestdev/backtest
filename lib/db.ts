@@ -147,6 +147,10 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       net_income_growth_positive_3yr_count INT DEFAULT 0,
       latest_fiscal_date DATE,
 
+      -- SCORE (persisted by refresh-signals for monitoring & staleness detection)
+      quant_score INTEGER,
+      score_updated_at TIMESTAMPTZ,
+
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `;
@@ -190,6 +194,12 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       END IF;
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='net_income_growth_positive_3yr_count') THEN
         ALTER TABLE stocks ADD COLUMN net_income_growth_positive_3yr_count INT DEFAULT 0;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='quant_score') THEN
+        ALTER TABLE stocks ADD COLUMN quant_score INTEGER;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='score_updated_at') THEN
+        ALTER TABLE stocks ADD COLUMN score_updated_at TIMESTAMPTZ;
       END IF;
     END $$
   `;
@@ -362,6 +372,10 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       revenue_growth_positive_3yr_count INT DEFAULT 0,
       net_income_growth_positive_3yr_count INT DEFAULT 0,
       latest_fiscal_date DATE,
+
+      -- SCORE
+      quant_score INTEGER,
+      score_updated_at TIMESTAMPTZ,
 
       updated_at TIMESTAMP DEFAULT NOW()
     )

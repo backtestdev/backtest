@@ -244,12 +244,13 @@ async function runRefresh(
   }
 
   // Step 2: Enrich a batch of stocks starting at enrichOffset
-  // Prioritize stocks missing current fiscal year data so they get refreshed first
-  const prevYear = String(new Date().getFullYear() - 1); // "2025" in Feb 2026
+  // Prioritize stocks with stale or missing fiscal data.
+  // Uses latest_fiscal_date age (>9 months = stale) instead of calendar year
+  // matching, which handles non-calendar fiscal years correctly (e.g. PDD).
   const allRows = await sql`
     SELECT symbol,
-      CASE WHEN revenue_history IS NOT NULL
-            AND revenue_history::text LIKE ${'%"' + prevYear + '"%'}
+      CASE WHEN latest_fiscal_date IS NOT NULL
+            AND latest_fiscal_date > CURRENT_DATE - INTERVAL '9 months'
            THEN 1 ELSE 0 END AS has_fy
     FROM stocks
     ORDER BY has_fy ASC, market_cap DESC NULLS LAST
