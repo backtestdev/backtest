@@ -145,6 +145,18 @@ async function refreshSignals() {
   });
   const scoreMap = computeBacktestScore(enriched);
 
+  // Persist scores to stocks table so they're visible in the DB and UI can
+  // show score_updated_at for freshness monitoring. Batch update in groups of 50.
+  const scoreEntries = Array.from(scoreMap.entries());
+  for (let i = 0; i < scoreEntries.length; i += 50) {
+    const batch = scoreEntries.slice(i, i + 50);
+    await Promise.all(
+      batch.map(([sym, score]) =>
+        sql`UPDATE stocks SET quant_score = ${score}, score_updated_at = NOW() WHERE symbol = ${sym}`.catch(() => {})
+      )
+    );
+  }
+
   // Dedup GOOG/GOOGL after scoring
   const googlExists = allStocks.some((s) => s.symbol === "GOOGL");
   const deduped = googlExists ? allStocks.filter((s) => s.symbol !== "GOOG") : allStocks;

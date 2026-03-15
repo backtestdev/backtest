@@ -126,6 +126,7 @@ export default function SignalTracker() {
   const [performance, setPerformance] = useState<PerformancePoint[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [fundValue, setFundValue] = useState<number | null>(null);
+  const [dataFreshness, setDataFreshness] = useState<{ lastDataRefresh: string | null; lastScoreRefresh: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedPick, setExpandedPick] = useState<string | null>(null);
@@ -142,6 +143,7 @@ export default function SignalTracker() {
         setPerformance(data.performance || []);
         setStats(data.stats || null);
         setFundValue(data.fundValue ?? null);
+        setDataFreshness(data.dataFreshness || null);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -220,6 +222,32 @@ export default function SignalTracker() {
             <StatCard label="Alpha" value={`${stats.alpha >= 0 ? "+" : ""}${stats.alpha.toFixed(1)}%`} color={stats.alpha >= 0 ? "positive" : "negative"} />
           </div>
         )}
+
+        {/* Data Freshness Indicator */}
+        {dataFreshness && (() => {
+          const scoreAge = dataFreshness.lastScoreRefresh
+            ? Math.round((Date.now() - new Date(dataFreshness.lastScoreRefresh).getTime()) / (1000 * 60 * 60))
+            : null;
+          const dataAge = dataFreshness.lastDataRefresh
+            ? Math.round((Date.now() - new Date(dataFreshness.lastDataRefresh).getTime()) / (1000 * 60 * 60))
+            : null;
+          const isStale = (scoreAge != null && scoreAge > 26) || (dataAge != null && dataAge > 26) || scoreAge == null;
+          const formatAge = (h: number | null) => {
+            if (h == null) return "never";
+            if (h < 1) return "just now";
+            if (h < 24) return `${h}h ago`;
+            return `${Math.round(h / 24)}d ago`;
+          };
+          return (
+            <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg mb-4 ${isStale ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"}`}>
+              <span className={`w-2 h-2 rounded-full ${isStale ? "bg-amber-400" : "bg-emerald-400"}`} />
+              <span>
+                Scores updated {formatAge(scoreAge)} · Data refreshed {formatAge(dataAge)}
+                {isStale && " · Refresh may be delayed"}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* Performance Chart - always visible */}
         {performance.length > 2 && (

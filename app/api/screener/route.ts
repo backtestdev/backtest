@@ -209,6 +209,13 @@ export async function GET(request: NextRequest) {
     // Unique industries for autocomplete
     const industries = Array.from(new Set(dedupedStocks.map((s) => String(s.industry || "")).filter(Boolean))).sort();
 
+    // Freshness metadata - when were scores and data last updated
+    const freshness = await sql`
+      SELECT key, value FROM stock_meta WHERE key IN ('last_populate', 'last_signal_refresh')
+    `.catch(() => []);
+    const lastDataRefresh = freshness.find((r) => r.key === "last_populate")?.value as string | undefined;
+    const lastScoreRefresh = freshness.find((r) => r.key === "last_signal_refresh")?.value as string | undefined;
+
     return NextResponse.json({
       stocks: paginated,
       totalCount,
@@ -216,6 +223,10 @@ export async function GET(request: NextRequest) {
       perPage,
       sectors,
       industries,
+      dataFreshness: {
+        lastDataRefresh: lastDataRefresh || null,
+        lastScoreRefresh: lastScoreRefresh || null,
+      },
     });
   } catch (error) {
     console.error("Screener error:", error);

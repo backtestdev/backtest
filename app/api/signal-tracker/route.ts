@@ -1207,6 +1207,13 @@ export async function GET() {
     // Sort trades by date descending (most recent first)
     trades.sort((a, b) => b.date.localeCompare(a.date));
 
+    // Freshness metadata for monitoring
+    const freshnessMeta = await sql`
+      SELECT key, value FROM stock_meta WHERE key IN ('last_populate', 'last_signal_refresh')
+    `.catch(() => []);
+    const lastDataRefresh = freshnessMeta.find((r: Record<string, unknown>) => r.key === "last_populate")?.value as string | undefined;
+    const lastScoreRefresh = freshnessMeta.find((r: Record<string, unknown>) => r.key === "last_signal_refresh")?.value as string | undefined;
+
     return NextResponse.json({
       picks: finalPicks,
       performance,
@@ -1223,6 +1230,10 @@ export async function GET() {
         cashReserve,
         investedPct: Math.round(actualInvestedPct * 10) / 10,
         avgHoldDays,
+      },
+      dataFreshness: {
+        lastDataRefresh: lastDataRefresh || null,
+        lastScoreRefresh: lastScoreRefresh || null,
       },
     });
   } catch (error) {
