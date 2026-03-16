@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb, ensureStockTables, ensureLeaderboardTable, ensureSavedPortfoliosTable, ensureSignalPicksTable, ensureUserUsageTable } from "@/lib/db";
+import { getDb, ensureStockTables, ensureLeaderboardTable, ensureSavedPortfoliosTable, ensureSignalPicksTable, ensureUserUsageTable, dropUnusedColumnsAndTables } from "@/lib/db";
 
 export async function POST() {
   const sql = getDb();
@@ -31,9 +31,13 @@ export async function POST() {
     // User usage tracking table
     await ensureUserUsageTable(sql);
 
+    // Drop legacy tables and unused columns to reclaim storage
+    const cleanup = await dropUnusedColumnsAndTables(sql);
+
     return NextResponse.json({
       success: true,
-      message: "Database initialized successfully (leaderboard + stock + saved_portfolios + signal_picks + user_usage tables). Cleaned up stale temp tables.",
+      message: "Database initialized successfully. Cleaned up stale temp tables.",
+      cleanup,
     });
   } catch (error) {
     console.error("DB init error:", error);

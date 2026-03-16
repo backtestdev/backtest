@@ -10,6 +10,7 @@ import { getSpyReturn } from "@/lib/stockData";
 
 const LEADERBOARD_PATH = path.join(process.cwd(), "data", "leaderboard.json");
 const MAX_ENTRIES = 20;
+const MAX_TOTAL_ENTRIES = 500; // Hard cap on total leaderboard rows to prevent unbounded growth
 
 // --- File-based storage (fallback when no DATABASE_URL) ---
 
@@ -255,6 +256,19 @@ export async function POST(request: NextRequest) {
     };
 
     await writeLeaderboardDb(newEntry);
+
+    // Trim old entries to prevent unbounded table growth
+    const sql = getDb();
+    if (sql) {
+      try {
+        await sql`
+          DELETE FROM leaderboard
+          WHERE id NOT IN (
+            SELECT id FROM leaderboard ORDER BY return10yr DESC LIMIT ${MAX_TOTAL_ENTRIES}
+          )
+        `;
+      } catch { /* non-fatal */ }
+    }
 
     console.log("[Leaderboard POST] Successfully saved:", newEntry.id);
 

@@ -24,10 +24,8 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       id SERIAL PRIMARY KEY,
       symbol VARCHAR(10) UNIQUE NOT NULL,
       company_name VARCHAR(255),
-      exchange VARCHAR(50),
       sector VARCHAR(100),
       industry VARCHAR(100),
-      country VARCHAR(50) DEFAULT 'US',
       market_cap NUMERIC,
       price DECIMAL(12,4),
       beta DECIMAL(8,4),
@@ -38,10 +36,7 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       year_high DECIMAL(12,4),
       year_low DECIMAL(12,4),
       is_etf BOOLEAN DEFAULT FALSE,
-      is_fund BOOLEAN DEFAULT FALSE,
       is_actively_trading BOOLEAN DEFAULT TRUE,
-      description TEXT,
-      full_time_employees INT,
 
       -- VALUATION
       price_to_earnings_ratio DECIMAL(16,8),
@@ -128,23 +123,17 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       research_and_development_to_revenue DECIMAL(16,8),
       stock_based_compensation_to_revenue DECIMAL(16,8),
 
-      -- TREND DATA (will be populated later by a separate process)
-      revenue_history JSONB,
-      net_income_history JSONB,
-      eps_history JSONB,
+      -- TREND DATA (computed from income-statement API)
       consecutive_revenue_growth_years INT DEFAULT 0,
       consecutive_net_income_growth_years INT DEFAULT 0,
       consecutive_dividend_growth_years INT DEFAULT 0,
       consecutive_eps_growth_years INT DEFAULT 0,
       revenue_growth_3yr_avg DECIMAL(16,8),
-      revenue_growth_5yr_avg DECIMAL(16,8),
       net_income_growth_3yr_avg DECIMAL(16,8),
-      net_income_growth_5yr_avg DECIMAL(16,8),
       revenue_growth_yoy DECIMAL(16,8),
       earnings_growth_yoy DECIMAL(16,8),
       eps_growth_yoy DECIMAL(16,8),
       revenue_growth_positive_3yr_count INT DEFAULT 0,
-      net_income_growth_positive_3yr_count INT DEFAULT 0,
       latest_fiscal_date DATE,
 
       -- SCORE (persisted by refresh-signals for monitoring & staleness detection)
@@ -191,9 +180,6 @@ export async function ensureStockTables(sql: NeonQueryFunction<false, false>) {
       END IF;
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='revenue_growth_positive_3yr_count') THEN
         ALTER TABLE stocks ADD COLUMN revenue_growth_positive_3yr_count INT DEFAULT 0;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='net_income_growth_positive_3yr_count') THEN
-        ALTER TABLE stocks ADD COLUMN net_income_growth_positive_3yr_count INT DEFAULT 0;
       END IF;
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stocks' AND column_name='quant_score') THEN
         ALTER TABLE stocks ADD COLUMN quant_score INTEGER;
@@ -250,10 +236,8 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       id SERIAL PRIMARY KEY,
       symbol VARCHAR(10) UNIQUE NOT NULL,
       company_name VARCHAR(255),
-      exchange VARCHAR(50),
       sector VARCHAR(100),
       industry VARCHAR(100),
-      country VARCHAR(50) DEFAULT 'US',
       market_cap NUMERIC,
       price DECIMAL(12,4),
       beta DECIMAL(8,4),
@@ -264,10 +248,7 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       year_high DECIMAL(12,4),
       year_low DECIMAL(12,4),
       is_etf BOOLEAN DEFAULT FALSE,
-      is_fund BOOLEAN DEFAULT FALSE,
       is_actively_trading BOOLEAN DEFAULT TRUE,
-      description TEXT,
-      full_time_employees INT,
 
       -- VALUATION
       price_to_earnings_ratio DECIMAL(16,8),
@@ -355,22 +336,16 @@ export async function createStocksNewTable(sql: NeonQueryFunction<false, false>)
       stock_based_compensation_to_revenue DECIMAL(16,8),
 
       -- TREND DATA
-      revenue_history JSONB,
-      net_income_history JSONB,
-      eps_history JSONB,
       consecutive_revenue_growth_years INT DEFAULT 0,
       consecutive_net_income_growth_years INT DEFAULT 0,
       consecutive_dividend_growth_years INT DEFAULT 0,
       consecutive_eps_growth_years INT DEFAULT 0,
       revenue_growth_3yr_avg DECIMAL(16,8),
-      revenue_growth_5yr_avg DECIMAL(16,8),
       net_income_growth_3yr_avg DECIMAL(16,8),
-      net_income_growth_5yr_avg DECIMAL(16,8),
       revenue_growth_yoy DECIMAL(16,8),
       earnings_growth_yoy DECIMAL(16,8),
       eps_growth_yoy DECIMAL(16,8),
       revenue_growth_positive_3yr_count INT DEFAULT 0,
-      net_income_growth_positive_3yr_count INT DEFAULT 0,
       latest_fiscal_date DATE,
 
       -- SCORE
@@ -550,4 +525,58 @@ export function generateParametersHash(params: unknown): string {
 export function generateQueryHash(query: string): string {
   const normalized = query.toLowerCase().trim().replace(/\s+/g, " ");
   return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+}
+
+/**
+ * Drops legacy tables (profiles, ratios) and unused columns from stocks table
+ * to reclaim Neon storage. Safe to call repeatedly — all operations are idempotent.
+ */
+export async function dropUnusedColumnsAndTables(sql: NeonQueryFunction<false, false>) {
+  const dropped: string[] = [];
+
+  // Drop legacy tables that are no longer used by the codebase
+  for (const table of ['profiles', 'ratios']) {
+    try {
+      const exists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_name = ${table} AND table_schema = 'public'
+        ) as exists
+      `;
+      if (exists[0]?.exists) {
+        await sql.query(`DROP TABLE IF EXISTS ${table} CASCADE`);
+        dropped.push(`table:${table}`);
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Drop unused columns from stocks table to reclaim storage
+  // These columns were never read by application code
+  const unusedColumns = [
+    'exchange', 'country', 'description', 'full_time_employees', 'is_fund',
+    'revenue_history', 'net_income_history', 'eps_history',
+    'revenue_growth_5yr_avg', 'net_income_growth_5yr_avg',
+    'net_income_growth_positive_3yr_count',
+  ];
+
+  for (const col of unusedColumns) {
+    try {
+      const colExists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns
+          WHERE table_name = 'stocks' AND column_name = ${col}
+        ) as exists
+      `;
+      if (colExists[0]?.exists) {
+        await sql.query(`ALTER TABLE stocks DROP COLUMN IF EXISTS ${col}`);
+        dropped.push(`column:stocks.${col}`);
+      }
+    } catch { /* ignore - column may already be gone */ }
+  }
+
+  if (dropped.length > 0) {
+    console.log(`[db-cleanup] Dropped: ${dropped.join(', ')}`);
+  }
+
+  return { dropped };
 }
