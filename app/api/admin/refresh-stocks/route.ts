@@ -232,14 +232,13 @@ async function runRefresh(
   // Insert into unified stocks table
   for (const s of filtered) {
     await sql`
-      INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, market_cap, beta, last_dividend, price, volume, is_etf, is_fund, is_actively_trading, updated_at)
-      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${Math.round(s.marketCap)}, ${toNum(s.beta)}, ${toNum(s.lastAnnualDividend)}, ${toNum(s.price)}, ${toNum(s.volume)}, ${s.isEtf}, ${s.isFund || false}, ${s.isActivelyTrading}, NOW())
+      INSERT INTO stocks (symbol, company_name, sector, industry, market_cap, beta, last_dividend, price, volume, is_etf, is_actively_trading, updated_at)
+      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${Math.round(s.marketCap)}, ${toNum(s.beta)}, ${toNum(s.lastAnnualDividend)}, ${toNum(s.price)}, ${toNum(s.volume)}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())
       ON CONFLICT (symbol) DO UPDATE SET
         company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
-        country = EXCLUDED.country, exchange = EXCLUDED.exchange,
         market_cap = EXCLUDED.market_cap, beta = EXCLUDED.beta, last_dividend = EXCLUDED.last_dividend,
         price = EXCLUDED.price, volume = EXCLUDED.volume,
-        is_etf = EXCLUDED.is_etf, is_fund = EXCLUDED.is_fund, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
+        is_etf = EXCLUDED.is_etf, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
     `;
   }
 
@@ -404,10 +403,7 @@ async function runRefresh(
             research_and_development_to_revenue = COALESCE(${toNum(metrics?.researchAndDevelopementToRevenue)}, research_and_development_to_revenue),
             stock_based_compensation_to_revenue = COALESCE(${toNum(metrics?.stockBasedCompensationToRevenue)}, stock_based_compensation_to_revenue),
 
-            -- Growth / Income History
-            revenue_history = COALESCE(${growth?.revenueHistory ?? null}::jsonb, revenue_history),
-            net_income_history = COALESCE(${growth?.netIncomeHistory ?? null}::jsonb, net_income_history),
-            eps_history = COALESCE(${growth?.epsHistory ?? null}::jsonb, eps_history),
+            -- Growth
             consecutive_revenue_growth_years = COALESCE(${growth?.consecutiveRevenueGrowthYears ?? null}, consecutive_revenue_growth_years),
             consecutive_net_income_growth_years = COALESCE(${growth?.consecutiveNetIncomeGrowthYears ?? null}, consecutive_net_income_growth_years),
             consecutive_eps_growth_years = COALESCE(${growth?.consecutiveEpsGrowthYears ?? null}, consecutive_eps_growth_years),
@@ -417,7 +413,6 @@ async function runRefresh(
             earnings_growth_yoy = COALESCE(${growth?.earningsGrowthYoy ?? null}, earnings_growth_yoy),
             eps_growth_yoy = COALESCE(${growth?.epsGrowthYoy ?? null}, eps_growth_yoy),
             revenue_growth_positive_3yr_count = COALESCE(${growth?.revenueGrowthPositive3yrCount ?? null}, revenue_growth_positive_3yr_count),
-            net_income_growth_positive_3yr_count = COALESCE(${growth?.netIncomeGrowthPositive3yrCount ?? null}, net_income_growth_positive_3yr_count),
             latest_fiscal_date = COALESCE(${growth?.latestFiscalDate ?? null}, latest_fiscal_date),
 
             updated_at = NOW()
@@ -570,7 +565,6 @@ export async function GET(request: NextRequest) {
       const meta = await sql`SELECT * FROM stock_meta WHERE key IN ('last_populate', 'enrich_offset', 'last_refresh')`;
       const stockCount = await sql`SELECT count(*) as cnt FROM stocks`;
       const enrichedCount = await sql`SELECT count(*) as cnt FROM stocks WHERE price_to_earnings_ratio IS NOT NULL OR return_on_equity IS NOT NULL`;
-      const historyCount = await sql`SELECT count(*) as cnt FROM stocks WHERE revenue_history IS NOT NULL`;
       const lastPopulate = meta.find((r) => r.key === "last_populate")?.value || null;
       const lastRefresh = meta.find((r) => r.key === "last_refresh")?.value || null;
       const enrichOffset = meta.find((r) => r.key === "enrich_offset")?.value || "0";
@@ -582,7 +576,6 @@ export async function GET(request: NextRequest) {
         enrichOffset: Number(enrichOffset),
         stockCount: Number(stockCount[0]?.cnt || 0),
         enrichedCount: Number(enrichedCount[0]?.cnt || 0),
-        historyCount: Number(historyCount[0]?.cnt || 0),
       });
     } catch {
       return NextResponse.json({ configured: true, error: "Could not query stock_meta - run POST /api/db/init first" });

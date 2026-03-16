@@ -258,13 +258,13 @@ export async function POST(request: NextRequest) {
     let insertedCount = 0;
     for (const s of filtered) {
       await sql`
-        INSERT INTO stocks_new (symbol, company_name, market_cap, sector, industry, price, beta, volume, exchange, country, is_etf, is_fund, is_actively_trading, last_dividend, updated_at)
-        Values (${s.symbol}, ${s.companyName}, ${Math.round(s.marketCap)}, ${s.sector}, ${s.industry}, ${s.price || null}, ${s.beta || null}, ${s.volume || null}, ${s.exchange}, ${s.country || 'US'}, ${s.isEtf || false}, ${s.isFund || false}, ${s.isActivelyTrading}, ${s.lastAnnualDividend || null}, NOW())
+        INSERT INTO stocks_new (symbol, company_name, market_cap, sector, industry, price, beta, volume, is_etf, is_actively_trading, last_dividend, updated_at)
+        Values (${s.symbol}, ${s.companyName}, ${Math.round(s.marketCap)}, ${s.sector}, ${s.industry}, ${s.price || null}, ${s.beta || null}, ${s.volume || null}, ${s.isEtf || false}, ${s.isActivelyTrading}, ${s.lastAnnualDividend || null}, NOW())
         ON CONFLICT (symbol) DO UPDATE SET
           company_name = EXCLUDED.company_name, market_cap = EXCLUDED.market_cap,
           sector = EXCLUDED.sector, industry = EXCLUDED.industry, price = EXCLUDED.price,
-          beta = EXCLUDED.beta, volume = EXCLUDED.volume, exchange = EXCLUDED.exchange,
-          country = EXCLUDED.country, is_etf = EXCLUDED.is_etf, is_fund = EXCLUDED.is_fund,
+          beta = EXCLUDED.beta, volume = EXCLUDED.volume,
+          is_etf = EXCLUDED.is_etf,
           is_actively_trading = EXCLUDED.is_actively_trading, last_dividend = EXCLUDED.last_dividend,
           updated_at = NOW()
       `;
@@ -393,9 +393,6 @@ export async function POST(request: NextRequest) {
               tangible_asset_value = COALESCE(${toNum(metrics?.tangibleAssetValue)}, tangible_asset_value),
               research_and_development_to_revenue = COALESCE(${toNum(metrics?.researchAndDevelopementToRevenue)}, research_and_development_to_revenue),
               stock_based_compensation_to_revenue = COALESCE(${toNum(metrics?.stockBasedCompensationToRevenue)}, stock_based_compensation_to_revenue),
-              revenue_history = COALESCE(${growth?.revenueHistory ?? null}::jsonb, revenue_history),
-              net_income_history = COALESCE(${growth?.netIncomeHistory ?? null}::jsonb, net_income_history),
-              eps_history = COALESCE(${growth?.epsHistory ?? null}::jsonb, eps_history),
               consecutive_revenue_growth_years = COALESCE(${growth?.consecutiveRevenueGrowthYears ?? null}, consecutive_revenue_growth_years),
               consecutive_net_income_growth_years = COALESCE(${growth?.consecutiveNetIncomeGrowthYears ?? null}, consecutive_net_income_growth_years),
               consecutive_eps_growth_years = COALESCE(${growth?.consecutiveEpsGrowthYears ?? null}, consecutive_eps_growth_years),
@@ -405,7 +402,6 @@ export async function POST(request: NextRequest) {
               earnings_growth_yoy = COALESCE(${growth?.earningsGrowthYoy ?? null}, earnings_growth_yoy),
               eps_growth_yoy = COALESCE(${growth?.epsGrowthYoy ?? null}, eps_growth_yoy),
               revenue_growth_positive_3yr_count = COALESCE(${growth?.revenueGrowthPositive3yrCount ?? null}, revenue_growth_positive_3yr_count),
-              net_income_growth_positive_3yr_count = COALESCE(${growth?.netIncomeGrowthPositive3yrCount ?? null}, net_income_growth_positive_3yr_count),
               latest_fiscal_date = COALESCE(${growth?.latestFiscalDate ?? null}, latest_fiscal_date),
               updated_at = NOW()
             WHERE symbol = ${sym}
@@ -477,14 +473,11 @@ export async function POST(request: NextRequest) {
     const peCount = await sql`SELECT COUNT(*) as cnt FROM stocks WHERE price_to_earnings_ratio IS NOT NULL`;
     const roeCount = await sql`SELECT COUNT(*) as cnt FROM stocks WHERE return_on_equity IS NOT NULL`;
     const divCount = await sql`SELECT COUNT(*) as cnt FROM stocks WHERE dividend_yield IS NOT NULL`;
-    const histCount = await sql`SELECT COUNT(*) as cnt FROM stocks WHERE revenue_history IS NOT NULL`;
-
     const verification = {
       total: Number(totalCount[0]?.cnt || 0),
       has_pe: Number(peCount[0]?.cnt || 0),
       has_roe: Number(roeCount[0]?.cnt || 0),
       has_div_yield: Number(divCount[0]?.cnt || 0),
-      has_revenue_history: Number(histCount[0]?.cnt || 0),
     };
     log.push(`Verification: ${JSON.stringify(verification)}`);
 

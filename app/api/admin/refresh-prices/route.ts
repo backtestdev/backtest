@@ -89,8 +89,8 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
   // Store results in database
   log.push("Writing annual returns to database...");
 
-  // Clear existing data and insert new (batched for performance)
-  await sql`DELETE FROM stock_annual_returns`;
+  // Clear existing data and insert new (TRUNCATE is faster than DELETE and reclaims storage)
+  await sql`TRUNCATE TABLE stock_annual_returns`;
 
   // Flatten all rows into a single array for batched inserts
   const allRows: { symbol: string; year: number; annualReturn: number; yearEndClose: number | null }[] = [];
@@ -135,8 +135,8 @@ async function runPriceRefresh(sql: NeonQueryFunction<false, false>) {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON stock_prices(symbol, date)`;
 
-  // Clear and re-insert
-  await sql`DELETE FROM stock_prices`;
+  // Clear and re-insert (TRUNCATE reclaims disk space unlike DELETE)
+  await sql`TRUNCATE TABLE stock_prices`;
 
   const allPriceRows: { symbol: string; date: string; close: number }[] = [];
   for (const [symbol, priceResult] of Array.from(returns.entries())) {

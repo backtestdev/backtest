@@ -198,10 +198,8 @@ async function ensureTables() {
       id SERIAL PRIMARY KEY,
       symbol VARCHAR(10) UNIQUE NOT NULL,
       company_name VARCHAR(255),
-      exchange VARCHAR(50),
       sector VARCHAR(100),
       industry VARCHAR(100),
-      country VARCHAR(50) DEFAULT 'US',
       market_cap BIGINT,
       price DECIMAL(12,4),
       beta DECIMAL(8,4),
@@ -210,10 +208,7 @@ async function ensureTables() {
       last_dividend DECIMAL(8,4),
       ipo_date DATE,
       is_etf BOOLEAN DEFAULT FALSE,
-      is_fund BOOLEAN DEFAULT FALSE,
       is_actively_trading BOOLEAN DEFAULT TRUE,
-      description TEXT,
-      full_time_employees INT,
       price_to_earnings_ratio DECIMAL(16,8),
       price_to_earnings_growth_ratio DECIMAL(16,8),
       price_to_book_ratio DECIMAL(16,8),
@@ -277,19 +272,13 @@ async function ensureTables() {
       tangible_asset_value BIGINT,
       research_and_development_to_revenue DECIMAL(16,8),
       stock_based_compensation_to_revenue DECIMAL(16,8),
-      revenue_history JSONB,
-      net_income_history JSONB,
-      eps_history JSONB,
       consecutive_revenue_growth_years INT DEFAULT 0,
       consecutive_net_income_growth_years INT DEFAULT 0,
       consecutive_dividend_growth_years INT DEFAULT 0,
       consecutive_eps_growth_years INT DEFAULT 0,
       revenue_growth_3yr_avg DECIMAL(16,8),
-      revenue_growth_5yr_avg DECIMAL(16,8),
       net_income_growth_3yr_avg DECIMAL(16,8),
-      net_income_growth_5yr_avg DECIMAL(16,8),
       revenue_growth_positive_3yr_count INT DEFAULT 0,
-      net_income_growth_positive_3yr_count INT DEFAULT 0,
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `;
@@ -339,14 +328,13 @@ async function populateStocks(): Promise<string[]> {
 
   for (const s of filtered) {
     await sql`
-      INSERT INTO stocks (symbol, company_name, sector, industry, country, exchange, market_cap, beta, last_dividend, price, volume, is_etf, is_fund, is_actively_trading, updated_at)
-      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${s.country}, ${s.exchange}, ${Math.round(s.marketCap)}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.price || 0}, ${s.volume || 0}, ${s.isEtf}, ${s.isFund || false}, ${s.isActivelyTrading}, NOW())
+      INSERT INTO stocks (symbol, company_name, sector, industry, market_cap, beta, last_dividend, price, volume, is_etf, is_actively_trading, updated_at)
+      VALUES (${s.symbol}, ${s.companyName}, ${s.sector}, ${s.industry}, ${Math.round(s.marketCap)}, ${s.beta || 0}, ${s.lastAnnualDividend || 0}, ${s.price || 0}, ${s.volume || 0}, ${s.isEtf}, ${s.isActivelyTrading}, NOW())
       ON CONFLICT (symbol) DO UPDATE SET
         company_name = EXCLUDED.company_name, sector = EXCLUDED.sector, industry = EXCLUDED.industry,
-        country = EXCLUDED.country, exchange = EXCLUDED.exchange,
         market_cap = EXCLUDED.market_cap, beta = EXCLUDED.beta, last_dividend = EXCLUDED.last_dividend,
         price = EXCLUDED.price, volume = EXCLUDED.volume,
-        is_etf = EXCLUDED.is_etf, is_fund = EXCLUDED.is_fund, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
+        is_etf = EXCLUDED.is_etf, is_actively_trading = EXCLUDED.is_actively_trading, updated_at = NOW()
     `;
   }
 

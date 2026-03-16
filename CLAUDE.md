@@ -160,13 +160,20 @@ All stock data lives in ONE unified table. No JOINs needed.
 | `stock_annual_returns` | Annual returns from Yahoo Finance (20yr history) for backtesting | (`symbol`, `year`) |
 | `stock_prices` | Historical daily close prices (for charts & signal entry/exit prices) | `id`, UNIQUE(`symbol`, `date`) |
 | `stock_meta` | Metadata (last refresh timestamp, enrich offset) | `key` |
-| `leaderboard` | Saved strategy results | `id` |
+| `leaderboard` | Saved strategy results (capped at 500 entries) | `id` |
 | `signal_picks` | Signal Tracker picks with status (active/sold), entry/exit prices, thesis | `id` |
 | `signal_score_history` | Weekly score snapshots for trend analysis | (`symbol`, `date`) |
 | `saved_portfolios` | User-saved portfolio configurations | `id` |
 
-The `stocks` table has ~100 metric columns (PE, PB, ROE, dividend yield, etc.).
+The `stocks` table has ~90 metric columns (PE, PB, ROE, dividend yield, etc.).
 NULLs are fine — a stock missing PE still appears in queries that don't filter on PE.
+
+**Removed columns** (reclaimed storage via `db/init` migration):
+- `exchange`, `country`, `description`, `full_time_employees`, `is_fund` — never read by app
+- `revenue_history`, `net_income_history`, `eps_history` (JSONB) — never read, large storage cost
+- `revenue_growth_5yr_avg`, `net_income_growth_5yr_avg`, `net_income_growth_positive_3yr_count` — never read
+
+**Removed legacy tables**: `profiles`, `ratios` — all data was consolidated into `stocks`.
 
 ## Testing
 
